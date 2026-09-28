@@ -21,7 +21,7 @@ func loadFish() (image.Image, error) {
 	return png.Decode(bytes.NewReader(fishPNG))
 }
 
-// ponytail: sparse matching scans the full circle in 5-degree steps; limit the search area if large screens make scans too slow.
+// Sparse matching scans the full circle in 5-degree steps; limit the search area if large screens make scans too slow.
 func findFish(screen, fish image.Image) (image.Point, bool) {
 	sb, fb := screen.Bounds(), fish.Bounds()
 	fw, fh := fb.Dx(), fb.Dy()
