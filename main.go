@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"image"
 	"image/png"
 	"log"
 	"os"
@@ -107,6 +108,24 @@ func clickAt(x, y int) error {
 	return robotgo.Click("left")
 }
 
+type fishClickTracker struct {
+	last    image.Point
+	clicked bool
+}
+
+func (tracker *fishClickTracker) shouldClick(point image.Point, found bool) bool {
+	if !found {
+		tracker.clicked = false
+		return false
+	}
+	if tracker.clicked && point == tracker.last {
+		return false
+	}
+	tracker.last = point
+	tracker.clicked = true
+	return true
+}
+
 func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration) error {
 	if fishInterval <= 0 || duration <= 0 || (monsterClicks && interval <= 0) {
 		return errors.New("-fish-interval and -duration must be positive; -interval must be positive when monster clicks are enabled")
@@ -132,6 +151,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 
 	fmt.Printf("watching for fish for up to %s; press Ctrl+C to stop\n", duration)
 	clicks := 0
+	fishClicks := fishClickTracker{}
 	scan := func() error {
 		screenshot, err := robotgo.CaptureImg()
 		if err != nil {
@@ -143,7 +163,8 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		if ctx.Err() != nil {
 			return nil
 		}
-		if point, found := findFish(screenshot, fish); found && ctx.Err() == nil {
+		point, found := findFish(screenshot, fish)
+		if ctx.Err() == nil && fishClicks.shouldClick(point, found) {
 			if err := clickAt(point.X, point.Y); err != nil {
 				return fmt.Errorf("click fish: %w", err)
 			}
