@@ -1,4 +1,4 @@
 # TODO
 
-- After granting macOS permissions, verify that `-mode shot` captures a real screenshot.
-- When Clicker Heroes is running, test one click on a monster on Windows and macOS, and check coordinates with display scaling.
+- After granting macOS permissions, verify that `-mode shot` captures a real screenshot and `run` clicks a visible fish.
+- Verify fish and optional monster click coordinates in Clicker Heroes on Windows and macOS with display scaling.

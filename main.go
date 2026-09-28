@@ -19,9 +19,10 @@ import (
 func main() {
 	mode := flag.String("mode", "help", "help, shot, click, or run")
 	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot mode")
-	x := flag.Int("x", 0, "screen X coordinate for click or run")
-	y := flag.Int("y", 0, "screen Y coordinate for click or run")
-	interval := flag.Duration("interval", 100*time.Millisecond, "time between clicks in run mode")
+	x := flag.Int("x", 0, "screen X coordinate for click or optional monster clicks in run mode")
+	y := flag.Int("y", 0, "screen Y coordinate for click or optional monster clicks in run mode")
+	interval := flag.Duration("interval", 100*time.Millisecond, "time between optional monster clicks in run mode")
+	fishInterval := flag.Duration("fish-interval", time.Second, "time between fish scans in run mode")
 	duration := flag.Duration("duration", 10*time.Second, "maximum run time")
 	delay := flag.Duration("delay", 5*time.Second, "time to focus the game before starting")
 	flag.Parse()
@@ -31,19 +32,20 @@ func main() {
 		return
 	}
 
-	if *mode == "click" || *mode == "run" {
-		var hasX, hasY bool
-		flag.Visit(func(f *flag.Flag) {
-			switch f.Name {
-			case "x":
-				hasX = true
-			case "y":
-				hasY = true
-			}
-		})
-		if !hasX || !hasY {
-			log.Fatal("click and run require both -x and -y")
+	var hasX, hasY bool
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "x":
+			hasX = true
+		case "y":
+			hasY = true
 		}
+	})
+	if *mode == "click" && (!hasX || !hasY) {
+		log.Fatal("click requires both -x and -y")
+	}
+	if *mode == "run" && hasX != hasY {
+		log.Fatal("run requires both -x and -y when monster clicks are enabled")
 	}
 
 	if *mode == "shot" || *mode == "click" || *mode == "run" {
@@ -61,7 +63,7 @@ func main() {
 	case "click":
 		err = clickAt(*x, *y)
 	case "run":
-		err = runClicks(*x, *y, *interval, *duration)
+		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -105,9 +107,13 @@ func clickAt(x, y int) error {
 	return robotgo.Click("left")
 }
 
-func runClicks(x, y int, interval, duration time.Duration) error {
-	if interval <= 0 || duration <= 0 {
-		return errors.New("-interval and -duration must be positive")
+func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration) error {
+	if fishInterval <= 0 || duration <= 0 || (monsterClicks && interval <= 0) {
+		return errors.New("-fish-interval and -duration must be positive; -interval must be positive when monster clicks are enabled")
+	}
+	fish, err := loadFish()
+	if err != nil {
+		return fmt.Errorf("load fish image: %w", err)
 	}
 
 	interrupt, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -115,26 +121,57 @@ func runClicks(x, y int, interval, duration time.Duration) error {
 	ctx, cancel := context.WithTimeout(interrupt, duration)
 	defer cancel()
 
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	fishTicker := time.NewTicker(fishInterval)
+	defer fishTicker.Stop()
+	var clickTicks <-chan time.Time
+	if monsterClicks {
+		clickTicker := time.NewTicker(interval)
+		defer clickTicker.Stop()
+		clickTicks = clickTicker.C
+	}
 
-	fmt.Printf("clicking (%d, %d) for up to %s; press Ctrl+C to stop\n", x, y, duration)
+	fmt.Printf("watching for fish for up to %s; press Ctrl+C to stop\n", duration)
 	clicks := 0
-	for {
+	scan := func() error {
+		screenshot, err := robotgo.CaptureImg()
+		if err != nil {
+			return fmt.Errorf("capture screen: %w", err)
+		}
+		if screenshot == nil {
+			return errors.New("capture screen returned no image")
+		}
 		if ctx.Err() != nil {
-			fmt.Printf("stopped after %d clicks\n", clicks)
 			return nil
 		}
-		if err := clickAt(x, y); err != nil {
-			return fmt.Errorf("click: %w", err)
+		if point, found := findFish(screenshot, fish); found && ctx.Err() == nil {
+			if err := clickAt(point.X, point.Y); err != nil {
+				return fmt.Errorf("click fish: %w", err)
+			}
+			fmt.Printf("clicked fish at (%d, %d)\n", point.X, point.Y)
+			clicks++
 		}
-		clicks++
-
+		return nil
+	}
+	if err := scan(); err != nil {
+		return err
+	}
+	for {
 		select {
 		case <-ctx.Done():
 			fmt.Printf("stopped after %d clicks\n", clicks)
 			return nil
-		case <-ticker.C:
+		case <-fishTicker.C:
+			if err := scan(); err != nil {
+				return err
+			}
+		case <-clickTicks:
+			if ctx.Err() != nil {
+				continue
+			}
+			if err := clickAt(x, y); err != nil {
+				return fmt.Errorf("click monster: %w", err)
+			}
+			clicks++
 		}
 	}
 }

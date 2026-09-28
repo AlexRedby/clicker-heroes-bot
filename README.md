@@ -1,6 +1,6 @@
 # Clicker Heroes bot
 
-Minimal Go project for controlling a running game through RobotGo. It currently takes a screenshot, makes one click, or clicks repeatedly at a specified point. Purchases, game-state recognition, and ascension will be added after input is verified in Clicker Heroes.
+Go bot for a running Clicker Heroes game. It can take a screenshot, make one click, and watch for the orange fish clickable. In `run` mode, it scans the screen once per second and clicks a detected fish. Monster auto-clicks are optional.
 
 ## Requirements
 
@@ -18,10 +18,13 @@ go mod download
 go run . -mode help
 go run . -mode shot
 go run . -mode click -x 700 -y 400
-go run . -mode run -x 700 -y 400 -interval 100ms -duration 10s
+go run . -mode run -duration 10m
+go run . -mode run -x 700 -y 400 -interval 100ms -fish-interval 1s -duration 10m
 ```
 
-The example coordinates are placeholders. By default, `shot` saves `artifacts/screenshot.png` and creates the directory if needed. Put other generated test files in `artifacts/` too; Git ignores this directory. You can choose another screenshot path with `-out`. After starting `shot`, `click`, or `run`, you have 5 seconds (`-delay`) to switch to the game. For `click` and `run`, use coordinates inside the monster area. The `run` mode stops after `-duration`; you can also stop it with Ctrl+C in the terminal. If the game closes or loses focus, stop the program: clicks go to the current desktop.
+The example coordinates are placeholders. By default, `shot` saves `artifacts/screenshot.png` and creates the directory if needed. Put other generated test files in `artifacts/` too; Git ignores this directory. You can choose another screenshot path with `-out`. After starting `shot`, `click`, or `run`, you have 5 seconds (`-delay`) to switch to the game. For `click` or optional monster clicks in `run`, use coordinates inside the monster area. `run` stops after `-duration`; you can also stop it with Ctrl+C. If the game closes or loses focus, stop the program: clicks go to the current desktop.
+
+Fish detection uses the [Clicker Heroes Orange Fish image from StickPNG](https://www.stickpng.com/img/games/clicker-heroes/clicker-heroes-orange-fish), listed there for personal use only. The bot searches several sizes of this image, so display scaling or a different in-game fish appearance may need further calibration.
 
 ## Check the project
 
@@ -31,4 +34,4 @@ go test ./...
 go build .
 ```
 
-`go.mod` declares the module name and dependency versions; `go.sum` records checksums for downloaded modules. `main.go` contains the `main()` entry point and three simple modes. As long as this project has a single command, it does not need additional packages or directories.
+`go.mod` declares the module name and dependency versions; `go.sum` records checksums for downloaded modules. `main.go` contains the command modes, and `fish.go` detects the fish in screenshots.
