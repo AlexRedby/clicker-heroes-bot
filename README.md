@@ -1,0 +1,34 @@
+# Clicker Heroes bot
+
+Minimal Go project for controlling a running game through RobotGo. It currently takes a screenshot, makes one click, or clicks repeatedly at a specified point. Purchases, game-state recognition, and ascension will be added after input is verified in Clicker Heroes.
+
+## Requirements
+
+- **macOS:** Install Go (`brew install go`) and Xcode Command Line Tools (`xcode-select --install`). Grant the app that runs the bot (for example, Terminal) **Accessibility** and **Screen & System Audio Recording** permissions in System Settings > Privacy & Security.
+- **Windows:** Install Go (`winget install Golang.Go`) and GCC to build RobotGo (`winget install BrechtSanders.WinLibs.POSIX.UCRT`). Make sure the directory containing `gcc.exe` is in `PATH`.
+
+Check the installation with `go version` and `gcc --version`. If `shot` reports `Capture image not found` on macOS, enable Screen & System Audio Recording for Terminal (or the built app) and restart it. The `click` and `run` modes also require Accessibility permission.
+
+## Run
+
+From the project directory:
+
+```sh
+go mod download
+go run . -mode help
+go run . -mode shot
+go run . -mode click -x 700 -y 400
+go run . -mode run -x 700 -y 400 -interval 100ms -duration 10s
+```
+
+The example coordinates are placeholders. By default, `shot` saves `artifacts/screenshot.png` and creates the directory if needed. Put other generated test files in `artifacts/` too; Git ignores this directory. You can choose another screenshot path with `-out`. After starting `shot`, `click`, or `run`, you have 5 seconds (`-delay`) to switch to the game. For `click` and `run`, use coordinates inside the monster area. The `run` mode stops after `-duration`; you can also stop it with Ctrl+C in the terminal. If the game closes or loses focus, stop the program: clicks go to the current desktop.
+
+## Check the project
+
+```sh
+go fmt ./...
+go test ./...
+go build .
+```
+
+`go.mod` declares the module name and dependency versions; `go.sum` records checksums for downloaded modules. `main.go` contains the `main()` entry point and three simple modes. As long as this project has a single command, it does not need additional packages or directories.
