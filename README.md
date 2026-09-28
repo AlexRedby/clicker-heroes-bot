@@ -24,7 +24,7 @@ go run . -mode run -x 700 -y 400 -interval 100ms -fish-interval 1s -duration 10m
 
 The example coordinates are placeholders. By default, `shot` saves `artifacts/screenshot.png` and creates the directory if needed. Put other generated test files in `artifacts/` too; Git ignores this directory. You can choose another screenshot path with `-out`. After starting `shot`, `click`, or `run`, you have 5 seconds (`-delay`) to switch to the game. For `click` or optional monster clicks in `run`, use coordinates inside the monster area. `run` stops after `-duration`; you can also stop it with Ctrl+C. If the game closes or loses focus, stop the program: clicks go to the current desktop.
 
-Fish detection uses the [Clicker Heroes Orange Fish image from StickPNG](https://www.stickpng.com/img/games/clicker-heroes/clicker-heroes-orange-fish), listed there for personal use only. The bot searches several sizes of this image, so display scaling or a different in-game fish appearance may need further calibration.
+Fish detection uses the [Clicker Heroes Orange Fish image from StickPNG](https://www.stickpng.com/img/games/clicker-heroes/clicker-heroes-orange-fish), listed there for personal use only. The bot searches several sizes and orientations around the full circle in 5-degree steps, so display scaling or a different in-game fish appearance may need further calibration.
 
 ## Check the project
 
