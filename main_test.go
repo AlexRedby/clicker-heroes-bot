@@ -1,13 +1,34 @@
 package main
 
 import (
+	"context"
 	"image"
+	"image/jpeg"
 	"os"
 	"path/filepath"
 	"testing"
 
 	hook "github.com/robotn/gohook"
 )
+
+func TestVisibleHeroButtonNeedsNoScroll(t *testing.T) {
+	file, err := os.Open("testdata/no-fish-game-screen.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	screen, err := jpeg.Decode(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, button, found, err := findHeroButtonWithScroll(context.Background(), nil, screen, func(image.Image) (bool, error) {
+		t.Fatal("visible hero should not trigger a scroll or fish scan")
+		return false, nil
+	})
+	if err != nil || !found || result != screen || absDiff(button.X, 81) > 10 || absDiff(button.Y, 497) > 15 {
+		t.Fatalf("visible hero: button=%v, found=%t, err=%v", button, found, err)
+	}
+}
 
 func TestWriteScreenshotCreatesDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "artifacts", "screenshot.png")

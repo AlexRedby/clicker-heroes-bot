@@ -7,6 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	"image/png"
 	"log"
 	"os"
@@ -85,16 +87,19 @@ func saveScreenshot(path string) error {
 	if img == nil {
 		return errors.New("capture screen returned no image")
 	}
-
-	var data bytes.Buffer
-	if err := png.Encode(&data, img); err != nil {
-		return fmt.Errorf("encode screenshot: %w", err)
-	}
-	if err := writeScreenshot(path, data.Bytes()); err != nil {
+	if err := saveImage(path, img); err != nil {
 		return err
 	}
 	fmt.Println("saved", path)
 	return nil
+}
+
+func saveImage(path string, img image.Image) error {
+	var data bytes.Buffer
+	if err := png.Encode(&data, img); err != nil {
+		return fmt.Errorf("encode screenshot: %w", err)
+	}
+	return writeScreenshot(path, data.Bytes())
 }
 
 func writeScreenshot(path string, data []byte) error {
@@ -175,6 +180,9 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, screen image.Image, scanFish func(image.Image) (bool, error)) (image.Image, image.Point, bool, error) {
 	if !heroTabSelected(screen) {
 		return nil, image.Point{}, false, nil
+	}
+	if button, found := findHeroLevelButton(screen); found {
+		return screen, button, true, nil
 	}
 	drag := func(thumb image.Point, targetY int) (image.Image, bool, error) {
 		if ctx.Err() != nil {
@@ -411,9 +419,8 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			return nil
 		}
 		clicks++
-		bounds := heroScreen.Bounds()
-		robotgo.Move(bounds.Min.X+bounds.Dx()*60/100, bounds.Min.Y+bounds.Dy()/2)
 		var listMoved, levelChanged bool
+		var lastAfter image.Image
 		for range 5 {
 			if ctx.Err() != nil || controls.isPaused() {
 				return nil
@@ -426,6 +433,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			if after == nil {
 				return errors.New("capture hero screen after click returned no image")
 			}
+			lastAfter = after
 			listMoved = heroListMoved(heroScreen, after)
 			levelChanged = heroLevelChanged(heroScreen, after, button)
 			if !listMoved && levelChanged {
@@ -434,6 +442,20 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 				fmt.Printf("leveled hero at (%d, %d)\n", button.X, button.Y)
 				return nil
 			}
+		}
+		beforePath, afterPath := "artifacts/hero-failure-before.png", "artifacts/hero-failure-after.png"
+		marked := image.NewRGBA(heroScreen.Bounds())
+		draw.Draw(marked, marked.Bounds(), heroScreen, heroScreen.Bounds().Min, draw.Src)
+		for offset := -max(12, marked.Bounds().Dx()/100); offset <= max(12, marked.Bounds().Dx()/100); offset++ {
+			marked.Set(button.X+offset, button.Y, color.RGBA{R: 255, A: 255})
+			marked.Set(button.X, button.Y+offset, color.RGBA{R: 255, A: 255})
+		}
+		if err := saveImage(beforePath, marked); err != nil {
+			fmt.Printf("failed to save hero screenshot: %v\n", err)
+		} else if err := saveImage(afterPath, lastAfter); err != nil {
+			fmt.Printf("failed to save hero screenshot: %v\n", err)
+		} else {
+			fmt.Printf("saved hero failure screenshots: %s, %s\n", beforePath, afterPath)
 		}
 		heroFailures++
 		if heroFailures >= 3 {
