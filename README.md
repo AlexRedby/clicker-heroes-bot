@@ -28,6 +28,32 @@ The example coordinates are placeholders. By default, `shot` saves `artifacts/sc
 
 Fish detection uses the [Clicker Heroes Orange Fish image from StickPNG](https://www.stickpng.com/img/games/clicker-heroes/clicker-heroes-orange-fish), listed there for personal use only. The bot searches several sizes and orientations around the full circle in 5-degree steps, so display scaling or a different in-game fish appearance may need further calibration.
 
+## Compare fish detection methods
+
+The `gocv` build tag runs an experimental GoCV matcher next to the existing matcher. It does not change `run`. [GoCV 0.43.0](https://github.com/hybridgroup/gocv/releases/tag/v0.43.0) targets OpenCV 4.13.0; OpenCV 5.0 is tested separately through its Python binding because this GoCV release does not support OpenCV 5. Both experiments use the same generated game-screen fixtures, saved under the ignored `artifacts/gocv-comparison/` directory.
+
+With a local Docker daemon, run these commands from the project directory:
+
+```sh
+docker build -f Dockerfile.gocv -t clicker-bot-gocv .
+docker run --rm -v "$PWD":/workspace -w /workspace clicker-bot-gocv go test -tags gocv fish.go fish_gocv_test.go -run '^TestCompareFishMatchers$' -v -count=1
+docker build -f experiments/Dockerfile.opencv5 -t clicker-bot-opencv5 .
+docker run --rm -v "$PWD":/workspace -w /workspace clicker-bot-opencv5 python experiments/compare_opencv5.py
+```
+
+The GoCV test first writes the fixtures. Times include screen conversion and template preparation. The real game screenshot without a fish checks false positives; fish-positive fixtures place the PNG programmatically on that screenshot. Results on live game captures still need verification. Both OpenCV experiments use a score threshold of 0.97 fitted to these fixtures. At 0.99, both found only the upright fish. The GoCV experiment reuses the existing template-generation function; the OpenCV 5 experiment uses OpenCV resizing and rotation, so the difference between their times cannot be attributed to library version alone.
+
+One run on the same remote Linux x86-64 host gave these per-frame times:
+
+| Frame | Existing Go matcher | GoCV / OpenCV 4.13 | OpenCV 5 |
+| --- | ---: | ---: | ---: |
+| No fish | 2.47 s | 122.66 s | 85.45 s |
+| Upright fish | 0.019 s | 0.381 s | 0.310 s |
+| Fish rotated 17 degrees | 0.110 s | 5.21 s | 3.80 s |
+| Fish rotated 180 degrees | 1.253 s | 64.22 s | 45.43 s |
+
+All three classified these four frames correctly at the fitted threshold. The OpenCV versions perform dense matching at every location for every scale and angle, while the existing matcher rejects most locations after checking four pixels. These measurements do not establish accuracy on real fish screenshots or performance on macOS and Windows.
+
 ## Check the project
 
 ```sh

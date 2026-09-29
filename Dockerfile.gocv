@@ -1,0 +1,7 @@
+FROM golang:1.27.1-bookworm AS go
+
+FROM gocv/opencv:4.13.0
+RUN rm -rf /usr/local/go
+COPY --from=go /usr/local/go /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}"
+WORKDIR /workspace

@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/go-vgo/robotgo v1.1.0
 	github.com/robotn/gohook v0.42.3
+	gocv.io/x/gocv v0.43.0
 )
 
 require (
