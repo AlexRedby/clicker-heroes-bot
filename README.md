@@ -24,7 +24,7 @@ go run . -mode run -hero-levels -duration 10m
 go run . -mode run -x 700 -y 400 -interval 100ms -fish-interval 1s -duration 10m
 ```
 
-The example coordinates are placeholders. By default, `shot` saves `artifacts/screenshot.png` and creates the directory if needed. Put other generated test files in `artifacts/` too; Git ignores this directory. You can choose another screenshot path with `-out`. After starting `shot`, `click`, or `run`, you have 5 seconds (`-delay`) to switch to the game. For `click` or optional monster clicks in `run`, use coordinates inside the monster area.
+The example coordinates are placeholders. Use pixel coordinates from the saved screenshot for `-x` and `-y`, including on Retina displays. By default, `shot` saves `artifacts/screenshot.png` and creates the directory if needed. Put other generated test files in `artifacts/` too; Git ignores this directory. You can choose another screenshot path with `-out`. After starting `shot`, `click`, or `run`, you have 5 seconds (`-delay`) to switch to the game. For `click` or optional monster clicks in `run`, use coordinates inside the monster area.
 
 `run` starts paused: press **F8** after the delay to start, and press F8 again to pause or resume from any window. On some Mac keyboards, press Fn+F8. While paused, the bot does not scan or click. Without `-duration`, it runs until Ctrl+C; a positive `-duration` sets a wall-time limit that also counts while paused. If F8 does not resume the bot, check Accessibility permission for the app running it. Pause before switching away from the game: clicks go to the current desktop.
 

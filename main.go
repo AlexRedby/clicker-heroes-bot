@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 )
 
 func main() {
+	robotgo.Scale = runtime.GOOS == "darwin"
 	mode := flag.String("mode", "help", "help, shot, click, or run")
 	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot mode")
 	x := flag.Int("x", 0, "screen X coordinate for click or optional monster clicks in run mode")
