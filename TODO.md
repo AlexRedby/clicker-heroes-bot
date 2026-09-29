@@ -8,7 +8,8 @@
 
 ## Hero progression
 
-- Verify automatic list scrolling, the first level purchase, and F8 pause in a live game before enabling hero purchases by default.
+- Diagnose any remaining unconfirmed hero purchase from a screenshot captured at the moment of failure.
+- Verify the revised scroll and purchase behavior with screenshots, tests, and a live run.
 - Detect available heroes, affordable levels, upgrades, gold, and the current zone beyond visible cards.
 - Add a simple hero purchase rule based on observed progress; compare active and idle strategies only after the basic loop works.
 

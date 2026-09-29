@@ -132,6 +132,48 @@ func heroListMoved(before, after image.Image) bool {
 	return total > 0 && changed*10 > total
 }
 
+func heroScrollbarThumb(screen image.Image) (image.Point, int, bool) {
+	if screen == nil || !heroTabSelected(screen) {
+		return image.Point{}, 0, false
+	}
+	bounds := screen.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	yStart, yEnd := bounds.Min.Y+h*32/100, bounds.Min.Y+h*965/1000
+	bestScore, bestY, bestHeight, bestX := 0, 0, 0, 0
+	for x := bounds.Min.X + w*445/1000; x < bounds.Min.X+w*495/1000; x += max(1, w/1000) {
+		type run struct{ start, end, count int }
+		var runs []run
+		gold := 0
+		for y := yStart; y < yEnd; y++ {
+			r, g, b := rgb(screen.At(x, y))
+			if r <= 190 || g <= 145 || b >= 110 {
+				continue
+			}
+			gold++
+			if len(runs) == 0 || y-runs[len(runs)-1].end > max(2, h/60) {
+				runs = append(runs, run{start: y, end: y, count: 1})
+			} else {
+				runs[len(runs)-1].end = y
+				runs[len(runs)-1].count++
+			}
+		}
+		for _, candidate := range runs {
+			height := candidate.end - candidate.start + 1
+			if height <= h*55/1000 || height >= h*18/100 {
+				continue
+			}
+			score := 2*candidate.count - gold
+			if score > bestScore {
+				bestScore = score
+				bestX = x - max(2, w/640)
+				bestY = (candidate.start + candidate.end) / 2
+				bestHeight = height
+			}
+		}
+	}
+	return image.Pt(bestX, bestY), bestHeight, bestScore > 0
+}
+
 func rgb(c color.Color) (int, int, int) {
 	r, g, b, _ := c.RGBA()
 	return int(r >> 8), int(g >> 8), int(b >> 8)

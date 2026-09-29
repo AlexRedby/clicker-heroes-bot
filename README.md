@@ -30,7 +30,7 @@ The example coordinates are placeholders. By default, `shot` saves `artifacts/sc
 
 Fish detection uses the [Clicker Heroes Orange Fish image from StickPNG](https://www.stickpng.com/img/games/clicker-heroes/clicker-heroes-orange-fish), listed there for personal use only. `run` extracts SIFT features from the fish image and each screenshot, matches them with OpenCV, and clicks the center of a fish when enough matches agree on its position, size, and rotation.
 
-With `-hero-levels`, `run` scrolls the Heroes list to the bottom, searches upward for the latest affordable hero, and clicks its level button. It checks again every 5 seconds after a purchase, or every 30 seconds if none is available. It uses the quantity selected in the game's `Lvl` bar, including `MAX`. Keep the Heroes tab open and the game filling the screen. If the level text does not visibly change after a click, hero purchases stop for that run; fish detection continues. F8 pauses clicks and scrolling.
+With `-hero-levels`, `run` drags the Heroes scrollbar to the bottom, searches upward for the latest affordable hero, and clicks its level button. It checks again every 5 seconds after a purchase, or every 30 seconds if none is available. It uses the quantity selected in the game's `Lvl` bar, including `MAX`. Keep the Heroes tab open and the game filling the screen. If a click does not visibly change the level, it retries later and stops hero purchases after three consecutive unconfirmed clicks; fish detection continues. F8 pauses clicks and scrolling.
 
 ## Check the project
 
