@@ -97,7 +97,7 @@ func heroLevelChanged(before, after image.Image, button image.Point) bool {
 	if !heroRowYellow(after, button.Y) {
 		return false
 	}
-	region := image.Rect(bounds.Min.X+w*27/100, button.Y-h*4/100, bounds.Min.X+w*36/100, button.Y+h*2/100).Intersect(bounds)
+	region := image.Rect(bounds.Min.X+w*31/100, button.Y-h*4/100, bounds.Min.X+w*375/1000, button.Y+h*2/100).Intersect(bounds)
 	changed, total := 0, 0
 	for y := region.Min.Y; y < region.Max.Y; y++ {
 		for x := region.Min.X; x < region.Max.X; x++ {

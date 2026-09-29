@@ -61,7 +61,7 @@ func TestHeroLevelButton(t *testing.T) {
 	if heroLevelChanged(screen, after, button) {
 		t.Fatal("unchanged hero level was accepted")
 	}
-	draw.Draw(after, image.Rect(320, button.Y-15, 330, button.Y-5), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	draw.Draw(after, image.Rect(370, 488, 382, 510), image.NewUniform(color.Black), image.Point{}, draw.Src)
 	if heroListMoved(screen, after) {
 		t.Fatal("changed hero text was treated as scrolling")
 	}

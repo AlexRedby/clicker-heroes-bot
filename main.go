@@ -228,7 +228,7 @@ func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, scree
 		if _, found := findHeroLevelButton(screen); found {
 			bounds := screen.Bounds()
 			acted, err := controls.runClick(func() error {
-				robotgo.Move(bounds.Max.X-10, bounds.Min.Y+bounds.Dy()/2)
+				robotgo.Move(bounds.Min.X+bounds.Dx()*60/100, bounds.Min.Y+bounds.Dy()/2)
 				return nil
 			})
 			if err != nil || !acted {
@@ -411,7 +411,10 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			return nil
 		}
 		clicks++
-		for range 3 {
+		bounds := heroScreen.Bounds()
+		robotgo.Move(bounds.Min.X+bounds.Dx()*60/100, bounds.Min.Y+bounds.Dy()/2)
+		var listMoved, levelChanged bool
+		for range 5 {
 			if ctx.Err() != nil || controls.isPaused() {
 				return nil
 			}
@@ -423,7 +426,9 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			if after == nil {
 				return errors.New("capture hero screen after click returned no image")
 			}
-			if !heroListMoved(heroScreen, after) && heroLevelChanged(heroScreen, after, button) {
+			listMoved = heroListMoved(heroScreen, after)
+			levelChanged = heroLevelChanged(heroScreen, after, button)
+			if !listMoved && levelChanged {
 				heroFailures = 0
 				nextHeroScan = time.Now().Add(5 * time.Second)
 				fmt.Printf("leveled hero at (%d, %d)\n", button.X, button.Y)
@@ -433,11 +438,11 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		heroFailures++
 		if heroFailures >= 3 {
 			heroPurchasesEnabled = false
-			fmt.Printf("hero level change not confirmed at (%d, %d) three times; hero purchases stopped\n", button.X, button.Y)
+			fmt.Printf("hero level change not confirmed at (%d, %d) three times (list moved=%t, level pixels changed=%t); hero purchases stopped\n", button.X, button.Y, listMoved, levelChanged)
 			return nil
 		}
 		nextHeroScan = time.Now().Add(30 * time.Second)
-		fmt.Printf("hero level change not confirmed at (%d, %d); retrying hero purchases in 30s\n", button.X, button.Y)
+		fmt.Printf("hero level change not confirmed at (%d, %d) (list moved=%t, level pixels changed=%t); retrying hero purchases in 30s\n", button.X, button.Y, listMoved, levelChanged)
 		return nil
 	}
 	if err := scan(); err != nil {
