@@ -27,7 +27,7 @@ func main() {
 	interval := flag.Duration("interval", 100*time.Millisecond, "time between optional monster clicks in run mode")
 	fishInterval := flag.Duration("fish-interval", time.Second, "time between fish scans in run mode")
 	heroLevels := flag.Bool("hero-levels", false, "scroll the Heroes list and buy hero levels in run mode")
-	duration := flag.Duration("duration", 10*time.Second, "maximum run time")
+	duration := flag.Duration("duration", 0, "maximum run time (0 means unlimited)")
 	delay := flag.Duration("delay", 5*time.Second, "time to focus the game before starting")
 	flag.Parse()
 
@@ -254,8 +254,8 @@ func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, scree
 }
 
 func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels bool) error {
-	if fishInterval <= 0 || duration <= 0 || (monsterClicks && interval <= 0) {
-		return errors.New("-fish-interval and -duration must be positive; -interval must be positive when monster clicks are enabled")
+	if fishInterval <= 0 || duration < 0 || (monsterClicks && interval <= 0) {
+		return errors.New("-fish-interval must be positive; -duration must be non-negative; -interval must be positive when monster clicks are enabled")
 	}
 	sift, err := newSIFTFishDetector()
 	if err != nil {
@@ -265,7 +265,11 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 
 	interrupt, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	ctx, cancel := context.WithTimeout(interrupt, duration)
+	ctx := interrupt
+	cancel := stop
+	if duration > 0 {
+		ctx, cancel = context.WithTimeout(interrupt, duration)
+	}
 	controls := pauseControl{paused: true}
 	// GoHook's End crashes on macOS when Accessibility is denied; this CLI releases the hook on exit.
 	events := hook.Start()
@@ -307,7 +311,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		clickTicks = clickTicker.C
 	}
 
-	fmt.Printf("paused for up to %s; press F8 to start or pause, Ctrl+C to stop\n", duration)
+	fmt.Println("paused; press F8 to start or pause, Ctrl+C to stop")
 	clicks := 0
 	fishClicks := fishClickTracker{}
 	var lastFishScan time.Time
