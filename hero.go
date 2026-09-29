@@ -116,20 +116,9 @@ func heroListMoved(before, after image.Image) bool {
 	if before == nil || after == nil || before.Bounds() != after.Bounds() {
 		return false
 	}
-	bounds := before.Bounds()
-	w, h := bounds.Dx(), bounds.Dy()
-	changed, total := 0, 0
-	for y := bounds.Min.Y + h*40/100; y < bounds.Min.Y+h*90/100; y += max(1, h/250) {
-		for x := bounds.Min.X + w*17/100; x < bounds.Min.X+w*28/100; x += max(1, w/400) {
-			ar, ag, ab := rgb(before.At(x, y))
-			br, bg, bb := rgb(after.At(x, y))
-			if max(absDiff(ar, br), absDiff(ag, bg), absDiff(ab, bb)) > 20 {
-				changed++
-			}
-			total++
-		}
-	}
-	return total > 0 && changed*10 > total
+	beforeThumb, beforeHeight, beforeFound := heroScrollbarThumb(before)
+	afterThumb, afterHeight, afterFound := heroScrollbarThumb(after)
+	return beforeFound && afterFound && absDiff(beforeThumb.Y-beforeHeight/2, afterThumb.Y-afterHeight/2) > max(3, before.Bounds().Dy()/100)
 }
 
 func heroScrollbarThumb(screen image.Image) (image.Point, int, bool) {

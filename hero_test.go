@@ -35,6 +35,15 @@ func TestHeroLevelButton(t *testing.T) {
 	if !found || absDiff(thumb.X, 494) > 3 || absDiff(thumb.Y, 291) > 12 {
 		t.Fatalf("moved hero scrollbar thumb = %v, found = %t", thumb, found)
 	}
+	if !heroListMoved(screen, movedThumb) {
+		t.Fatal("moved scrollbar thumb was missed")
+	}
+	coveredThumb := image.NewRGBA(screen.Bounds())
+	draw.Draw(coveredThumb, coveredThumb.Bounds(), screen, screen.Bounds().Min, draw.Src)
+	draw.Draw(coveredThumb, image.Rect(483, 500, 505, 534), image.NewUniform(color.RGBA{R: 95, G: 62, B: 12, A: 255}), image.Point{}, draw.Src)
+	if heroListMoved(screen, coveredThumb) {
+		t.Fatal("partly covered scrollbar thumb was treated as moved")
+	}
 
 	otherTab := image.NewRGBA(screen.Bounds())
 	draw.Draw(otherTab, otherTab.Bounds(), image.NewUniform(color.RGBA{R: 102, G: 99, B: 98, A: 255}), image.Point{}, draw.Src)
@@ -68,11 +77,9 @@ func TestHeroLevelButton(t *testing.T) {
 	if !heroLevelChanged(screen, after, button) {
 		t.Fatal("changed hero level was missed")
 	}
-	scrolled := image.NewRGBA(screen.Bounds())
-	draw.Draw(scrolled, scrolled.Bounds(), screen, screen.Bounds().Min, draw.Src)
-	region := image.Rect(screen.Bounds().Dx()*17/100, screen.Bounds().Dy()*40/100, screen.Bounds().Dx()*28/100, screen.Bounds().Dy()*90/100)
-	draw.Draw(scrolled, region, screen, image.Pt(region.Min.X, region.Min.Y+50), draw.Src)
-	if !heroListMoved(screen, scrolled) {
-		t.Fatal("scrolled hero list was missed")
+	region := image.Rect(screen.Bounds().Dx()*17/100, screen.Bounds().Dy()*40/100, screen.Bounds().Dx()*28/100, screen.Bounds().Dy()*52/100)
+	draw.Draw(after, region, image.NewUniform(color.Black), image.Point{}, draw.Src)
+	if heroListMoved(screen, after) || !heroLevelChanged(screen, after, button) {
+		t.Fatal("changing hero cards and level text was treated as scrolling")
 	}
 }

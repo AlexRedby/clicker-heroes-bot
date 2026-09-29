@@ -443,7 +443,9 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 				return nil
 			}
 		}
-		beforePath, afterPath := "artifacts/hero-failure-before.png", "artifacts/hero-failure-after.png"
+		stamp := time.Now().Format("20060102-150405.000")
+		beforePath := fmt.Sprintf("artifacts/hero-failure-%s-before.png", stamp)
+		afterPath := fmt.Sprintf("artifacts/hero-failure-%s-after.png", stamp)
 		marked := image.NewRGBA(heroScreen.Bounds())
 		draw.Draw(marked, marked.Bounds(), heroScreen, heroScreen.Bounds().Min, draw.Src)
 		for offset := -max(12, marked.Bounds().Dx()/100); offset <= max(12, marked.Bounds().Dx()/100); offset++ {
