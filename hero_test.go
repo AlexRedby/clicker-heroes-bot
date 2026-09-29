@@ -24,7 +24,7 @@ func TestHeroLevelButton(t *testing.T) {
 		t.Fatalf("hero level button = %v, found = %t", button, found)
 	}
 	thumb, height, found := heroScrollbarThumb(screen)
-	if !found || absDiff(thumb.X, 494) > 12 || absDiff(thumb.Y, 491) > 12 || height < 60 {
+	if !found || absDiff(thumb.X, 494) > 3 || absDiff(thumb.Y, 491) > 12 || height < 60 {
 		t.Fatalf("hero scrollbar thumb = %v, height = %d, found = %t", thumb, height, found)
 	}
 	movedThumb := image.NewRGBA(screen.Bounds())
@@ -32,7 +32,7 @@ func TestHeroLevelButton(t *testing.T) {
 	draw.Draw(movedThumb, image.Rect(483, 450, 505, 534), image.NewUniform(color.RGBA{R: 95, G: 62, B: 12, A: 255}), image.Point{}, draw.Src)
 	draw.Draw(movedThumb, image.Rect(483, 250, 505, 334), screen, image.Pt(483, 450), draw.Src)
 	thumb, _, found = heroScrollbarThumb(movedThumb)
-	if !found || absDiff(thumb.Y, 291) > 12 {
+	if !found || absDiff(thumb.X, 494) > 3 || absDiff(thumb.Y, 291) > 12 {
 		t.Fatalf("moved hero scrollbar thumb = %v, found = %t", thumb, found)
 	}
 

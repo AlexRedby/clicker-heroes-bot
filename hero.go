@@ -138,9 +138,10 @@ func heroScrollbarThumb(screen image.Image) (image.Point, int, bool) {
 	}
 	bounds := screen.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
+	xStart, xEnd := bounds.Min.X+w*445/1000, bounds.Min.X+w*495/1000
 	yStart, yEnd := bounds.Min.Y+h*32/100, bounds.Min.Y+h*965/1000
 	bestScore, bestY, bestHeight, bestX := 0, 0, 0, 0
-	for x := bounds.Min.X + w*445/1000; x < bounds.Min.X+w*495/1000; x += max(1, w/1000) {
+	for x := xStart; x < xEnd; x += max(1, w/1000) {
 		type run struct{ start, end, count int }
 		var runs []run
 		gold := 0
@@ -165,13 +166,31 @@ func heroScrollbarThumb(screen image.Image) (image.Point, int, bool) {
 			score := 2*candidate.count - gold
 			if score > bestScore {
 				bestScore = score
-				bestX = x - max(2, w/640)
+				bestX = x
 				bestY = (candidate.start + candidate.end) / 2
 				bestHeight = height
 			}
 		}
 	}
-	return image.Pt(bestX, bestY), bestHeight, bestScore > 0
+	if bestScore <= 0 {
+		return image.Point{}, 0, false
+	}
+	left, right := bestX, bestX
+	for left > xStart {
+		r, g, b := rgb(screen.At(left-1, bestY))
+		if r <= 190 || g <= 145 || b >= 160 {
+			break
+		}
+		left--
+	}
+	for right+1 < xEnd {
+		r, g, b := rgb(screen.At(right+1, bestY))
+		if r <= 190 || g <= 145 || b >= 160 {
+			break
+		}
+		right++
+	}
+	return image.Pt((left+right)/2, bestY), bestHeight, true
 }
 
 func rgb(c color.Color) (int, int, int) {
