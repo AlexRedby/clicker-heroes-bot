@@ -39,6 +39,8 @@ docker build -f Dockerfile.gocv -t clicker-bot-gocv .
 docker run --rm -v "$PWD":/workspace -w /workspace clicker-bot-gocv go test -tags gocv fish.go fish_gocv_test.go -run '^TestCompareFishMatchers$' -v -count=1
 docker build -f experiments/Dockerfile.opencv5 -t clicker-bot-opencv5 .
 docker run --rm -v "$PWD":/workspace -w /workspace clicker-bot-opencv5 python experiments/compare_opencv5.py
+docker run --rm -v "$PWD":/workspace -w /workspace clicker-bot-opencv5 python experiments/compare_features.py
+docker run --rm -v "$PWD":/workspace -w /workspace clicker-bot-gocv go test fish.go fish_benchmark_test.go -run '^$' -bench '^BenchmarkFish$' -benchtime=3x -count=3
 ```
 
 The GoCV test first writes the fixtures. Times include screen conversion and template preparation. The real game screenshot without a fish checks false positives; fish-positive fixtures place the PNG programmatically on that screenshot. Results on live game captures still need verification. Both OpenCV experiments use a score threshold of 0.97 fitted to these fixtures. At 0.99, both found only the upright fish. The GoCV experiment reuses the existing template-generation function; the OpenCV 5 experiment uses OpenCV resizing and rotation, so the difference between their times cannot be attributed to library version alone.
@@ -53,6 +55,19 @@ One run on the same remote Linux x86-64 host gave these per-frame times:
 | Fish rotated 180 degrees | 1.253 s | 64.22 s | 45.43 s |
 
 All three classified these four frames correctly at the fitted threshold. The OpenCV versions perform dense matching at every location for every scale and angle, while the existing matcher rejects most locations after checking four pixels. These measurements do not establish accuracy on real fish screenshots or performance on macOS and Windows.
+
+The feature experiment compares SIFT and ORB from OpenCV 5. It detects keypoints on resized fish references (50, 75, and 200 pixels high for SIFT; 75 and 200 for ORB), matches them to each frame, then checks whether an affine transform has at least four consistent matches and a plausible fish size. The references are prepared before timing each frame. This avoids scanning every position, size, and angle. A simple HSV connected-component search was also tried, but the fish merged with orange UI or the monster in these fixtures, so it did not provide useful candidate regions.
+
+Repeated measurements on the same Linux host and four shared fixtures gave these approximate median per-frame times. The Go benchmark ran three batches of three iterations; SIFT and ORB ran five iterations per frame:
+
+| Frame | Existing Go matcher | SIFT | ORB |
+| --- | ---: | ---: | ---: |
+| No fish | 2.43 s | 0.14 s | 0.025 s |
+| Upright fish | 0.020 s | 0.13 s | missed |
+| Fish rotated 17 degrees | 0.105 s | 0.13 s | missed |
+| Fish rotated 180 degrees | 1.24 s | 0.13 s | missed |
+
+SIFT found all three inserted fish and rejected the fish-free screenshot. It also found an extra 50-pixel fish rendered with bilinear rotation, unlike the original overlays. ORB rejected the fish-free screenshot but missed every fish. These results use one real fish-free game screenshot plus synthetic fish overlays, so false-positive rate and live-game accuracy remain unknown. The SIFT parameters were selected using these fixtures and require validation on real fish captures. `run` still uses the existing Go matcher.
 
 ## Check the project
 
