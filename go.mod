@@ -2,7 +2,10 @@ module clicker-heroes-bot
 
 go 1.27.1
 
-require github.com/go-vgo/robotgo v1.1.0
+require (
+	github.com/go-vgo/robotgo v1.1.0
+	github.com/robotn/gohook v0.42.3
+)
 
 require (
 	github.com/dblohm7/wingoes v0.0.0-20260526185140-fb298caac7ca // indirect

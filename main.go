@@ -12,9 +12,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/go-vgo/robotgo"
+	hook "github.com/robotn/gohook"
 )
 
 func main() {
@@ -108,6 +110,46 @@ func clickAt(x, y int) error {
 	return robotgo.Click("left")
 }
 
+type pauseControl struct {
+	mu     sync.Mutex
+	paused bool
+}
+
+func (control *pauseControl) toggle() bool {
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	control.paused = !control.paused
+	return control.paused
+}
+
+func (control *pauseControl) pause() {
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	control.paused = true
+}
+
+func (control *pauseControl) isPaused() bool {
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	return control.paused
+}
+
+func (control *pauseControl) runClick(action func() error) (bool, error) {
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	if control.paused {
+		return false, nil
+	}
+	if err := action(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func isPauseKey(event hook.Event) bool {
+	return event.Kind == hook.KeyUp && event.Keycode == hook.Keycode["f8"]
+}
+
 type fishClickTracker struct {
 	last    image.Point
 	clicked bool
@@ -118,12 +160,12 @@ func (tracker *fishClickTracker) shouldClick(point image.Point, found bool) bool
 		tracker.clicked = false
 		return false
 	}
-	if tracker.clicked && point == tracker.last {
-		return false
-	}
+	return !tracker.clicked || point != tracker.last
+}
+
+func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.last = point
 	tracker.clicked = true
-	return true
 }
 
 func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration) error {
@@ -138,7 +180,37 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	interrupt, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	ctx, cancel := context.WithTimeout(interrupt, duration)
-	defer cancel()
+	controls := pauseControl{paused: true}
+	// GoHook's End crashes on macOS when Accessibility is denied; this CLI releases the hook on exit.
+	events := hook.Start()
+	hookDone := make(chan struct{})
+	go func() {
+		defer close(hookDone)
+		for {
+			select {
+			case event, ok := <-events:
+				if !ok {
+					controls.pause()
+					cancel()
+					return
+				}
+				if isPauseKey(event) {
+					if controls.toggle() {
+						fmt.Println("paused")
+					} else {
+						fmt.Println("resumed")
+					}
+				}
+			case <-ctx.Done():
+				controls.pause()
+				return
+			}
+		}
+	}()
+	defer func() {
+		cancel()
+		<-hookDone
+	}()
 
 	fishTicker := time.NewTicker(fishInterval)
 	defer fishTicker.Stop()
@@ -149,10 +221,13 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		clickTicks = clickTicker.C
 	}
 
-	fmt.Printf("watching for fish for up to %s; press Ctrl+C to stop\n", duration)
+	fmt.Printf("paused for up to %s; press F8 to start or pause, Ctrl+C to stop\n", duration)
 	clicks := 0
 	fishClicks := fishClickTracker{}
 	scan := func() error {
+		if controls.isPaused() {
+			return nil
+		}
 		screenshot, err := robotgo.CaptureImg()
 		if err != nil {
 			return fmt.Errorf("capture screen: %w", err)
@@ -165,11 +240,15 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		}
 		point, found := findFish(screenshot, fish)
 		if ctx.Err() == nil && fishClicks.shouldClick(point, found) {
-			if err := clickAt(point.X, point.Y); err != nil {
+			clicked, err := controls.runClick(func() error { return clickAt(point.X, point.Y) })
+			if err != nil {
 				return fmt.Errorf("click fish: %w", err)
 			}
-			fmt.Printf("clicked fish at (%d, %d)\n", point.X, point.Y)
-			clicks++
+			if clicked {
+				fishClicks.recordClick(point)
+				fmt.Printf("clicked fish at (%d, %d)\n", point.X, point.Y)
+				clicks++
+			}
 		}
 		return nil
 	}
@@ -189,10 +268,13 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			if ctx.Err() != nil {
 				continue
 			}
-			if err := clickAt(x, y); err != nil {
+			clicked, err := controls.runClick(func() error { return clickAt(x, y) })
+			if err != nil {
 				return fmt.Errorf("click monster: %w", err)
 			}
-			clicks++
+			if clicked {
+				clicks++
+			}
 		}
 	}
 }
