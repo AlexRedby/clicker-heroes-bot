@@ -8,8 +8,8 @@
 
 ## Hero progression
 
-- Detect available heroes, affordable levels, upgrades, gold, and the current zone.
-- Buy one affordable hero upgrade or level, then verify the expected UI change before repeating.
+- Verify automatic list scrolling, the first level purchase, and F8 pause in a live game before enabling hero purchases by default.
+- Detect available heroes, affordable levels, upgrades, gold, and the current zone beyond visible cards.
 - Add a simple hero purchase rule based on observed progress; compare active and idle strategies only after the basic loop works.
 
 ## Mercenaries

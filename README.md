@@ -19,6 +19,7 @@ go run . -mode help
 go run . -mode shot
 go run . -mode click -x 700 -y 400
 go run . -mode run -duration 10m
+go run . -mode run -hero-levels -duration 10m
 go run . -mode run -x 700 -y 400 -interval 100ms -fish-interval 1s -duration 10m
 ```
 
@@ -27,6 +28,8 @@ The example coordinates are placeholders. By default, `shot` saves `artifacts/sc
 `run` starts paused: press **F8** after the delay to start, and press F8 again to pause or resume from any window. On some Mac keyboards, press Fn+F8. While paused, the bot does not scan or click; `-duration` still counts wall time. If F8 does not resume the bot, check Accessibility permission for the app running it. `run` also stops after `-duration` or Ctrl+C in the terminal. Pause before switching away from the game: clicks go to the current desktop.
 
 Fish detection uses the [Clicker Heroes Orange Fish image from StickPNG](https://www.stickpng.com/img/games/clicker-heroes/clicker-heroes-orange-fish), listed there for personal use only. `run` extracts SIFT features from the fish image and each screenshot, matches them with OpenCV, and clicks the center of a fish when enough matches agree on its position, size, and rotation.
+
+With `-hero-levels`, `run` scrolls the Heroes list to the bottom, searches upward for the latest affordable hero, and clicks its level button. It checks again every 5 seconds after a purchase, or every 30 seconds if none is available. It uses the quantity selected in the game's `Lvl` bar, including `MAX`. Keep the Heroes tab open and the game filling the screen. If the level text does not visibly change after a click, hero purchases stop for that run; fish detection continues. F8 pauses clicks and scrolling.
 
 ## Check the project
 

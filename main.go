@@ -26,6 +26,7 @@ func main() {
 	y := flag.Int("y", 0, "screen Y coordinate for click or optional monster clicks in run mode")
 	interval := flag.Duration("interval", 100*time.Millisecond, "time between optional monster clicks in run mode")
 	fishInterval := flag.Duration("fish-interval", time.Second, "time between fish scans in run mode")
+	heroLevels := flag.Bool("hero-levels", false, "scroll the Heroes list and buy hero levels in run mode")
 	duration := flag.Duration("duration", 10*time.Second, "maximum run time")
 	delay := flag.Duration("delay", 5*time.Second, "time to focus the game before starting")
 	flag.Parse()
@@ -65,7 +66,7 @@ func main() {
 	case "click":
 		err = clickAt(*x, *y)
 	case "run":
-		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration)
+		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -168,7 +169,91 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.clicked = true
 }
 
-func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration) error {
+func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, screen image.Image, scanFish func(image.Image) (bool, error)) (image.Image, image.Point, bool, error) {
+	if !heroTabSelected(screen) {
+		return nil, image.Point{}, false, nil
+	}
+	scroll := func(amount int) (image.Image, bool, error) {
+		if ctx.Err() != nil {
+			return nil, false, nil
+		}
+		bounds := screen.Bounds()
+		acted, err := controls.runClick(func() error {
+			robotgo.Move(bounds.Min.X+bounds.Dx()*30/100, bounds.Min.Y+bounds.Dy()*65/100)
+			robotgo.Scroll(0, amount)
+			return nil
+		})
+		if err != nil || !acted {
+			return nil, false, err
+		}
+		time.Sleep(150 * time.Millisecond)
+		capture, err := robotgo.CaptureImg()
+		if err != nil {
+			return nil, false, fmt.Errorf("capture hero list after scroll: %w", err)
+		}
+		if capture == nil {
+			return nil, false, errors.New("capture hero list after scroll returned no image")
+		}
+		clicked, err := scanFish(capture)
+		if err != nil || clicked {
+			return nil, false, err
+		}
+		return capture, heroListMoved(screen, capture), nil
+	}
+
+	for range 3 {
+		capture, _, err := scroll(-100)
+		if err != nil || capture == nil {
+			return nil, image.Point{}, false, err
+		}
+		screen = capture
+		if !heroTabSelected(screen) {
+			return nil, image.Point{}, false, nil
+		}
+	}
+	for range 80 {
+		if ctx.Err() != nil || controls.isPaused() || !heroTabSelected(screen) {
+			return nil, image.Point{}, false, nil
+		}
+		if _, found := findHeroLevelButton(screen); found {
+			bounds := screen.Bounds()
+			acted, err := controls.runClick(func() error {
+				robotgo.Move(bounds.Max.X-10, bounds.Min.Y+bounds.Dy()/2)
+				return nil
+			})
+			if err != nil || !acted {
+				return nil, image.Point{}, false, err
+			}
+			time.Sleep(100 * time.Millisecond)
+			capture, err := robotgo.CaptureImg()
+			if err != nil {
+				return nil, image.Point{}, false, fmt.Errorf("capture hero screen before click: %w", err)
+			}
+			if capture == nil {
+				return nil, image.Point{}, false, errors.New("capture hero screen before click returned no image")
+			}
+			clicked, err := scanFish(capture)
+			if err != nil || clicked {
+				return nil, image.Point{}, false, err
+			}
+			if button, stillFound := findHeroLevelButton(capture); stillFound {
+				return capture, button, true, nil
+			}
+			screen = capture
+		}
+		capture, moved, err := scroll(4)
+		if err != nil || capture == nil {
+			return nil, image.Point{}, false, err
+		}
+		screen = capture
+		if !moved {
+			break
+		}
+	}
+	return nil, image.Point{}, false, nil
+}
+
+func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels bool) error {
 	if fishInterval <= 0 || duration <= 0 || (monsterClicks && interval <= 0) {
 		return errors.New("-fish-interval and -duration must be positive; -interval must be positive when monster clicks are enabled")
 	}
@@ -225,6 +310,32 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	fmt.Printf("paused for up to %s; press F8 to start or pause, Ctrl+C to stop\n", duration)
 	clicks := 0
 	fishClicks := fishClickTracker{}
+	var lastFishScan time.Time
+	scanFish := func(screen image.Image) (bool, error) {
+		if ctx.Err() != nil || controls.isPaused() || time.Since(lastFishScan) < fishInterval {
+			return false, nil
+		}
+		lastFishScan = time.Now()
+		point, found, err := sift.Find(screen)
+		if err != nil {
+			return false, fmt.Errorf("find fish with OpenCV: %w", err)
+		}
+		if !fishClicks.shouldClick(point, found) {
+			return false, nil
+		}
+		clicked, err := controls.runClick(func() error { return clickAt(point.X, point.Y) })
+		if err != nil {
+			return false, fmt.Errorf("click fish: %w", err)
+		}
+		if clicked {
+			fishClicks.recordClick(point)
+			fmt.Printf("clicked fish at (%d, %d)\n", point.X, point.Y)
+			clicks++
+		}
+		return clicked, nil
+	}
+	heroPurchasesEnabled := heroLevels
+	var nextHeroScan time.Time
 	scan := func() error {
 		if controls.isPaused() {
 			return nil
@@ -239,21 +350,60 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		if ctx.Err() != nil {
 			return nil
 		}
-		point, found, err := sift.Find(screenshot)
+		fishClicked, err := scanFish(screenshot)
 		if err != nil {
-			return fmt.Errorf("find fish with OpenCV: %w", err)
+			return err
 		}
-		if ctx.Err() == nil && fishClicks.shouldClick(point, found) {
-			clicked, err := controls.runClick(func() error { return clickAt(point.X, point.Y) })
-			if err != nil {
-				return fmt.Errorf("click fish: %w", err)
-			}
-			if clicked {
-				fishClicks.recordClick(point)
-				fmt.Printf("clicked fish at (%d, %d)\n", point.X, point.Y)
-				clicks++
-			}
+		if !heroPurchasesEnabled || fishClicked || ctx.Err() != nil || time.Now().Before(nextHeroScan) || controls.isPaused() {
+			return nil
 		}
+		nextHeroScan = time.Now().Add(5 * time.Second)
+		heroScreen, err := robotgo.CaptureImg()
+		if err != nil {
+			return fmt.Errorf("capture hero screen: %w", err)
+		}
+		if heroScreen == nil {
+			return errors.New("capture hero screen returned no image")
+		}
+		hadHeroTab := heroTabSelected(heroScreen)
+		heroScreen, button, found, err := findHeroButtonWithScroll(ctx, &controls, heroScreen, func(screen image.Image) (bool, error) {
+			clicked, err := scanFish(screen)
+			fishClicked = fishClicked || clicked
+			return clicked, err
+		})
+		if err != nil {
+			return err
+		}
+		if !found || ctx.Err() != nil {
+			if !found && hadHeroTab && !fishClicked && !controls.isPaused() && ctx.Err() == nil {
+				nextHeroScan = time.Now().Add(30 * time.Second)
+			}
+			return nil
+		}
+		clicked, err := controls.runClick(func() error { return clickAt(button.X, button.Y) })
+		if err != nil {
+			return fmt.Errorf("click hero level: %w", err)
+		}
+		if !clicked {
+			return nil
+		}
+		clicks++
+		robotgo.Move(heroScreen.Bounds().Max.X-10, heroScreen.Bounds().Min.Y+heroScreen.Bounds().Dy()/2)
+		time.Sleep(200 * time.Millisecond)
+		after, err := robotgo.CaptureImg()
+		if err != nil {
+			return fmt.Errorf("capture hero screen after click: %w", err)
+		}
+		if after == nil {
+			return errors.New("capture hero screen after click returned no image")
+		}
+		if !heroLevelChanged(heroScreen, after, button) {
+			heroPurchasesEnabled = false
+			fmt.Printf("hero level change not confirmed at (%d, %d); hero purchases stopped\n", button.X, button.Y)
+			return nil
+		}
+		nextHeroScan = time.Now().Add(5 * time.Second)
+		fmt.Printf("leveled hero at (%d, %d)\n", button.X, button.Y)
 		return nil
 	}
 	if err := scan(); err != nil {
