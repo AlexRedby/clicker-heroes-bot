@@ -109,6 +109,7 @@ func writeScreenshot(path string, data []byte) error {
 
 func clickAt(x, y int) error {
 	robotgo.Move(x, y)
+	time.Sleep(50 * time.Millisecond)
 	return robotgo.Click("left")
 }
 
@@ -181,6 +182,7 @@ func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, scree
 		}
 		acted, err := controls.runClick(func() error {
 			robotgo.Move(thumb.X, thumb.Y)
+			time.Sleep(50 * time.Millisecond)
 			robotgo.DragSmooth(thumb.X, targetY, 0.1, 0.2, 0)
 			return nil
 		})
@@ -409,7 +411,6 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			return nil
 		}
 		clicks++
-		robotgo.Move(heroScreen.Bounds().Max.X-10, heroScreen.Bounds().Min.Y+heroScreen.Bounds().Dy()/2)
 		for range 3 {
 			if ctx.Err() != nil || controls.isPaused() {
 				return nil
