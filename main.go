@@ -50,7 +50,6 @@ func main() {
 	if *mode == "run" && hasX != hasY {
 		log.Fatal("run requires both -x and -y when monster clicks are enabled")
 	}
-
 	if *mode == "shot" || *mode == "click" || *mode == "run" {
 		if *delay < 0 {
 			log.Fatal("-delay must be non-negative")
@@ -160,7 +159,8 @@ func (tracker *fishClickTracker) shouldClick(point image.Point, found bool) bool
 		tracker.clicked = false
 		return false
 	}
-	return !tracker.clicked || point != tracker.last
+	delta := point.Sub(tracker.last)
+	return !tracker.clicked || delta.X*delta.X+delta.Y*delta.Y > 20*20
 }
 
 func (tracker *fishClickTracker) recordClick(point image.Point) {
@@ -172,10 +172,11 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	if fishInterval <= 0 || duration <= 0 || (monsterClicks && interval <= 0) {
 		return errors.New("-fish-interval and -duration must be positive; -interval must be positive when monster clicks are enabled")
 	}
-	fish, err := loadFish()
+	sift, err := newSIFTFishDetector()
 	if err != nil {
-		return fmt.Errorf("load fish image: %w", err)
+		return fmt.Errorf("initialize OpenCV fish detector: %w", err)
 	}
+	defer sift.Close()
 
 	interrupt, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -238,7 +239,10 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		if ctx.Err() != nil {
 			return nil
 		}
-		point, found := findFish(screenshot, fish)
+		point, found, err := sift.Find(screenshot)
+		if err != nil {
+			return fmt.Errorf("find fish with OpenCV: %w", err)
+		}
 		if ctx.Err() == nil && fishClicks.shouldClick(point, found) {
 			clicked, err := controls.runClick(func() error { return clickAt(point.X, point.Y) })
 			if err != nil {

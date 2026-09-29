@@ -3,7 +3,6 @@
 ## Screen and click reliability
 
 - Resolve macOS screen capture permissions and verify `shot` and fish clicks in a running game.
-- Capture real game frames with and without the fish to validate the experimental SIFT detector before changing `run`.
 - Verify F8 pause/resume and fish and optional monster click coordinates on Windows and macOS with display scaling.
 - Identify the game window and the hero, mercenary, and prestige panels from real screenshots before adding purchase actions.
 

@@ -31,6 +31,7 @@ func TestFishClickTracker(t *testing.T) {
 	}{
 		{first, true, true},
 		{first, true, false},
+		{first.Add(image.Pt(3, -2)), true, false},
 		{second, true, true},
 		{second, true, false},
 		{image.Point{}, false, false},
