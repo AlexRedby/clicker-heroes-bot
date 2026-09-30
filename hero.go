@@ -53,6 +53,77 @@ func findHeroLevelButton(screen image.Image) (image.Point, bool) {
 	return best, found
 }
 
+func findNextHeroButton(screen image.Image, current image.Point) (image.Point, bool) {
+	if screen == nil || !heroTabSelected(screen) {
+		return image.Point{}, false
+	}
+	bounds := screen.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	xStart, xEnd := bounds.Min.X+w*55/1000, bounds.Min.X+w*130/1000
+	yStart, yEnd := current.Y+h/15, bounds.Min.Y+h*94/100
+	xStep, gap := max(1, w/500), max(3, h/150)
+	start, last := -1, -1
+	for y := yStart; y <= yEnd+gap; y++ {
+		dark, samples := 0, 0
+		if y < yEnd {
+			for x := xStart; x < xEnd; x += xStep {
+				r, g, b := rgb(screen.At(x, y))
+				if r < 150 && g < 150 && b < 150 {
+					dark++
+				}
+				samples++
+			}
+		}
+		if samples > 0 && dark*10 >= samples*7 {
+			if start < 0 {
+				start = y
+			}
+			last = y
+			continue
+		}
+		if start >= 0 && y-last > gap {
+			center := (start + last) / 2
+			if last-start > h/40 && heroRowYellow(screen, center) {
+				return image.Pt(bounds.Min.X+w*8/100, center), true
+			}
+			start = -1
+		}
+	}
+	return image.Point{}, false
+}
+
+func heroQuantityBarPresent(screen image.Image) bool {
+	if screen == nil || !heroTabSelected(screen) {
+		return false
+	}
+	b := screen.Bounds()
+	w, h := b.Dx(), b.Dy()
+	for _, x := range []int{100, 410} {
+		r, g, blue := rgb(screen.At(b.Min.X+w*x/1000, b.Min.Y+h*345/1000))
+		if r < 180 || g < 100 || blue > 100 {
+			return false
+		}
+	}
+	return true
+}
+
+func heroRowHasLevel(screen image.Image, y int) bool {
+	b := screen.Bounds()
+	w, h := b.Dx(), b.Dy()
+	region := image.Rect(b.Min.X+w*26/100, y-h*3/100, b.Min.X+w*36/100, y+h*3/100).Intersect(b)
+	white, total := 0, 0
+	for row := region.Min.Y; row < region.Max.Y; row += max(1, h/600) {
+		for x := region.Min.X; x < region.Max.X; x += max(1, w/600) {
+			r, g, blue := rgb(screen.At(x, row))
+			if min(r, g, blue) > 180 && max(r, g, blue)-min(r, g, blue) < 55 {
+				white++
+			}
+			total++
+		}
+	}
+	return total > 0 && white*100 > total*3
+}
+
 func heroTabSelected(screen image.Image) bool {
 	bounds := screen.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()

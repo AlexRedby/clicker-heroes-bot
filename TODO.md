@@ -8,10 +8,9 @@
 
 ## Hero progression
 
-- Diagnose any remaining unconfirmed hero purchase from a screenshot captured at the moment of failure.
-- Verify the revised scroll and purchase behavior with screenshots, tests, and a live run.
-- Detect available heroes, affordable levels, upgrades, gold, and the current zone beyond visible cards.
-- Add a simple hero purchase rule based on observed progress; compare active and idle strategies only after the basic loop works.
+- Capture a live `x1` screenshot with a locked next hero and verify its price crop and OCR result.
+- Verify bottom-first scrolling, MAX restoration, purchase confirmation, and F8 pause/resume in a running game.
+- Diagnose any remaining unconfirmed hero purchase from its saved before/after screenshots.
 
 ## Mercenaries
 

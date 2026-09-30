@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -181,9 +182,6 @@ func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, scree
 	if !heroTabSelected(screen) {
 		return nil, image.Point{}, false, nil
 	}
-	if button, found := findHeroLevelButton(screen); found {
-		return screen, button, true, nil
-	}
 	drag := func(thumb image.Point, targetY int) (image.Image, bool, error) {
 		if ctx.Err() != nil {
 			return nil, false, nil
@@ -229,59 +227,79 @@ func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, scree
 			return nil, image.Point{}, false, nil
 		}
 	}
-	for range 40 {
-		if ctx.Err() != nil || controls.isPaused() || !heroTabSelected(screen) {
-			return nil, image.Point{}, false, nil
-		}
-		if _, found := findHeroLevelButton(screen); found {
-			bounds := screen.Bounds()
-			acted, err := controls.runClick(func() error {
-				robotgo.Move(bounds.Min.X+bounds.Dx()*60/100, bounds.Min.Y+bounds.Dy()/2)
-				return nil
-			})
-			if err != nil || !acted {
-				return nil, image.Point{}, false, err
-			}
-			time.Sleep(100 * time.Millisecond)
-			capture, err := robotgo.CaptureImg()
-			if err != nil {
-				return nil, image.Point{}, false, fmt.Errorf("capture hero screen before click: %w", err)
-			}
-			if capture == nil {
-				return nil, image.Point{}, false, errors.New("capture hero screen before click returned no image")
-			}
-			clicked, err := scanFish(capture)
-			if err != nil || clicked {
-				return nil, image.Point{}, false, err
-			}
-			if button, stillFound := findHeroLevelButton(capture); stillFound {
-				return capture, button, true, nil
-			}
-			screen = capture
-		}
-		thumb, height, found := heroScrollbarThumb(screen)
-		if !found {
-			break
-		}
-		targetY := max(bounds.Min.Y+bounds.Dy()*30/100, thumb.Y-height*3/4)
-		if targetY >= thumb.Y {
-			break
-		}
-		capture, moved, err := drag(thumb, targetY)
-		if err != nil || capture == nil {
-			return nil, image.Point{}, false, err
-		}
-		screen = capture
-		if !moved {
-			break
-		}
+	if ctx.Err() != nil || controls.isPaused() || !heroTabSelected(screen) {
+		return nil, image.Point{}, false, nil
 	}
-	return nil, image.Point{}, false, nil
+	acted, err := controls.runClick(func() error {
+		robotgo.Move(bounds.Min.X+bounds.Dx()*60/100, bounds.Min.Y+bounds.Dy()/2)
+		return nil
+	})
+	if err != nil || !acted {
+		return nil, image.Point{}, false, err
+	}
+	time.Sleep(100 * time.Millisecond)
+	capture, err := robotgo.CaptureImg()
+	if err != nil {
+		return nil, image.Point{}, false, fmt.Errorf("capture hero screen before click: %w", err)
+	}
+	if capture == nil {
+		return nil, image.Point{}, false, errors.New("capture hero screen before click returned no image")
+	}
+	clicked, err := scanFish(capture)
+	if err != nil || clicked {
+		return nil, image.Point{}, false, err
+	}
+	button, found := findHeroLevelButton(capture)
+	if !found {
+		return nil, image.Point{}, false, nil
+	}
+	if next, found := findNextHeroButton(capture, button); found && heroRowHasLevel(capture, next.Y) {
+		return nil, image.Point{}, false, nil
+	}
+	return capture, button, true, nil
+}
+
+func selectHeroQuantity(controls *pauseControl, xPercent int) (image.Image, bool, error) {
+	screen, err := robotgo.CaptureImg()
+	if err != nil {
+		return nil, false, fmt.Errorf("capture hero quantity bar: %w", err)
+	}
+	if screen == nil {
+		return nil, false, errors.New("capture hero quantity bar returned no image")
+	}
+	if !heroQuantityBarPresent(screen) {
+		return nil, false, nil
+	}
+	b := screen.Bounds()
+	clicked, err := controls.runClick(func() error {
+		return clickAt(b.Min.X+b.Dx()*xPercent/1000, b.Min.Y+b.Dy()*345/1000)
+	})
+	if err != nil || !clicked {
+		return nil, clicked, err
+	}
+	time.Sleep(100 * time.Millisecond)
+	updated, err := robotgo.CaptureImg()
+	if err != nil {
+		return nil, true, fmt.Errorf("capture hero quantity selection: %w", err)
+	}
+	if updated == nil {
+		return nil, true, errors.New("capture hero quantity selection returned no image")
+	}
+	return updated, true, nil
+}
+
+func saveForNextHero(gold, nextPrice float64) bool {
+	return nextPrice-gold <= 1
 }
 
 func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels bool) error {
 	if fishInterval <= 0 || duration < 0 || (monsterClicks && interval <= 0) {
 		return errors.New("-fish-interval must be positive; -duration must be non-negative; -interval must be positive when monster clicks are enabled")
+	}
+	if heroLevels {
+		if _, err := exec.LookPath("tesseract"); err != nil {
+			return errors.New("hero leveling requires Tesseract OCR in PATH")
+		}
 	}
 	sift, err := newSIFTFishDetector()
 	if err != nil {
@@ -397,13 +415,44 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			return errors.New("capture hero screen returned no image")
 		}
 		hadHeroTab := heroTabSelected(heroScreen)
-		heroScreen, button, found, err := findHeroButtonWithScroll(ctx, &controls, heroScreen, func(screen image.Image) (bool, error) {
+		if !hadHeroTab {
+			return nil
+		}
+		if !heroQuantityBarPresent(heroScreen) {
+			nextHeroScan = time.Now().Add(30 * time.Second)
+			return nil
+		}
+		x1Screen, selected, err := selectHeroQuantity(&controls, 122)
+		if err != nil {
+			return fmt.Errorf("select x1 hero levels: %w", err)
+		}
+		if !selected {
+			return nil
+		}
+		x1Screen, button, found, findErr := findHeroButtonWithScroll(ctx, &controls, x1Screen, func(screen image.Image) (bool, error) {
 			clicked, err := scanFish(screen)
 			fishClicked = fishClicked || clicked
 			return clicked, err
 		})
-		if err != nil {
-			return err
+		var gold, nextPrice float64
+		var readErr error
+		if found && heroRowHasLevel(x1Screen, button.Y) {
+			if next, hasNext := findNextHeroButton(x1Screen, button); hasNext {
+				gold, readErr = readHeroGold(x1Screen)
+				if readErr == nil {
+					nextPrice, readErr = readHeroPrice(x1Screen, next)
+				}
+			}
+		}
+		maxScreen, restored, restoreErr := selectHeroQuantity(&controls, 435)
+		if findErr != nil {
+			return findErr
+		}
+		if restoreErr != nil {
+			return fmt.Errorf("restore MAX hero levels: %w", restoreErr)
+		}
+		if !restored {
+			return nil
 		}
 		if !found || ctx.Err() != nil {
 			if !found && hadHeroTab && !fishClicked && !controls.isPaused() && ctx.Err() == nil {
@@ -411,6 +460,19 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			}
 			return nil
 		}
+		if readErr != nil {
+			fmt.Printf("hero numbers unreadable: %v; retrying in 30s\n", readErr)
+			nextHeroScan = time.Now().Add(30 * time.Second)
+			return nil
+		}
+		if nextPrice > 0 && saveForNextHero(gold, nextPrice) {
+			fmt.Println("saving gold for next hero")
+			return nil
+		}
+		if current, enabled := findHeroLevelButton(maxScreen); !enabled || absDiff(current.Y, button.Y) > maxScreen.Bounds().Dy()/50 {
+			return nil
+		}
+		heroScreen = maxScreen
 		clicked, err := controls.runClick(func() error { return clickAt(button.X, button.Y) })
 		if err != nil {
 			return fmt.Errorf("click hero level: %w", err)

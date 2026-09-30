@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/jpeg"
+	"image/png"
 	"os"
 	"testing"
 )
@@ -18,6 +19,9 @@ func TestHeroLevelButton(t *testing.T) {
 	screen, err := jpeg.Decode(file)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if heroQuantityBarPresent(screen) {
+		t.Fatal("missing quantity bar was accepted")
 	}
 	button, found := findHeroLevelButton(screen)
 	if !found || absDiff(button.X, 81) > 10 || absDiff(button.Y, 497) > 15 {
@@ -81,5 +85,37 @@ func TestHeroLevelButton(t *testing.T) {
 	draw.Draw(after, region, image.NewUniform(color.Black), image.Point{}, draw.Src)
 	if heroListMoved(screen, after) || !heroLevelChanged(screen, after, button) {
 		t.Fatal("changing hero cards and level text was treated as scrolling")
+	}
+}
+
+func TestNextLockedHero(t *testing.T) {
+	for _, test := range []struct {
+		path                 string
+		currentY, nextY      int
+		nextAlreadyHasLevels bool
+	}{
+		{"testdata/hero-panel-max.png", 905, 1140, false},
+		{"testdata/hero-owned-disabled.png", 700, 905, true},
+	} {
+		file, err := os.Open(test.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		screen, err := png.Decode(file)
+		file.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !heroQuantityBarPresent(screen) {
+			t.Fatal("visible quantity bar was missed")
+		}
+		current, found := findHeroLevelButton(screen)
+		if !found || absDiff(current.Y, test.currentY) > 80 {
+			t.Fatalf("%s: deepest enabled hero = %v, found = %t", test.path, current, found)
+		}
+		next, found := findNextHeroButton(screen, current)
+		if !found || absDiff(next.Y, test.nextY) > 80 || heroRowHasLevel(screen, next.Y) != test.nextAlreadyHasLevels {
+			t.Fatalf("%s: next row = %v, found = %t, owned = %t", test.path, next, found, heroRowHasLevel(screen, next.Y))
+		}
 	}
 }

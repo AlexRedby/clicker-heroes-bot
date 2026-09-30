@@ -9,6 +9,8 @@ Go bot for a running Clicker Heroes game. It can take a screenshot, make one cli
 
 Fish detection uses GoCV 0.43.0 with native OpenCV 4.13. Install OpenCV before building on every platform; see the [GoCV installation guides](https://gocv.io/getting-started/). On macOS or Linux, verify it with `pkg-config --modversion opencv4` (expect 4.13.x). Also check `go version` and `gcc --version`. If `shot` reports `Capture image not found` on macOS, enable Screen & System Audio Recording for Terminal (or the built app) and restart it. The `click` and `run` modes also require Accessibility permission.
 
+Hero leveling additionally requires the `tesseract` executable with English OCR data in `PATH`. Enable **Always use scientific notation** in the game's settings so gold and prices use the same readable format.
+
 ## Run
 
 From the project directory:
@@ -30,7 +32,7 @@ The example coordinates are placeholders. Use pixel coordinates from the saved s
 
 Fish detection uses the [Clicker Heroes Orange Fish image from StickPNG](https://www.stickpng.com/img/games/clicker-heroes/clicker-heroes-orange-fish), listed there for personal use only. `run` extracts SIFT features from the fish image and each screenshot, matches them with OpenCV, and clicks the center of a fish when enough matches agree on its position, size, and rotation.
 
-With `-hero-levels`, `run` clicks a visible affordable hero's level button. If none is visible, it searches the Heroes list by scrolling. It checks again every 5 seconds after a purchase, or every 30 seconds if none is available. It uses the quantity selected in the game's `Lvl` bar, including `MAX`. Keep the Heroes tab open and the game filling the screen. If a click does not visibly change the level, it saves a timestamped `artifacts/hero-failure-*-before.png` (with a red cross at the click target) and matching `*-after.png`, retries later, and stops hero purchases after three consecutive unconfirmed clicks; fish detection continues. F8 pauses clicks and scrolling.
+With `-hero-levels`, `run` scrolls to the bottom of the Heroes list and considers only the latest hero and its successor. It briefly selects `x1` to read gold and the next hero's price from small screen regions, then restores `MAX`. When the next hero costs at most ten times the current gold, it waits to buy that hero; otherwise it buys MAX levels of the latest hero. If the latest owned hero cannot be leveled, it waits instead of buying earlier heroes. It does not buy upgrades. Keep the Heroes tab open and the game filling the screen. It checks again every 5 seconds after a purchase or while saving, or every 30 seconds when a number cannot be read or no hero is available. If a click does not visibly change the level, it saves timestamped `artifacts/hero-failure-*-before.png` (with a red cross at the click target) and matching `*-after.png`, retries later, and stops hero purchases after three consecutive unconfirmed clicks; fish detection continues. F8 pauses clicks and scrolling. The [hero progression plan](docs/hero-progression.md) describes screen recognition and its limits.
 
 ## Check the project
 
