@@ -30,6 +30,7 @@ func main() {
 	y := flag.Int("y", 0, "screen Y coordinate for click or optional monster clicks in run mode")
 	interval := flag.Duration("interval", 100*time.Millisecond, "time between optional monster clicks in run mode")
 	fishInterval := flag.Duration("fish-interval", time.Second, "time between fish scans in run mode")
+	skills := flag.Bool("skills", false, "activate unlocked skills with hotkeys 1-9 in run mode")
 	heroLevels := flag.Bool("hero-levels", false, "scroll the Heroes list and buy hero levels in run mode")
 	duration := flag.Duration("duration", 0, "maximum run time (0 means unlimited)")
 	delay := flag.Duration("delay", 5*time.Second, "time to focus the game before starting")
@@ -70,7 +71,7 @@ func main() {
 	case "click":
 		err = clickAt(context.Background(), *x, *y)
 	case "run":
-		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels)
+		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -426,11 +427,42 @@ func clickHeroMax(ctx context.Context, input heroInput, button image.Point) (err
 	return input.click(button)
 }
 
+// Try ordinary skills first, then keep Energize adjacent to Reload.
+// The game handles locked skills and cooldowns; this is not an optimized rotation.
+func activateSkills(ctx context.Context, controls *pauseControl, generation uint64, input heroInput) (bool, error) {
+	for _, key := range []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"} {
+		acted, err := controls.runClick(ctx, generation, func() (err error) {
+			defer func() { err = errors.Join(err, input.keyToggle(key, "up")) }()
+			if err = input.keyToggle(key, "down"); err != nil {
+				return err
+			}
+			// Hold across game frames rather than relying on a very short KeyTap.
+			timer := time.NewTimer(100 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timer.C:
+				return nil
+			}
+		})
+		if err != nil {
+			return false, fmt.Errorf("skill hotkey %s: %w", key, err)
+		}
+		if !acted {
+			return false, nil
+		}
+		// Let the game consume key-up before the next key-down.
+		time.Sleep(50 * time.Millisecond)
+	}
+	return controls.valid(ctx, generation), nil
+}
+
 func saveForNextHero(gold, nextPrice float64) bool {
 	return nextPrice-gold <= 1
 }
 
-func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels bool) error {
+func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills bool) error {
 	if fishInterval <= 0 || duration < 0 || (monsterClicks && interval <= 0) {
 		return errors.New("-fish-interval must be positive; -duration must be non-negative; -interval must be positive when monster clicks are enabled")
 	}
@@ -543,7 +575,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	}
 	heroPurchasesEnabled := heroLevels
 	heroFailures := 0
-	var nextHeroScan time.Time
+	var nextHeroScan, nextSkillScan time.Time
 	scan := func() error {
 		generation := controls.snapshot()
 		if !controls.valid(ctx, generation) {
@@ -562,6 +594,16 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		fishClicked, err := scanFish(screenshot, generation)
 		if err != nil {
 			return err
+		}
+		if skills && !fishClicked && !time.Now().Before(nextSkillScan) && heroQuantityBarPresent(screenshot) {
+			completed, err := activateSkills(ctx, &controls, generation, input)
+			if err != nil {
+				return err
+			}
+			if completed {
+				nextSkillScan = time.Now().Add(5 * time.Second)
+				fmt.Println("sent skill hotkeys 1-9")
+			}
 		}
 		if !heroPurchasesEnabled || fishClicked || ctx.Err() != nil || time.Now().Before(nextHeroScan) || controls.isPaused() {
 			return nil

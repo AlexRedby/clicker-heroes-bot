@@ -81,6 +81,8 @@ The following mappings from the [community shortcut list](https://clickerheroes.
 | `Shift`, `Z`, `Ctrl`, `Q` + Ancient level click | Reported multipliers: 10, 1,000, 100, 10,000 times the base quantity respectively. Check how the base quantity is chosen. |
 | Hold `Shift`, `Z` or `Ctrl` | Reveal Hero/Ancient collapse and expand controls. |
 
+The opt-in bot `-skills` mode tries `1` through `7`, followed by `8` and `9`, every five seconds after a completed sequence. It relies on the game to ignore locked skills and cooldowns; activation success and these mappings still need installed-game validation. Energize and Reload are adjacent, but readiness and optimal cooldown combinations are not tracked. See the [official skill reference](https://blog.clickerheroes.com/hero-skills-in-clicker-heroes-master-every-powerful-buff/) for their effects.
+
 For skills, also check that the skill is unlocked and ready. Use the top-row number keys for initial testing; keypad behavior has not been checked. No direct shortcut for fish collection, scrolling the Heroes list, claiming mercenary quests, Ascension or Transcension was established by this research.
 
 ## Bot controls

@@ -22,6 +22,7 @@ go run . -mode shot
 go run . -mode click -x 700 -y 400
 go run . -mode run
 go run . -mode run -hero-levels
+go run . -mode run -hero-levels -skills
 go run . -mode run -hero-levels -duration 10m
 go run . -mode run -x 700 -y 400 -interval 100ms -fish-interval 1s -duration 10m
 ```
@@ -37,6 +38,8 @@ With `-hero-levels`, `run` verifies the full-screen Heroes layout, drags the scr
 The bot keeps the persistent purchase quantity at `x1`, cycling with `T` only if another quantity is selected. It reads gold and the next price from cropped regions, then holds `Q` only during the hero purchase click to buy MAX levels. Hero purchase clicks hold the left button for 100 ms and wait 100 ms after release before moving the pointer or releasing `Q`. Both held inputs are released on errors or cancellation; no MAX selection screenshot is needed. When the next hero costs at most ten times current gold, it waits to buy that hero; otherwise it buys MAX levels of the current hero. It moves the cursor away from hero buttons to dismiss tooltips, then confirms a purchase by reading an increased `Lvl` value with a stable list position. Overlay or animation pixel changes alone do not count. OCR has a one-second limit per read and is cancelled when the run stops; scans and input actions execute sequentially, so a busy cycle can take longer than the configured fish interval.
 
 It does not buy upgrades. It checks again every 5 seconds after a purchase or while saving, or every 30 seconds when recognition fails or no hero is available. An unconfirmed click saves timestamped `artifacts/hero-failure-*-before.png` (with a red cross at the click target) and matching `*-after.png`, retries later, and stops hero purchases after three consecutive failures; fish detection continues. After a purchase, `x1` remains selected. Pausing invalidates the pending purchase; the next attempt starts from a fresh screenshot. The [hero progression plan](docs/hero-progression.md) describes recognition and its limits.
+
+With `-skills`, the bot sends skill hotkeys `1` through `7`, then `8` (Energize) and `9` (Reload), when the recognizable Heroes interface is visible. It holds each key for 100 ms and leaves a 50 ms gap after release. It retries the sequence five seconds after completion; locked skills and skills on cooldown are handled by the game. Energize is adjacent to Reload, but this basic sequence does not inspect readiness or optimize combinations. It neither unlocks skills nor buys their upgrades. Skill input runs sequentially with fish and hero actions and stops at the next key boundary when F8 is pressed; stopping the run releases any held key. The log reports sent hotkeys, not confirmed skill activations.
 
 The [game hotkey reference](docs/hotkeys.md) records keyboard actions, target tabs and sources for future features.
 

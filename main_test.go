@@ -444,3 +444,64 @@ func TestClickLeftHoldAndRelease(t *testing.T) {
 		})
 	}
 }
+
+func TestActivateSkills(t *testing.T) {
+	failure := errors.New("keyboard unavailable")
+	for _, scenario := range []string{"success", "paused", "stale", "cancelled before", "cancelled down", "down error", "up error", "pause/resume"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			controls := pauseControl{paused: scenario == "paused"}
+			generation := controls.snapshot()
+			if scenario == "stale" {
+				controls.toggle()
+				controls.toggle()
+			}
+			if scenario == "cancelled before" {
+				cancel()
+			}
+			var events []string
+			var pressed time.Time
+			input := heroInput{keyToggle: func(key, state string) error {
+				events = append(events, key+":"+state)
+				if state == "down" {
+					pressed = time.Now()
+				} else if scenario == "success" && time.Since(pressed) < 100*time.Millisecond {
+					t.Fatal("skill key was released before the game could observe it")
+				}
+				if key == "1" && state == "up" && scenario == "pause/resume" {
+					go func() { controls.toggle(); controls.toggle() }()
+				}
+				if key == "3" {
+					if scenario == "cancelled down" && state == "down" {
+						cancel()
+					}
+					if scenario == state+" error" {
+						return failure
+					}
+				}
+				return nil
+			}}
+			completed, err := activateSkills(ctx, &controls, generation, input)
+			want := "[]"
+			switch scenario {
+			case "success":
+				want = "[1:down 1:up 2:down 2:up 3:down 3:up 4:down 4:up 5:down 5:up 6:down 6:up 7:down 7:up 8:down 8:up 9:down 9:up]"
+			case "cancelled down", "down error", "up error":
+				want = "[1:down 1:up 2:down 2:up 3:down 3:up]"
+			case "pause/resume":
+				want = "[1:down 1:up]"
+			}
+			if fmt.Sprint(events) != want || completed != (scenario == "success") {
+				t.Fatalf("completed=%t events=%v, want %s", completed, events, want)
+			}
+			if scenario == "down error" || scenario == "up error" {
+				if !errors.Is(err, failure) {
+					t.Fatalf("lost keyboard error: %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
