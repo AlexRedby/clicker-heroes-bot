@@ -2,6 +2,8 @@
 
 ## Screen and live-game validation
 
+- Before implementing the corresponding features, verify the unconfirmed mappings in docs/hotkeys.md against the installed game: skills 1-9, A, Ancient quantity multipliers, and collapse/expand controls.
+
 - Verify the corrected hero loop in a running game: tooltip dismissal after purchase, confirmation of the increased level, the saving decision and transition to the next available hero. Locked next-hero price and gold OCR are covered by real `x1` screenshot regressions.
 - Verify that the game registers RobotGo's standard bottom-edge drag and that F8 taking effect after an ongoing native drag finishes is acceptable. Verify bottom-only scrolling, `T` selecting persistent `x1`, `Q` buying MAX levels and returning to `x1`, actual level confirmation, F8 interruption/resume, and simultaneous fish collection. Use saved before/after screenshots to diagnose any remaining unconfirmed purchase.
 - Measure complete hero/fish cycle latency on the target machine. OCR is cancellable and bounded per read, but the serial cycle can exceed the configured fish interval; tune only after measuring the live workload.

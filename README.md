@@ -38,6 +38,8 @@ The bot keeps the persistent purchase quantity at `x1`, cycling with `T` only if
 
 It does not buy upgrades. It checks again every 5 seconds after a purchase or while saving, or every 30 seconds when recognition fails or no hero is available. An unconfirmed click saves timestamped `artifacts/hero-failure-*-before.png` (with a red cross at the click target) and matching `*-after.png`, retries later, and stops hero purchases after three consecutive failures; fish detection continues. After a purchase, `x1` remains selected. Pausing invalidates the pending purchase; the next attempt starts from a fresh screenshot. The [hero progression plan](docs/hero-progression.md) describes recognition and its limits.
 
+The [game hotkey reference](docs/hotkeys.md) records keyboard actions, target tabs and sources for future features.
+
 ## Check the project
 
 ```sh
