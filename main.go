@@ -430,7 +430,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 				return err
 			}
 			time.Sleep(100 * time.Millisecond)
-			robotgo.DragSmooth(target.X, target.Y)
+			robotgo.DragSmooth(target.X, target.Y, 0.5, 1.5)
 			return nil
 		},
 	}
