@@ -139,18 +139,57 @@ func moveAt(point image.Point) error {
 	return nil
 }
 
-func clickAt(ctx context.Context, x, y int) error {
+func moveForClick(ctx context.Context, point image.Point) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if err := moveAt(image.Pt(x, y)); err != nil {
+	if err := moveAt(point); err != nil {
 		return err
 	}
 	time.Sleep(50 * time.Millisecond)
-	if ctx.Err() != nil {
-		return ctx.Err()
+	return ctx.Err()
+}
+
+func clickAt(ctx context.Context, x, y int) error {
+	if err := moveForClick(ctx, image.Pt(x, y)); err != nil {
+		return err
 	}
 	return robotgo.Click("left")
+}
+
+func clickHeroAt(ctx context.Context, point image.Point) error {
+	if err := moveForClick(ctx, point); err != nil {
+		return err
+	}
+	return clickLeft(ctx, robotgo.Toggle)
+}
+
+// RobotGo Click holds for only 5 ms; keep the press and release visible to game frames.
+func clickLeft(ctx context.Context, toggle func(...interface{}) error) (err error) {
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	wait := func() error {
+		timer := time.NewTimer(100 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return nil
+		}
+	}
+	defer func() {
+		err = errors.Join(err, toggle("left", "up"))
+		if err == nil {
+			// Leave the pointer and Q unchanged while the game consumes mouse-up.
+			err = wait()
+		}
+	}()
+	if err = toggle("left", "down"); err != nil {
+		return err
+	}
+	return wait()
 }
 
 type heroInput struct {
@@ -418,7 +457,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	input := heroInput{
 		capture:   func() (image.Image, error) { return robotgo.CaptureImg() },
 		move:      moveAt,
-		click:     func(p image.Point) error { return clickAt(ctx, p.X, p.Y) },
+		click:     func(p image.Point) error { return clickHeroAt(ctx, p) },
 		keyTap:    func(key string) error { return robotgo.KeyTap(key) },
 		keyToggle: func(key, state string) error { return robotgo.KeyToggle(key, state) },
 		drag: func(from, to image.Point) error {

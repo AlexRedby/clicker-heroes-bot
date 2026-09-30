@@ -101,6 +101,7 @@ func TestHeroLevelOnRealScreensAndOverlay(t *testing.T) {
 	}{
 		{"testdata/hero-panel-max.png", 896, 4367},
 		{"testdata/hero-owned-disabled.png", 917, 4695},
+		{"testdata/hero-tsuchi-x1.png", 894, 11873},
 	} {
 		screen := loadHeroScreen(t, tc.path)
 		got, err := readHeroLevel(ctx, screen, image.Pt(204, tc.y))
@@ -192,6 +193,7 @@ func TestHeroEconomyOnUserScreens(t *testing.T) {
 		{"testdata/hero-gog-before.png", 2.730, 227},
 		{"testdata/hero-gog-tooltip.png", 1.710, 226},
 		{"testdata/hero-economy-x1.png", 1.651, 449},
+		{"testdata/hero-tsuchi-x1.png", 8.465, 848},
 	} {
 		screen := loadHeroScreen(t, tc.path)
 		gold, err := readHeroGold(ctx, screen)

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	hook "github.com/robotn/gohook"
 )
@@ -387,6 +388,58 @@ func TestHeroMaxKeyRelease(t *testing.T) {
 				}
 			} else if err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestClickLeftHoldAndRelease(t *testing.T) {
+	failure := errors.New("mouse input failed")
+	for _, scenario := range []string{"success", "down error", "up error", "cancelled before", "cancelled down", "cancelled up"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if scenario == "cancelled before" {
+				cancel()
+			}
+			var events []string
+			var downAt, upAt time.Time
+			err := clickLeft(ctx, func(args ...interface{}) error {
+				if args[0] != "left" {
+					t.Fatalf("unexpected button %v", args[0])
+				}
+				state := args[1].(string)
+				events = append(events, state)
+				if state == "down" {
+					downAt = time.Now()
+				} else {
+					upAt = time.Now()
+				}
+				if scenario == "cancelled "+state {
+					cancel()
+				}
+				if scenario == state+" error" {
+					return failure
+				}
+				return nil
+			})
+			want := "[down up]"
+			if scenario == "cancelled before" {
+				want = "[]"
+			}
+			if fmt.Sprint(events) != want {
+				t.Fatalf("events=%v, want %s", events, want)
+			}
+			if scenario == "success" {
+				if err != nil || upAt.Sub(downAt) < 100*time.Millisecond || time.Since(upAt) < 100*time.Millisecond {
+					t.Fatalf("click was too short or did not settle: hold=%s settle=%s error=%v", upAt.Sub(downAt), time.Since(upAt), err)
+				}
+			} else if scenario == "down error" || scenario == "up error" {
+				if !errors.Is(err, failure) {
+					t.Fatalf("lost error: %v", err)
+				}
+			} else if !errors.Is(err, context.Canceled) {
+				t.Fatalf("lost cancellation: %v", err)
 			}
 		})
 	}

@@ -146,11 +146,7 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 	return output, nil
 }
 
-func readGameNumber(ctx context.Context, screen image.Image, region image.Rectangle, scale, psm int, whiteOnly bool) (float64, error) {
-	threshold := 0
-	if whiteOnly {
-		threshold = 180
-	}
+func readGameNumber(ctx context.Context, screen image.Image, region image.Rectangle, scale, psm int, threshold int) (float64, error) {
 	raw, err := readGameText(ctx, screen, region, scale, psm, threshold, "0123456789.eE")
 	if err != nil {
 		return 0, err
@@ -169,7 +165,12 @@ func readHeroGold(ctx context.Context, screen image.Image) (float64, error) {
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
 	region := image.Rect(b.Min.X+w*156/1000, b.Min.Y+h*25/1000, b.Min.X+w*34/100, b.Min.Y+h*12/100)
-	return readGameNumber(ctx, screen, region, max(1, 2048/w), 7, true)
+	value, err := readGameNumber(ctx, screen, region, max(1, 2048/w), 7, 180)
+	if err == nil || ctx.Err() != nil {
+		return value, err
+	}
+	// A faint leading digit can disappear in the mask; retry only an unreadable result.
+	return readGameNumber(ctx, screen, region, max(1, 2048/w), 7, 170)
 }
 
 func readHeroPrice(ctx context.Context, screen image.Image, button image.Point) (float64, error) {
@@ -195,7 +196,7 @@ func readHeroPrice(ctx context.Context, screen image.Image, button image.Point) 
 		top, bottom = 7, 50
 	}
 	region := image.Rect(b.Min.X+w*start/1000, button.Y+h*top/1000, b.Min.X+w*end/1000, button.Y+h*bottom/1000)
-	return readGameNumber(ctx, screen, region, max(3, 6144/w), 7, false)
+	return readGameNumber(ctx, screen, region, max(3, 6144/w), 7, 0)
 }
 
 func readHeroLevel(ctx context.Context, screen image.Image, button image.Point) (int, error) {
