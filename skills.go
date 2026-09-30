@@ -67,9 +67,8 @@ func (p *skillPlanner) plan(states [9]skillState, now time.Time) []int {
 	return nil
 }
 
-func tapSkill(ctx context.Context, controls *pauseControl, generation uint64, input heroInput, key int) (bool, error) {
+func tapGameKey(ctx context.Context, controls *pauseControl, generation uint64, input heroInput, name string) (bool, error) {
 	return controls.runClick(ctx, generation, func() (err error) {
-		name := strconv.Itoa(key)
 		defer func() { err = errors.Join(err, input.keyToggle(name, "up")) }()
 		if err = input.keyToggle(name, "down"); err != nil {
 			return err
@@ -130,7 +129,7 @@ func (p *skillPlanner) run(ctx context.Context, controls *pauseControl, generati
 		if key == 8 {
 			p.pendingEnergize = true
 		}
-		pressed, err := tapSkill(ctx, controls, generation, input, key)
+		pressed, err := tapGameKey(ctx, controls, generation, input, strconv.Itoa(key))
 		if err != nil {
 			return acted, fmt.Errorf("skill hotkey %d: %w", key, err)
 		}

@@ -154,7 +154,7 @@ func TestSkillRunConfirmation(t *testing.T) {
 	}
 }
 
-func TestTapSkillReleasesKey(t *testing.T) {
+func TestTapGameKeyReleasesKey(t *testing.T) {
 	failure := errors.New("keyboard unavailable")
 	for _, scenario := range []string{"success", "paused", "stale", "cancelled down", "down error", "up error"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -168,7 +168,7 @@ func TestTapSkillReleasesKey(t *testing.T) {
 			}
 			var events []string
 			var downAt time.Time
-			acted, err := tapSkill(ctx, &controls, generation, heroInput{keyToggle: func(key, state string) error {
+			acted, err := tapGameKey(ctx, &controls, generation, heroInput{keyToggle: func(key, state string) error {
 				events = append(events, key+":"+state)
 				if state == "down" {
 					downAt = time.Now()
@@ -182,7 +182,7 @@ func TestTapSkillReleasesKey(t *testing.T) {
 					return failure
 				}
 				return nil
-			}}, 5)
+			}}, "5")
 			want := "[5:down 5:up]"
 			if scenario == "paused" || scenario == "stale" {
 				want = "[]"

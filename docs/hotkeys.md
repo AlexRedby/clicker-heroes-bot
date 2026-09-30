@@ -77,11 +77,13 @@ The following mappings from the [community shortcut list](https://clickerheroes.
 | `7` | Super Clicks |
 | `8` | Energize |
 | `9` | Reload |
-| `A` | Toggle Farm Mode / Progression Mode; reported to unlock after beating zone 100. |
+| `A` | Toggle Farm Mode / Progression Mode. The bot uses this with `-progression` and visually confirms the resulting mode; verify the shortcut in the installed game. |
 | `Shift`, `Z`, `Ctrl`, `Q` + Ancient level click | Reported multipliers: 10, 1,000, 100, 10,000 times the base quantity respectively. Check how the base quantity is chosen. |
 | Hold `Shift`, `Z` or `Ctrl` | Reveal Hero/Ancient collapse and expand controls. |
 
 The opt-in bot `-skills` mode selects actions from the toolbar's current readiness and active/energized glow, rather than a fixed hotkey order. Its core combo is `3,5,8,9` when both ordinary skills and utilities are ready; every cast is confirmed before the next utility input. Ready short-cooldown skills remain usable independently, and ongoing energized buffs are refreshed. An interrupted Energize is consumed by a freshly recognized ordinary buff before new utility combinations. Dark Ritual is separate: the game enforces its 20-use limit, and the bot neither reads a counter nor spends Energize/Reload on it. The [PC 1.0e12 community guide](https://www.reddit.com/r/ClickerHeroes/comments/ysawex/zone_1_to_1m_walkthrough_clicker_heroes_pc_v10e12/) explains Lucky Strikes + Golden Clicks + Energize + Reload. [Energized Reload shortens the cooldowns of the last two used skills, excluding Energize](https://clickerheroes.fandom.com/wiki/Skills). The [official 1.0e11 patch notes](https://store.steampowered.com/oldnews/?appgroupname=Clicker+Heroes&appids=363970&enddate=1577865600&feed=steam_community_announcements) confirm pink energized glow and preservation of Energize when refreshing an active skill. Installed-game recognition and transitions still need live validation.
+
+The opt-in `-progression` mode uses `A` only when the boot toggle is recognized as farm mode. The red slash identifies farm mode; the unslashed boot identifies progression. Missing or obscured controls cause no toggle. The mapping comes from the community list above, rather than a verified official tooltip. The [official progression guide](https://clickerheroes.com/blog/how-to-progress-through-clicker-heroes-zones/) describes bosses every five zones and their base 30-second timer. The bot avoids fixed cooldown formulas and uses observed combat buffs and cropped damage OCR to decide whether to retry a failed boss. Installed-game fallback and recovery still need live validation.
 
 For skills, also check that the skill is unlocked and ready. Use the top-row number keys for initial testing; keypad behavior has not been checked. No direct shortcut for fish collection, scrolling the Heroes list, claiming mercenary quests, Ascension or Transcension was established by this research.
 

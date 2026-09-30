@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gocv.io/x/gocv"
 )
 
 var gameNumber = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)(?:[eE]([0-9]+))?$`)
@@ -91,9 +93,9 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 	if region.Empty() {
 		return "", fmt.Errorf("empty OCR region %v", region)
 	}
-	whiteOnly := whiteThreshold > 0
+	whiteOnly := whiteThreshold != 0
 	yellowThreshold := 0
-	if !whiteOnly {
+	if whiteThreshold == 0 {
 		for y := region.Min.Y; y < region.Max.Y; y++ {
 			for x := region.Min.X; x < region.Max.X; x++ {
 				r, g, b := rgb(screen.At(x, y))
@@ -110,7 +112,7 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 		for x := 0; x < source.Bounds().Dx(); x++ {
 			r, g, b := rgb(screen.At(region.Min.X+x, region.Min.Y+y))
 			if whiteOnly {
-				if min(r, g, b) > whiteThreshold && max(r, g, b)-min(r, g, b) < 55 {
+				if min(r, g, b) > max(whiteThreshold, -whiteThreshold) && max(r, g, b)-min(r, g, b) < 55 {
 					source.SetGray(x, y, color.Gray{Y: 255})
 				}
 			} else {
@@ -120,6 +122,34 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 					v = 0
 				}
 				source.SetGray(x, y, color.Gray{Y: v})
+			}
+		}
+	}
+	if whiteThreshold < 0 {
+		// Remove light scenery touching the crop edge; outlined white text remains isolated.
+		mask, err := gocv.NewMatFromBytes(region.Dy(), region.Dx(), gocv.MatTypeCV8UC1, source.Pix)
+		if err != nil {
+			return "", err
+		}
+		labels, stats, centroids := gocv.NewMat(), gocv.NewMat(), gocv.NewMat()
+		defer mask.Close()
+		defer labels.Close()
+		defer stats.Close()
+		defer centroids.Close()
+		count := gocv.ConnectedComponentsWithStats(mask, &labels, &stats, &centroids)
+		background := make([]bool, count)
+		for i := 1; i < count; i++ {
+			x := int(stats.GetIntAt(i, int(gocv.CC_STAT_LEFT)))
+			y := int(stats.GetIntAt(i, int(gocv.CC_STAT_TOP)))
+			width := int(stats.GetIntAt(i, int(gocv.CC_STAT_WIDTH)))
+			height := int(stats.GetIntAt(i, int(gocv.CC_STAT_HEIGHT)))
+			background[i] = x == 0 || y == 0 || x+width == region.Dx() || y+height == region.Dy()
+		}
+		for y := 0; y < region.Dy(); y++ {
+			for x := 0; x < region.Dx(); x++ {
+				if background[labels.GetIntAt(y, x)] {
+					source.Pix[y*source.Stride+x] = 0
+				}
 			}
 		}
 	}
@@ -135,8 +165,12 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 		xdraw.ApproxBiLinear.Scale(upscaled, dst, source, source.Bounds(), draw.Src, nil)
 	}
 
+	return readTextImage(ctx, upscaled, psm, characters)
+}
+
+func readTextImage(ctx context.Context, input image.Image, psm int, characters string) (string, error) {
 	var encoded bytes.Buffer
-	if err := png.Encode(&encoded, upscaled); err != nil {
+	if err := png.Encode(&encoded, input); err != nil {
 		return "", err
 	}
 	output, err := runTesseract(ctx, encoded.Bytes(), "-l", "eng", "--psm", strconv.Itoa(psm), "-c", "tessedit_char_whitelist="+characters)

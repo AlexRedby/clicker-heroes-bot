@@ -31,6 +31,7 @@ func main() {
 	interval := flag.Duration("interval", 100*time.Millisecond, "time between optional monster clicks in run mode")
 	fishInterval := flag.Duration("fish-interval", time.Second, "time between fish scans in run mode")
 	skills := flag.Bool("skills", false, "activate unlocked skills with hotkeys 1-9 in run mode")
+	progression := flag.Bool("progression", false, "manage progression mode and wait for damage improvements after failed bosses")
 	heroLevels := flag.Bool("hero-levels", false, "scroll the Heroes list and buy hero levels in run mode")
 	duration := flag.Duration("duration", 0, "maximum run time (0 means unlimited)")
 	delay := flag.Duration("delay", 5*time.Second, "time to focus the game before starting")
@@ -71,7 +72,7 @@ func main() {
 	case "click":
 		err = clickAt(context.Background(), *x, *y)
 	case "run":
-		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills)
+		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -438,7 +439,7 @@ func saveForNextHero(gold, nextPrice float64) bool {
 	return nextPrice-gold <= 1
 }
 
-func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills bool) error {
+func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression bool) error {
 	if fishInterval <= 0 || duration < 0 || (monsterClicks && interval <= 0) {
 		return errors.New("-fish-interval must be positive; -duration must be non-negative; -interval must be positive when monster clicks are enabled")
 	}
@@ -456,7 +457,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	if duration > 0 {
 		ctx, cancel = context.WithTimeout(interrupt, duration)
 	}
-	if heroLevels {
+	if heroLevels || progression {
 		if err := checkHeroOCR(ctx); err != nil {
 			cancel()
 			return err
@@ -557,6 +558,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	heroFailures := 0
 	var nextHeroScan time.Time
 	skillPlan := skillPlanner{}
+	progressionPlan := progressionPlanner{}
 	scan := func() error {
 		generation := controls.snapshot()
 		if !controls.valid(ctx, generation) {
@@ -579,6 +581,15 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		if skills && !fishPresent && heroQuantityBarPresent(screenshot) {
 			_, err := skillPlan.run(ctx, &controls, generation, input, screenshot, readSkillStates)
 			if err != nil {
+				return err
+			}
+		}
+		if progression && !fishPresent && heroQuantityBarPresent(screenshot) {
+			if _, err := progressionPlan.run(ctx, &controls, generation, input, readProgressionState, func(frame image.Image) (bool, error) {
+				present, err := scanFish(frame, generation, true)
+				fishPresent = fishPresent || present
+				return present, err
+			}); err != nil {
 				return err
 			}
 		}

@@ -9,7 +9,7 @@ Go bot for a running Clicker Heroes game. It can take a screenshot, make one cli
 
 Fish detection uses GoCV 0.43.0 with native OpenCV 4.13. Install OpenCV before building on every platform; see the [GoCV installation guides](https://gocv.io/getting-started/). On macOS or Linux, verify it with `pkg-config --modversion opencv4` (expect 4.13.x). Also check `go version` and `gcc --version`. If `shot` reports `Capture image not found` on macOS, enable Screen & System Audio Recording for Terminal (or the built app) and restart it. The `click` and `run` modes also require Accessibility permission.
 
-Hero leveling additionally requires the `tesseract` executable with English OCR data in `PATH`. Enable **Always use scientific notation** in the game's settings so gold and prices use the same readable format.
+Hero leveling and automatic progression additionally require the `tesseract` executable with English OCR data in `PATH`. Enable **Always use scientific notation** in the game's settings so gold, prices and damage use the same readable format.
 
 ## Run
 
@@ -22,7 +22,7 @@ go run . -mode shot
 go run . -mode click -x 700 -y 400
 go run . -mode run
 go run . -mode run -hero-levels
-go run . -mode run -hero-levels -skills
+go run . -mode run -hero-levels -skills -progression
 go run . -mode run -hero-levels -duration 10m
 go run . -mode run -x 700 -y 400 -interval 100ms -fish-interval 1s -duration 10m
 ```
@@ -44,6 +44,10 @@ With `-skills`, OpenCV recognizes ready skill icons; clock overlays and outer gl
 When the pair is unavailable, Energize can strengthen an available core buff, or Reload can follow a confirmed Golden Clicks cast. F8 or an unexpected observed skill activation interrupts a combination. On restart/resume, an ambiguous Energize charge is consumed by a recognized ordinary buff before new utility combinations. Dark Ritual runs separately without Energize/Reload; the game enforces its 20-use limit. A missed/no-op activation retries after 30 seconds without stopping other skills.
 
 Each key is held for 100 ms and released on cancellation/errors. Skills execute sequentially with fish and hero actions and do not require timer OCR or Ancient cooldown formulas. Keep the full-screen Heroes interface visible.
+
+With `-progression`, the bot recognizes the boot toggle and reads the zone from a cropped HUD region every two seconds when the action loop is available. A known farm state gets one initial attempt to enable progression with `A`; a missing or obscured toggle is skipped. Activation is visually confirmed. An unconfirmed toggle waits at least 30 seconds before another attempt from a fresh farm frame.
+
+An observed progression-to-farm fallback before a boss records that wall. The bot waits for at least twice the displayed damage proxy (the larger of DPS and click damage), or a previously untried active Lucky Strikes/Super Clicks buff, including Energize. It retains the highest observed damage and combat buffs from the failed boss, so expiration and renewal of the same buff do not alone trigger another attempt. Repeated failures at that wall wait at least 1, 2, 4, 8, then 15 minutes. This is a retry heuristic: it does not measure click rate or predict a guaranteed kill from boss HP and the timer. Keep monster clicks or in-game Auto Clickers active for a clicking build. F8 retains the wall; restarting the bot or observing a drop of more than one zone starts a fresh assessment. Ascension itself is not automated. Fish collection keeps priority; hero purchases and skills continue while farming. `-progression` can also run without `-hero-levels` or `-skills`.
 
 The [game hotkey reference](docs/hotkeys.md) records keyboard actions, target tabs and sources for future features.
 
