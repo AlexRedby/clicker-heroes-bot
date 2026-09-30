@@ -35,6 +35,7 @@ func main() {
 	duration := flag.Duration("duration", 0, "maximum run time (0 means unlimited)")
 	stats := flag.Bool("stats", false, "print pipeline timing and analysis counters when run stops")
 	delay := flag.Duration("delay", 5*time.Second, "time to focus the game before shot or click (run waits for F8)")
+	flag.DurationVar(&ocrTimeout, "ocr-timeout", ocrTimeout, "maximum time per Tesseract execution (excluding queue wait)")
 	flag.Parse()
 
 	if *mode == "help" {
@@ -292,6 +293,9 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 }
 
 func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, stats bool) error {
+	if ocrTimeout <= 0 {
+		return errors.New("-ocr-timeout must be positive")
+	}
 	if fishInterval <= 0 || duration < 0 || (monsterClicks && interval <= 0) {
 		return errors.New("-fish-interval must be positive; -duration must be non-negative; -interval must be positive when monster clicks are enabled")
 	}

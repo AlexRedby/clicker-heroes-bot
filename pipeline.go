@@ -345,7 +345,8 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.nextFish, p.nextProgression = time.Time{}, time.Time{}
 		}
 		p.frame = gameFrame{p.frame.id + 1, p.generation, p.layout, now, image, c}
-		p.nextCapture = now.Add(min(250*time.Millisecond, p.options.fishInterval))
+		// Slow capture must not consume its own interval and immediately repeat.
+		p.nextCapture = now.Add(time.Since(start) + min(250*time.Millisecond, p.options.fishInterval))
 		if !c.known {
 			return nil
 		}

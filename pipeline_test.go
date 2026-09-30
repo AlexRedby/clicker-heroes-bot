@@ -338,3 +338,22 @@ func TestMonsterClickDoesNotForceCaptureOrSettling(t *testing.T) {
 		t.Fatal("monster click added unnecessary capture or settling delay")
 	}
 }
+
+func TestSlowCapturePreservesInterval(t *testing.T) {
+	frame := testPipelineFrame()
+	p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { time.Sleep(350 * time.Millisecond); return frame.image, nil }}, pipelineReaders{context: func(image.Image) (gameContext, error) { return frame.context, nil }}, pipelineOptions{fishInterval: time.Second})
+	jobs := make([]chan analysisJob, analysisCount)
+	for i := range jobs {
+		jobs[i] = make(chan analysisJob, 1)
+	}
+	start := time.Now()
+	if err := p.capture(context.Background(), start, jobs); err != nil {
+		t.Fatal(err)
+	}
+	if time.Until(p.nextCapture) < 200*time.Millisecond {
+		t.Fatal("slow capture consumed the entire next-frame interval")
+	}
+	if !p.frame.at.Equal(start) {
+		t.Fatal("capture-start timestamp no longer conservatively identifies the source frame")
+	}
+}

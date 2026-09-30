@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	xdraw "golang.org/x/image/draw"
 	"image"
@@ -22,6 +23,8 @@ import (
 var gameNumber = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)(?:[eE]([0-9]+))?$`)
 var levelNumber = regexp.MustCompile(`(?i)^[li]v[li]\s*([0-9]+)$`)
 var tesseractExecutable = "tesseract"
+var ocrTimeout = 3 * time.Second
+var errUnreadableGameNumber = errors.New("unreadable game number")
 
 func parseGameNumber(raw string) (float64, bool) {
 	match := gameNumber.FindStringSubmatch(strings.TrimSpace(raw))
@@ -72,9 +75,11 @@ func runTesseract(ctx context.Context, encoded []byte, args ...string) (string, 
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	ctx, cancel := context.WithTimeout(ctx, ocrTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, tesseractExecutable, append([]string{"stdin", "stdout"}, args...)...)
+	// Keep crop OCR from creating competing OpenMP thread pools alongside SIFT.
+	cmd.Env = append(cmd.Environ(), "OMP_THREAD_LIMIT=1")
 	cmd.Stdin = bytes.NewReader(encoded)
 	var stderr cappedBuffer
 	stderr.n = 2048
@@ -195,7 +200,7 @@ func readGameNumber(ctx context.Context, screen image.Image, region image.Rectan
 	}
 	value, ok := parseGameNumber(raw)
 	if !ok {
-		return 0, fmt.Errorf("unreadable game number %q", strings.TrimSpace(raw))
+		return 0, fmt.Errorf("%w %q", errUnreadableGameNumber, strings.TrimSpace(raw))
 	}
 	return value, nil
 }
@@ -208,7 +213,7 @@ func readHeroGold(ctx context.Context, screen image.Image) (float64, error) {
 	w, h := b.Dx(), b.Dy()
 	region := image.Rect(b.Min.X+w*156/1000, b.Min.Y+h*25/1000, b.Min.X+w*34/100, b.Min.Y+h*12/100)
 	value, err := readGameNumber(ctx, screen, region, max(1, 2048/w), 7, 180)
-	if err == nil || ctx.Err() != nil {
+	if !errors.Is(err, errUnreadableGameNumber) || ctx.Err() != nil {
 		return value, err
 	}
 	// A faint leading digit can disappear in the mask; retry only an unreadable result.
@@ -300,7 +305,7 @@ func checkHeroOCR(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("tesseract not found: %w", err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	ctx, cancel := context.WithTimeout(ctx, ocrTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "--list-langs")
 	var stderr cappedBuffer

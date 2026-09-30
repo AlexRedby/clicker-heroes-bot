@@ -212,3 +212,73 @@ func TestHeroEconomyOnUserScreens(t *testing.T) {
 		t.Fatal("covered price was accepted")
 	}
 }
+
+func TestOCRProcessBudget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is Unix only")
+	}
+	original, originalTimeout := tesseractExecutable, ocrTimeout
+	t.Cleanup(func() { tesseractExecutable, ocrTimeout = original, originalTimeout })
+	t.Setenv("OMP_THREAD_LIMIT", "999")
+	t.Setenv("CH_OCR_TEST_ENV", "preserved")
+	fake := filepath.Join(t.TempDir(), "tesseract")
+	tesseractExecutable = fake
+	write := func(script string) {
+		t.Helper()
+		if err := os.WriteFile(fake, []byte("#!/bin/sh\n"+script), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("printf '%s:%s' \"$OMP_THREAD_LIMIT\" \"$CH_OCR_TEST_ENV\"\n")
+	out, err := runTesseract(context.Background(), nil)
+	if err != nil || out != "1:preserved" {
+		t.Fatalf("child environment: %q %v", out, err)
+	}
+	// A valid slow execution must survive the old one-second deadline.
+	write("sleep 1.1\necho done\n")
+	out, err = runTesseract(context.Background(), nil)
+	if err != nil || strings.TrimSpace(out) != "done" {
+		t.Fatalf("slow valid OCR: %q %v", out, err)
+	}
+	write("exec sleep 10\n")
+	ocrTimeout = 30 * time.Millisecond
+	start := time.Now()
+	_, err = runTesseract(context.Background(), nil)
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > time.Second {
+		t.Fatalf("execution budget not honored: %v", err)
+	}
+	// Cancellation remains effective before an execution slot is available.
+	ocrSlots <- struct{}{}
+	ocrSlots <- struct{}{}
+	defer func() { <-ocrSlots; <-ocrSlots }()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	_, err = runTesseract(ctx, nil)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("queued cancellation: %v", err)
+	}
+}
+
+func TestGoldTimeoutDoesNotRetryMask(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is Unix only")
+	}
+	screen := loadTestImage(t, "testdata/hero-tsuchi-x1.png")
+	original, originalTimeout := tesseractExecutable, ocrTimeout
+	t.Cleanup(func() { tesseractExecutable, ocrTimeout = original, originalTimeout })
+	calls := filepath.Join(t.TempDir(), "calls")
+	t.Setenv("CH_OCR_TEST_CALLS", calls)
+	tesseractExecutable = filepath.Join(t.TempDir(), "tesseract")
+	if err := os.WriteFile(tesseractExecutable, []byte("#!/bin/sh\necho call >> \"$CH_OCR_TEST_CALLS\"\nexec sleep 10\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ocrTimeout = 50 * time.Millisecond
+	_, err := readHeroGold(context.Background(), screen)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(calls)
+	if err != nil || string(data) != "call\n" {
+		t.Fatalf("timeout retried another mask: %q %v", data, err)
+	}
+}

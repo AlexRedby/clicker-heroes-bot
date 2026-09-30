@@ -4,7 +4,7 @@
 
 Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
-- Measure live capture latency, p50/p95 fish and purchase response, CPU/memory and queue delay on the installed game with `-stats`; verify foreground process/title support and the visual/F8 fallback on Windows/macOS.
+- Recheck live OCR timeout rate and capture/CPU load with single-threaded Tesseract, the configurable `-ocr-timeout` budget and capture cadence measured after completion. Measure p50/p95 fish and purchase response and queue delay with `-stats`; verify foreground process/title support and the visual/F8 fallback on Windows/macOS.
 - If full-screen SIFT remains the dominant live delay, evaluate reduced working resolution or OpenCV feature configuration against all real, small/rotated and scrollbar-overlap fish cases before adopting it. Preserve recognition quality and bounded input scheduling.
 
 ## Automatic progression

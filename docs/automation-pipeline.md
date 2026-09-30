@@ -21,13 +21,13 @@ A frame carries its image, ID, capture time, F8 generation and layout revision. 
 
 The boot icon recognizes the full-screen game HUD without requiring Heroes. Heroes analysis additionally requires the Heroes tab. Unknown layout stops recognition jobs and input. Tab, image dimensions or foreground process/title changes discard pending panel decisions. Native foreground identity is checked again at the input boundary. If unavailable, visual context and explicit F8 pausing are the documented fallback; identical process/title windows are not distinguished.
 
-Capture is scheduled at most every 250 ms (or the shorter configured fish interval). It pauses during a native input transaction and for 150-200 ms of UI settling. Analyzers can finish while input runs. F8 invalidates actionable results; an ongoing native transaction finishes and releases held inputs before F8 takes effect.
+Ordinary capture waits 250 ms (or the shorter configured fish interval) after capture/context recognition finishes. A slow capture therefore cannot consume its own interval and cause continuous capture. Post-action refresh remains immediate after UI settling. It pauses during a native input transaction and for 150-200 ms of UI settling. Analyzers can finish while input runs. F8 invalidates actionable results; an ongoing native transaction finishes and releases held inputs before F8 takes effect.
 
 ## Analysis
 
 - **Fish:** one SIFT worker, scheduled by `-fish-interval`. Its result is shared by collection and hero interaction. Three completed negative observations rearm collection; a persistent visible fish can retry after five seconds.
 - **Skills:** one recognition of all nine states per shared frame. Progression reuses the same frame's states; there is no duplicate strip analysis.
-- **Heroes:** only when due on Heroes. Gold, successor price and baseline level share one frame. At most two Tesseract executions run concurrently. Purchase confirmation reads only row stability and level.
+- **Heroes:** only when due on Heroes. Gold, successor price and baseline level share one frame. At most two Tesseract executions run concurrently, each with one OpenMP thread and a three-second execution limit (`-ocr-timeout`). Purchase confirmation reads only row stability and level.
 - **Progression:** zone and conditional damage OCR every two seconds, using shared combat buffs. An `A` confirmation checks only the boot icon and can proceed independently of the skill worker.
 
 Decoded icon atlases are cached as immutable Go images. Native OpenCV matrices remain local to each call and are closed. OCR is not repeated while a recognized decision waits for fish analysis. Decisions retain their source frame and expire by age or dependent input/context changes; there is no persistent cross-decision OCR cache.
