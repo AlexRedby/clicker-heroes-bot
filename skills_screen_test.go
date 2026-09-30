@@ -67,3 +67,30 @@ func BenchmarkReadSkillStates(b *testing.B) {
 		}
 	}
 }
+
+// Clean, unlocked icons rendered from official client build 1.0e12-6144 sprites.
+// Unlike the older screen fixtures, every slot is ready, with no cooldown overlay.
+func TestReadSkillStatesReadyIcons(t *testing.T) {
+	original := loadTestImage(t, "testdata/hero-tsuchi-x1.png")
+	icons := loadTestImage(t, "testdata/skills-ready-icons.png")
+	ready := image.NewRGBA(original.Bounds())
+	draw.Draw(ready, ready.Bounds(), original, original.Bounds().Min, draw.Src)
+	for i := 0; i < 9; i++ {
+		center := skillButton(ready, i).Add(image.Pt(2, -2))
+		region := image.Rect(center.X-51, center.Y-51, center.X+51, center.Y+51)
+		draw.Draw(ready, region, icons, image.Pt(0, i*102), draw.Src)
+	}
+	for _, scale := range []int{1, 2} {
+		screen := image.NewRGBA(image.Rect(0, 0, ready.Bounds().Dx()/scale, ready.Bounds().Dy()/scale))
+		xdraw.CatmullRom.Scale(screen, screen.Bounds(), ready, ready.Bounds(), draw.Src, nil)
+		states, err := readSkillStates(context.Background(), screen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, state := range states {
+			if !state.Known || !state.Ready {
+				t.Errorf("scale%d skill%d=%+v, want known and ready", scale, i+1, state)
+			}
+		}
+	}
+}
