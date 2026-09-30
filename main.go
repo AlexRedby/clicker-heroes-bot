@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +33,7 @@ func main() {
 	progression := flag.Bool("progression", false, "manage progression mode and wait for damage improvements after failed bosses")
 	heroLevels := flag.Bool("hero-levels", false, "scroll the Heroes list and buy hero levels in run mode")
 	duration := flag.Duration("duration", 0, "maximum run time (0 means unlimited)")
+	stats := flag.Bool("stats", false, "print pipeline timing and analysis counters when run stops")
 	delay := flag.Duration("delay", 5*time.Second, "time to focus the game before shot or click (run waits for F8)")
 	flag.Parse()
 
@@ -70,7 +72,7 @@ func main() {
 	case "click":
 		err = clickAt(context.Background(), *x, *y)
 	case "run":
-		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression)
+		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *stats)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -193,12 +195,13 @@ func clickLeft(ctx context.Context, toggle func(...interface{}) error) (err erro
 }
 
 type heroInput struct {
-	capture   func() (image.Image, error)
-	move      func(image.Point) error
-	drag      func(image.Point, image.Point) error
-	click     func(image.Point) error
-	keyTap    func(string) error
-	keyToggle func(string, string) error
+	capture      func() (image.Image, error)
+	monsterClick func(image.Point) error
+	move         func(image.Point) error
+	drag         func(image.Point, image.Point) error
+	click        func(image.Point) error
+	keyTap       func(string) error
+	keyToggle    func(string, string) error
 }
 
 type pauseControl struct {
@@ -288,7 +291,7 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.misses = 0
 }
 
-func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression bool) error {
+func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, stats bool) error {
 	if fishInterval <= 0 || duration < 0 || (monsterClicks && interval <= 0) {
 		return errors.New("-fish-interval must be positive; -duration must be non-negative; -interval must be positive when monster clicks are enabled")
 	}
@@ -313,11 +316,12 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		}
 	}
 	input := heroInput{
-		capture:   func() (image.Image, error) { return robotgo.CaptureImg() },
-		move:      moveAt,
-		click:     func(p image.Point) error { return clickGameAt(ctx, p) },
-		keyTap:    func(key string) error { return robotgo.KeyTap(key) },
-		keyToggle: func(key, state string) error { return robotgo.KeyToggle(key, state) },
+		capture:      func() (image.Image, error) { return robotgo.CaptureImg() },
+		monsterClick: func(p image.Point) error { return clickAt(ctx, p.X, p.Y) },
+		move:         moveAt,
+		click:        func(p image.Point) error { return clickGameAt(ctx, p) },
+		keyTap:       func(key string) error { return robotgo.KeyTap(key) },
+		keyToggle:    func(key, state string) error { return robotgo.KeyToggle(key, state) },
 		drag: func(from, to image.Point) error {
 			if err := moveAt(from); err != nil {
 				return err
@@ -363,117 +367,28 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		<-hookDone
 	}()
 
-	fishTicker := time.NewTicker(fishInterval)
-	defer fishTicker.Stop()
-	var clickTicks <-chan time.Time
-	if monsterClicks {
-		clickTicker := time.NewTicker(interval)
-		defer clickTicker.Stop()
-		clickTicks = clickTicker.C
-	}
-
 	fmt.Println("paused; press F8 to start or pause, Ctrl+C to stop")
-	clicks := 0
-	fishClicks := fishClickTracker{}
-	var lastFishScan time.Time
-	scanFish := func(screen image.Image, generation uint64, force bool) (bool, error) {
-		// Hero interaction checks must inspect their fresh frame, even between periodic ticks.
-		if !controls.valid(ctx, generation) || (!force && time.Since(lastFishScan) < fishInterval) {
-			return false, nil
-		}
-		lastFishScan = time.Now()
-		point, found, err := sift.Find(screen)
-		if err != nil {
-			return false, fmt.Errorf("find fish with OpenCV: %w", err)
-		}
-		if !controls.valid(ctx, generation) {
-			return false, nil
-		}
-		if !fishClicks.shouldClick(point, found) {
-			return found, nil
-		}
-		clicked, err := controls.runClick(ctx, generation, func() error { return clickGameAt(ctx, point) })
-		if err != nil {
-			return false, fmt.Errorf("click fish: %w", err)
-		}
-		if clicked {
-			fishClicks.recordClick(point)
-			fmt.Printf("clicked fish at (%d, %d)\n", point.X, point.Y)
-			clicks++
-		}
-		return found, nil
+	pipeline := newGamePipeline(&controls, input, pipelineReaders{
+		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState,
+		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: foregroundGameWindow,
+	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, monster: monsterClicks,
+		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval})
+	err = pipeline.run(ctx)
+	fmt.Printf("stopped after %d actions\n", pipeline.metrics.actions)
+	if stats {
+		fmt.Println("pipeline:", pipeline.metrics.String())
 	}
-	heroPlan := heroRunner{enabled: heroLevels}
-	skillPlan := skillPlanner{}
-	progressionPlan := progressionPlanner{}
-	scan := func() error {
-		generation := controls.snapshot()
-		if !controls.valid(ctx, generation) {
-			return nil
-		}
-		screenshot, err := robotgo.CaptureImg()
-		if err != nil {
-			return fmt.Errorf("capture screen: %w", err)
-		}
-		if screenshot == nil {
-			return errors.New("capture screen returned no image")
-		}
-		if ctx.Err() != nil {
-			return nil
-		}
-		fishPresent, err := scanFish(screenshot, generation, false)
-		if err != nil {
-			return err
-		}
-		scanFreshFish := func(frame image.Image) (bool, error) {
-			present, err := scanFish(frame, generation, true)
-			fishPresent = fishPresent || present
-			return present, err
-		}
-		if skills && !fishPresent && heroQuantityBarPresent(screenshot) {
-			_, err := skillPlan.run(ctx, &controls, generation, input, screenshot, readSkillStates)
-			if err != nil {
-				return err
-			}
-		}
-		if progression && !fishPresent && heroQuantityBarPresent(screenshot) {
-			if _, err := progressionPlan.run(ctx, &controls, generation, input, readProgressionState, scanFreshFish); err != nil {
-				return err
-			}
-		}
-		if fishPresent {
-			return nil
-		}
-		acted, err := heroPlan.run(ctx, &controls, generation, input, heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, scanFreshFish)
-		if acted {
-			clicks++
-		}
-		return err
+	return err
+}
+
+func foregroundGameWindow() string {
+	title, pid := robotgo.GetTitle(), robotgo.GetPid()
+	if title == "" || pid <= 0 {
+		return ""
 	}
-	if err := scan(); err != nil {
-		return err
+	name := strings.ToLower(title)
+	if !strings.Contains(name, "clicker heroes") && !strings.Contains(name, "clickerheroes") {
+		return "!outside-game"
 	}
-	for {
-		select {
-		case <-ctx.Done():
-			fmt.Printf("stopped after %d clicks\n", clicks)
-			return nil
-		case <-fishTicker.C:
-			if err := scan(); err != nil {
-				return err
-			}
-		case <-clickTicks:
-			if ctx.Err() != nil {
-				continue
-			}
-			generation := controls.snapshot()
-			clicked, err := controls.runClick(ctx, generation, func() error { return clickAt(ctx, x, y) })
-			if err != nil {
-				return fmt.Errorf("click monster: %w", err)
-			}
-			if clicked {
-				clicks++
-			}
-		}
-	}
+	return fmt.Sprintf("%d:%s", pid, title)
 }

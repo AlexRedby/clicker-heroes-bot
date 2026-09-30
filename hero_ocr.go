@@ -63,7 +63,15 @@ func (w *cappedBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+var ocrSlots = make(chan struct{}, 2)
+
 func runTesseract(ctx context.Context, encoded []byte, args ...string) (string, error) {
+	select {
+	case ocrSlots <- struct{}{}:
+		defer func() { <-ocrSlots }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, tesseractExecutable, append([]string{"stdin", "stdout"}, args...)...)

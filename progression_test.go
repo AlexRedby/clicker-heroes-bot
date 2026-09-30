@@ -44,7 +44,11 @@ func TestProgressionScreen(t *testing.T) {
 		for _, divisor := range []int{1, 2} {
 			screen := image.NewRGBA(image.Rect(0, 0, original.Bounds().Dx()/divisor, original.Bounds().Dy()/divisor))
 			xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
-			state, err := readProgressionState(context.Background(), screen)
+			skills, skillErr := readSkillStates(context.Background(), screen)
+			if skillErr != nil {
+				t.Fatal(skillErr)
+			}
+			state, err := readProgressionState(context.Background(), screen, skills, false)
 			wantDamageKnown := !tc.enabled || tc.zone%5 == 0
 			if err != nil || !state.Known || state.Enabled != tc.enabled || state.Zone != tc.zone || state.DamageKnown != wantDamageKnown || math.Abs(state.Damage-tc.damage) > .001 || state.Buffs != tc.buffs {
 				t.Errorf("%s /%d state=%+v err=%v", tc.path, divisor, state, err)
@@ -129,10 +133,9 @@ func TestProgressionPlanner(t *testing.T) {
 }
 
 func TestProgressionInput(t *testing.T) {
-	for _, scenario := range []string{"enable", "already enabled", "unknown", "missed toggle", "fish", "external toggle", "pause during read", "pause during fish", "pause during confirmation", "cancel during key", "unreadable", "missed boss frame"} {
+	for _, scenario := range []string{"enable", "already enabled", "unknown", "missed toggle", "external toggle", "pause during read", "pause during confirmation", "missed boss frame"} {
 		t.Run(scenario, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			now := time.Now()
 			controls := pauseControl{}
 			generation := controls.snapshot()
 			p := progressionPlanner{}
@@ -141,65 +144,45 @@ func TestProgressionInput(t *testing.T) {
 				p = progressionPlanner{seen: true, lastZone: 109, wallZone: 110, wallDamage: 100, wallDamageKnown: true}
 				state.Buffs = 1
 			}
-			events := []string{}
-			input := heroInput{
-				capture: func() (image.Image, error) { return image.NewRGBA(image.Rect(0, 0, 1, 1)), nil },
-				keyToggle: func(key, direction string) error {
-					events = append(events, key+":"+direction)
-					if direction == "down" && scenario == "cancel during key" {
-						cancel()
-					}
-					if direction == "up" && scenario != "missed toggle" {
-						state.Enabled = true
-					}
-					return nil
-				},
+			if scenario == "pause during read" {
+				controls.toggle()
+				controls.toggle()
 			}
-			reads := 0
-			read := func(context.Context, image.Image) (progressionState, error) {
-				reads++
-				if scenario == "pause during read" || (scenario == "pause during confirmation" && reads == 3) {
-					controls.toggle()
-					controls.toggle()
-				}
-				if scenario == "unreadable" {
-					return state, context.DeadlineExceeded
-				}
-				return state, nil
+			controls.runClick(context.Background(), generation, func() error { p.observeFrame(state, 1, now); return nil })
+			if scenario == "external toggle" {
+				state.Enabled = true
+				p.observeFrame(state, 2, now)
 			}
-			scan := func(image.Image) (bool, error) {
-				if scenario == "external toggle" {
-					state.Enabled = true
-				}
-				if scenario == "pause during fish" {
-					controls.toggle()
-					controls.toggle()
-				}
-				return scenario == "fish", nil
+			want := scenario == "enable" || scenario == "missed toggle" || scenario == "pause during confirmation" || scenario == "missed boss frame"
+			if p.wantAction != want {
+				t.Fatalf("wantAction=%t, expected %t", p.wantAction, want)
 			}
-			_, err := p.run(ctx, &controls, generation, input, read, scan)
-			if err != nil {
-				t.Fatal(err)
+			if !want {
+				return
 			}
-			wantInput := scenario == "enable" || scenario == "missed toggle" || scenario == "pause during confirmation" || scenario == "cancel during key" || scenario == "missed boss frame"
-			if (len(events) > 0) != wantInput || (wantInput && (len(events) != 2 || events[0] != "a:down" || events[1] != "a:up")) {
-				t.Fatalf("events=%v", events)
+			p.sent(state, 2, now)
+			if scenario == "pause during confirmation" {
+				controls.toggle()
+				controls.toggle()
+			}
+			for i := 0; i < 3; i++ {
+				after := state
+				after.Enabled = scenario != "missed toggle"
+				controls.runClick(context.Background(), generation, func() error { p.observeFrame(after, uint64(i+3), now.Add(time.Second)); return nil })
+			}
+			if scenario == "missed toggle" && (p.pending != nil || p.wantAction || !p.nextAttempt.Equal(now.Add(30*time.Second))) {
+				t.Fatal("missed toggle lost its backoff")
+			}
+			if scenario == "pause during confirmation" && p.pending == nil {
+				t.Fatal("stale confirmation consumed")
 			}
 			if scenario == "missed boss frame" {
-				state.Enabled, state.Buffs = false, 0
-				p.observe(state, time.Now())
+				state.Enabled = false
+				state.Buffs = 0
+				p.observe(state, now.Add(2*time.Second))
 				state.Buffs = 1
-				if p.observe(state, time.Now().Add(2*time.Minute)) {
-					t.Fatal("forgot the combat buff tried without a boss frame")
-				}
-			}
-			if scenario == "missed toggle" {
-				p.nextScan = time.Time{}
-				if _, err := p.run(ctx, &controls, generation, input, read, scan); err != nil {
-					t.Fatal(err)
-				}
-				if len(events) != 2 || time.Until(p.nextAttempt) < 25*time.Second {
-					t.Fatal("missed toggle spammed or lost backoff")
+				if p.observe(state, now.Add(2*time.Minute)) {
+					t.Fatal("forgot previously tried buff")
 				}
 			}
 		})

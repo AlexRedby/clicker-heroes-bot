@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"image"
 	"reflect"
 	"testing"
 	"time"
@@ -68,56 +67,58 @@ func TestSkillPlanner(t *testing.T) {
 func TestSkillRunConfirmation(t *testing.T) {
 	for _, scenario := range []string{"pair", "missed first", "missed second", "missed energize", "unknown target", "external skill", "external energize", "pause after energize", "ritual no-op", "cancelled read"} {
 		t.Run(scenario, func(t *testing.T) {
+			p := skillPlanner{}
+			controls := pauseControl{}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			controls := pauseControl{}
-			p := skillPlanner{}
+			generation := controls.snapshot()
+			now := time.Now()
 			states := skillsReady(1, 2, 3, 4, 5, 6, 7, 8, 9)
 			if scenario == "ritual no-op" {
 				states = skillsReady(6, 8, 9)
 			}
-			var events []string
-			last := 0
-			input := heroInput{
-				keyToggle: func(key, state string) error {
-					events = append(events, key+":"+state)
-					if state == "up" {
-						_, _ = fmt.Sscan(key, &last)
-						if !(scenario == "missed first" && last == 3) && !(scenario == "missed second" && last == 5) && !(scenario == "missed energize" && last == 8) && scenario != "ritual no-op" {
-							states[last-1].Ready = false
-							states[last-1].Active = last < 8 && last != 6
-						}
-						if scenario == "unknown target" && last == 3 {
-							states[4].Known = false
-						}
-						if last == 9 {
-							states[2].Ready, states[4].Ready = true, true
-						}
-						if scenario == "external skill" && last == 5 {
-							states[0].Ready = false
-						}
-						if scenario == "external energize" && last == 5 {
-							states[7].Ready = false
-						}
-					}
-					return nil
-				},
-				capture: func() (image.Image, error) { return image.NewRGBA(image.Rect(0, 0, 1, 1)), nil },
+			events := []string{}
+			frameID := uint64(1)
+			if scenario == "cancelled read" {
+				cancel()
 			}
-			read := func(context.Context, image.Image) ([9]skillState, error) {
-				if scenario == "cancelled read" {
-					cancel()
-					return states, context.Canceled
+			controls.runClick(ctx, generation, func() error { p.observeFrame(states, frameID, generation, now); return nil })
+			for controls.valid(ctx, generation) {
+				key := p.nextKey(states, frameID, now)
+				if key == 0 {
+					break
 				}
-				if scenario == "pause after energize" && last == 8 {
+				before := states
+				events = append(events, fmt.Sprintf("%d:down", key), fmt.Sprintf("%d:up", key))
+				p.sent(key, before, frameID, now)
+				if !(scenario == "missed first" && key == 3) && !(scenario == "missed second" && key == 5) && !(scenario == "missed energize" && key == 8) && scenario != "ritual no-op" {
+					states[key-1].Ready = false
+					states[key-1].Active = key < 8 && key != 6
+				}
+				if scenario == "unknown target" && key == 3 {
+					states[4].Known = false
+				}
+				if key == 9 {
+					states[2].Ready, states[4].Ready = true, true
+				}
+				if scenario == "external skill" && key == 5 {
+					states[0].Ready = false
+				}
+				if scenario == "external energize" && key == 5 {
+					states[7].Ready = false
+				}
+				if scenario == "pause after energize" && key == 8 {
 					controls.toggle()
 					controls.toggle()
 				}
-				return states, nil
-			}
-			_, err := p.run(ctx, &controls, controls.snapshot(), input, image.NewRGBA(image.Rect(0, 0, 1, 1)), read)
-			if err != nil {
-				t.Fatal(err)
+				for attempt := 0; attempt < 3 && p.pending != nil; attempt++ {
+					frameID++
+					now = now.Add(150 * time.Millisecond)
+					controls.runClick(ctx, generation, func() error { p.observeFrame(states, frameID, generation, now); return nil })
+				}
+				if p.pending != nil || len(p.keys) == 0 {
+					break
+				}
 			}
 			want := "[3:down 3:up 5:down 5:up 8:down 8:up 9:down 9:up]"
 			switch scenario {
@@ -136,18 +137,18 @@ func TestSkillRunConfirmation(t *testing.T) {
 				t.Fatalf("events=%v, want %s", events, want)
 			}
 			if scenario == "pair" && (!p.reloaded[2] || !p.reloaded[4] || p.pendingEnergize) {
-				t.Fatalf("pair did not prepare a second wave: %+v", p)
+				t.Fatalf("second wave lost: %+v", p)
 			}
-			if scenario == "ritual no-op" && len(p.plan(states, time.Now())) != 0 {
-				t.Fatal("capped ritual should back off without utility input")
+			if scenario == "ritual no-op" && len(p.plan(states, now)) != 0 {
+				t.Fatal("capped ritual did not back off")
 			}
 			if scenario == "pause after energize" || scenario == "external energize" {
 				if !p.pendingEnergize {
-					t.Fatal("lost the interrupted Energize charge")
+					t.Fatal("interrupted Energize lost")
 				}
 				states[4].Ready = true
-				if got := p.plan(states, time.Now()); !reflect.DeepEqual(got, []int{5}) {
-					t.Fatalf("resume should consume the charge with a recognized target, got %v", got)
+				if got := p.plan(states, now); !reflect.DeepEqual(got, []int{5}) {
+					t.Fatalf("resume plan: %v", got)
 				}
 			}
 		})

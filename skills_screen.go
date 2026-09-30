@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"fmt"
 	"image"
 	"image/draw"
+	"sync"
 
 	"gocv.io/x/gocv"
 )
@@ -33,6 +35,21 @@ func templateScore(scene, source gocv.Mat, size image.Point) (float32, error) {
 //
 //go:embed assets/skill-icons.png
 var skillIconsPNG []byte
+
+type decodedPNG struct {
+	once  sync.Once
+	image image.Image
+	err   error
+}
+
+func (p *decodedPNG) get(data []byte) (image.Image, error) {
+	p.once.Do(func() {
+		p.image, _, p.err = image.Decode(bytes.NewReader(data))
+	})
+	return p.image, p.err
+}
+
+var skillIconsImage decodedPNG
 
 func skillButton(screen image.Image, index int) image.Point {
 	b := screen.Bounds()
@@ -97,11 +114,20 @@ func readSkillStates(ctx context.Context, screen image.Image) ([9]skillState, er
 	if w < 500 || h < 500 {
 		return states, nil
 	}
-	atlas, err := gocv.IMDecode(skillIconsPNG, gocv.IMReadGrayScale)
+	atlasImage, err := skillIconsImage.get(skillIconsPNG)
 	if err != nil {
 		return states, fmt.Errorf("decode skill icons: %w", err)
 	}
+	atlasColor, err := gocv.ImageToMatRGB(atlasImage)
+	if err != nil {
+		return states, fmt.Errorf("convert skill icons: %w", err)
+	}
+	defer atlasColor.Close()
+	atlas := gocv.NewMat()
 	defer atlas.Close()
+	if err := gocv.CvtColor(atlasColor, &atlas, gocv.ColorBGRToGray); err != nil {
+		return states, fmt.Errorf("grayscale skill icons: %w", err)
+	}
 	for i := range states {
 		if err := ctx.Err(); err != nil {
 			return states, err

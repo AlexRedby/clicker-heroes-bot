@@ -142,99 +142,73 @@ func TestDesktopPoint(t *testing.T) {
 }
 
 func TestHeroScrollAndQuantity(t *testing.T) {
-	ctx := context.Background()
-	controls := pauseControl{}
-	generation := controls.snapshot()
-	bottom := loadTestImage(t, "testdata/hero-panel-max.png")
-	top := image.NewRGBA(bottom.Bounds())
-	draw.Draw(top, top.Bounds(), bottom, bottom.Bounds().Min, draw.Src)
-	thumb, height, found := heroScrollbarThumb(bottom)
-	if !found {
-		t.Fatal("fixture thumb missing")
+	screen := loadTestImage(t, "testdata/hero-panel-max.png")
+	now := time.Now()
+	frame := gameFrame{id: 1, generation: 0, layout: 1, at: now, image: screen, context: gameContext{known: true, heroes: true, bounds: screen.Bounds()}}
+	o, err := readHeroObservation(context.Background(), frame, heroReaders{}, nil)
+	if err != nil || !o.bottom || o.x1 {
+		t.Fatalf("unexpected geometry: %+v %v", o, err)
 	}
-	rect := image.Rect(thumb.X-12, thumb.Y-height/2-4, thumb.X+12, thumb.Y+height/2+4)
-	draw.Draw(top, rect, image.NewUniform(color.RGBA{R: 95, G: 62, B: 12, A: 255}), image.Point{}, draw.Src)
-	// Move the same recognizable thumb upward, leaving an incomplete drag result.
-	draw.Draw(top, rect.Add(image.Pt(0, -200)), bottom, rect.Min, draw.Src)
-	if heroScrollbarAtBottom(top) {
-		t.Fatal("partial drag considered bottom")
-	}
-	drags := 0
-	input := heroInput{capture: func() (image.Image, error) { return top, nil }, drag: func(from, to image.Point) error {
-		drags++
-		if from.X != to.X || to.Y != bottom.Bounds().Max.Y-1 {
-			t.Fatalf("drag target %v is not the bottom screen edge below %v", to, from)
+	p := heroRunner{enabled: true}
+	p.observe(o, observation{}, now)
+	for taps := 0; taps < 5; taps++ {
+		a, ok := p.action(now)
+		if !ok || a.kind != selectQuantity {
+			t.Fatalf("quantity action %d: %+v %t", taps, a, ok)
 		}
-		return nil
-	}, move: func(image.Point) error { return nil }}
-	fish := func(image.Image) (bool, error) { return false, nil }
-	if _, _, found, err := findHeroButtonWithScroll(ctx, &controls, generation, input, top, fish); found || err != nil || drags != 1 {
-		t.Fatalf("partial drag: found=%t err=%v drags=%d", found, err, drags)
+		p.sent(a, now)
+		now = now.Add(time.Second)
+		o.frame.id++
+		o.frame.at = now
+		p.observe(o, observation{}, now)
 	}
-	input.capture = func() (image.Image, error) { return bottom, nil }
-	if _, _, found, err := findHeroButtonWithScroll(ctx, &controls, generation, input, top, fish); !found || err != nil {
-		t.Fatalf("completed drag: found=%t err=%v", found, err)
+	if _, ok := p.action(now); ok || !p.nextScan.After(now.Add(25*time.Second)) {
+		t.Fatal("unresponsive quantity selector did not back off")
 	}
-	beforeDrags := drags
-	if _, _, found, err := findHeroButtonWithScroll(ctx, &controls, generation, input, bottom, fish); !found || err != nil || drags != beforeDrags {
-		t.Fatalf("already at bottom: found=%t err=%v drags=%d, want %d", found, err, drags, beforeDrags)
+	p = heroRunner{enabled: true}
+	o.x1 = true
+	o.bottom = false
+	p.observe(o, observation{}, now)
+	a, ok := p.action(now)
+	if !ok || a.kind != scrollHeroes || a.point != o.thumb || a.target.Y != screen.Bounds().Max.Y-1 {
+		t.Fatalf("scroll action: %+v", a)
 	}
-	taps := 0
-	input.keyTap = func(key string) error {
-		if key != "t" {
-			t.Fatalf("unexpected key %q", key)
-		}
-		taps++
-		return nil
+	p.sent(a, now)
+	o.frame.id++
+	o.frame.at = now.Add(time.Second)
+	p.observe(o, observation{}, o.frame.at)
+	if p.pending == nil {
+		t.Fatal("incomplete drag accepted as bottom")
 	}
-	input.click = func(image.Point) error { t.Fatal("quantity selection used a mouse click"); return nil }
-	if _, selected, err := selectHeroX1(ctx, &controls, generation, input, bottom); selected || err != nil || taps != 5 {
-		t.Fatal("unresponsive x1 hotkey was accepted or retried beyond one cycle")
-	}
-	// Simulate pause/resume while awaiting a screenshot after pressing T.
-	captures := 0
-	input.capture = func() (image.Image, error) {
-		captures++
-		if captures == 1 {
-			controls.toggle()
-			controls.toggle()
-		}
-		return bottom, nil
-	}
-	if _, selected, err := selectHeroX1(ctx, &controls, generation, input, bottom); selected || err != nil {
-		t.Fatal("selection from an invalidated frame accepted")
+	o.bottom = true
+	o.frame.id++
+	o.frame.at = o.frame.at.Add(time.Second)
+	p.observe(o, observation{}, o.frame.at)
+	if p.pending != nil {
+		t.Fatal("completed drag not confirmed")
 	}
 }
 
 func TestHeroCaptureClearsHover(t *testing.T) {
+	bounds := image.Rect(0, 0, 2560, 1440)
 	controls := pauseControl{}
-	generation := controls.snapshot()
-	screen := image.NewRGBA(image.Rect(0, 0, 2560, 1440))
-	moved, captured := false, false
-	input := heroInput{
-		move: func(p image.Point) error {
-			if p.X <= screen.Bounds().Dx()*75/100 || !p.In(screen.Bounds()) {
-				t.Fatalf("cursor did not leave the hero tooltip: %v", p)
-			}
-			moved = true
-			return nil
-		},
-		capture: func() (image.Image, error) {
-			if !moved {
-				t.Fatal("capture happened before clearing hover")
-			}
-			captured = true
-			return screen, nil
-		},
+	moved := false
+	input := heroInput{move: func(point image.Point) error {
+		moved = true
+		if point != image.Pt(2176, 720) {
+			t.Fatalf("parking point: %v", point)
+		}
+		return nil
+	}, capture: func() (image.Image, error) { t.Fatal("input executor took a screenshot"); return nil, nil }}
+	p := newGamePipeline(&controls, input, pipelineReaders{}, pipelineOptions{})
+	a := gameAction{kind: parkPointer, point: parkPoint(bounds), frame: gameFrame{context: gameContext{bounds: bounds}}}
+	if acted, err := p.execute(context.Background(), a); !acted || err != nil || !moved {
+		t.Fatalf("parking acted=%t err=%v", acted, err)
 	}
-	if got, err := captureHeroScreen(context.Background(), &controls, generation, input, screen.Bounds()); err != nil || got != screen || !captured {
-		t.Fatalf("hero capture: image=%v error=%v captured=%t", got, err, captured)
-	}
-	// Pause after moving the mouse invalidates the frame before it is captured.
-	captured = false
-	input.move = func(image.Point) error { go controls.toggle(); return nil }
-	if got, err := captureHeroScreen(context.Background(), &controls, generation, input, screen.Bounds()); got != nil || err != nil || captured {
-		t.Fatalf("paused hero capture: image=%v error=%v captured=%t", got, err, captured)
+	moved = false
+	controls.toggle()
+	if acted, err := p.execute(context.Background(), a); acted || err != nil || moved {
+		t.Fatal("paused parking moved the pointer")
 	}
 }
 
@@ -255,81 +229,65 @@ func TestHeroPurchaseTooltipRegression(t *testing.T) {
 	} else if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
-	controls := pauseControl{}
 	cleared := image.NewRGBA(after.Bounds())
 	draw.Draw(cleared, cleared.Bounds(), after, after.Bounds().Min, draw.Src)
-	moved := false
-	input := heroInput{
-		move: func(image.Point) error {
-			moved = true
-			// Simulate dismissing the tooltip: restore only the unchanged scrollbar.
-			b := before.Bounds()
-			track := image.Rect(b.Dx()*445/1000, b.Dy()*32/100, b.Dx()*495/1000, b.Dy()*965/1000)
-			draw.Draw(cleared, track, before, track.Min, draw.Src)
-			return nil
-		},
-		capture: func() (image.Image, error) {
-			if !moved {
-				return after, nil
-			}
-			return cleared, nil
-		},
+	b := before.Bounds()
+	track := image.Rect(b.Dx()*445/1000, b.Dy()*32/100, b.Dx()*495/1000, b.Dy()*965/1000)
+	draw.Draw(cleared, track, before, track.Min, draw.Src)
+	if !heroListStable(before, cleared) || !heroRowNameMatches(before, cleared, button, button) || !heroRowHasLevel(cleared, button.Y) {
+		t.Fatal("cleared purchase tooltip frame rejected")
 	}
-	got, err := captureHeroScreen(ctx, &controls, controls.snapshot(), input, before.Bounds())
-	if err != nil || !heroRowNameMatches(before, got, button, button) || !heroRowHasLevel(got, button.Y) {
-		t.Fatalf("purchase frame rejected after hover was cleared: %v", err)
-	}
+
 }
 
 func TestHeroQuantityHotkeyCycle(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	controls := pauseControl{}
 	original := loadTestImage(t, "testdata/hero-panel-max.png")
 	quantities := []int{122, 200, 278, 356, 435}
 	state, taps := 3, 0
-	frame := func() image.Image {
+	now := time.Now()
+	controls := pauseControl{}
+	p := newGamePipeline(&controls, heroInput{keyTap: func(key string) error {
+		if key != "t" {
+			t.Fatalf("unexpected key %q", key)
+		}
+		state = (state + 1) % 5
+		taps++
+		return nil
+	}}, pipelineReaders{}, pipelineOptions{})
+	hero := heroRunner{enabled: true}
+	for id := uint64(1); id <= 3; id++ {
 		screen := image.NewRGBA(original.Bounds())
 		draw.Draw(screen, screen.Bounds(), original, original.Bounds().Min, draw.Src)
 		b := screen.Bounds()
 		for _, quantity := range quantities {
-			colour := color.RGBA{R: 255, G: 210, B: 30, A: 255}
+			c := color.RGBA{R: 255, G: 210, B: 30, A: 255}
 			if quantity == quantities[state] {
-				colour = color.RGBA{R: 240, G: 140, B: 20, A: 255}
+				c = color.RGBA{R: 240, G: 140, B: 20, A: 255}
 			}
 			x, y := b.Dx()*(quantity-25)/1000, b.Dy()*345/1000
-			draw.Draw(screen, image.Rect(x-2, y-2, x+3, y+3), image.NewUniform(colour), image.Point{}, draw.Src)
+			draw.Draw(screen, image.Rect(x-2, y-2, x+3, y+3), image.NewUniform(c), image.Point{}, draw.Src)
 		}
-		return screen
-	}
-	input := heroInput{
-		capture: func() (image.Image, error) { return frame(), nil },
-		click:   func(image.Point) error { t.Fatal("quantity selection clicked the screen"); return nil },
-		keyTap: func(key string) error {
-			if key != "t" {
-				t.Fatalf("unexpected key %q", key)
+		frame := gameFrame{id: id, at: now, image: screen, context: gameContext{known: true, heroes: true, bounds: b}}
+		o, err := readHeroObservation(context.Background(), frame, heroReaders{gold: func(context.Context, image.Image) (float64, error) { return 100, nil }, price: func(context.Context, image.Image, image.Point) (float64, error) { return 102, nil }, level: func(context.Context, image.Image, image.Point) (int, error) { return 100, nil }}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		hero.observe(o, observation{}, now)
+		a, ok := hero.action(now)
+		if id == 3 {
+			if taps != 2 || !o.x1 || !ok || a.kind != buyHero {
+				t.Fatalf("x100 to x1 failed: taps=%d geometry=%+v action=%+v", taps, o, a)
 			}
-			taps++
-			state = (state + 1) % len(quantities)
-			return nil
-		},
-	}
-	if _, selected, err := selectHeroX1(ctx, &controls, controls.snapshot(), input, frame()); !selected || err != nil || taps != 2 {
-		t.Fatalf("x100 to x1: selected=%t error=%v taps=%d", selected, err, taps)
-	}
-	if _, selected, err := selectHeroX1(ctx, &controls, controls.snapshot(), input, frame()); !selected || err != nil || taps != 2 {
-		t.Fatal("already-selected x1 should not require input")
-	}
-	state = 3
-	failure := errors.New("keyboard unavailable")
-	input.keyTap = func(string) error { return failure }
-	if _, selected, err := selectHeroX1(ctx, &controls, controls.snapshot(), input, frame()); selected || !errors.Is(err, failure) {
-		t.Fatalf("failed key event accepted: selected=%t error=%v", selected, err)
-	}
-	input.keyTap = func(string) error { cancel(); return nil }
-	if _, selected, err := selectHeroX1(ctx, &controls, controls.snapshot(), input, frame()); selected || err != nil {
-		t.Fatalf("cancelled key selection accepted: selected=%t error=%v", selected, err)
+			break
+		}
+		if !ok || a.kind != selectQuantity {
+			t.Fatal("missing T action")
+		}
+		if acted, err := p.execute(context.Background(), a); !acted || err != nil {
+			t.Fatal(err)
+		}
+		hero.sent(a, now)
+		now = now.Add(time.Second)
 	}
 }
 
@@ -463,13 +421,18 @@ func TestFishRetryRequiresVisibleFish(t *testing.T) {
 
 func TestFishBeforeHeroDrag(t *testing.T) {
 	screen := loadTestImage(t, "testdata/fish-over-scrollbar.png")
+	now := time.Now()
 	controls := pauseControl{}
-	scans := 0
-	input := heroInput{
-		drag: func(image.Point, image.Point) error { t.Fatal("dragged before resolving fish"); return nil },
-		move: func(image.Point) error { t.Fatal("moved before resolving fish"); return nil },
+	p := newGamePipeline(&controls, heroInput{}, pipelineReaders{}, pipelineOptions{fishInterval: time.Second})
+	p.layout = 1
+	p.frame = gameFrame{id: 1, at: now, layout: 1, image: screen, context: gameContext{known: true, heroes: true, bounds: screen.Bounds()}}
+	p.state[fishAnalysis] = observation{kind: fishAnalysis, frame: p.frame, found: true}
+	p.enqueue(gameAction{kind: scrollHeroes, frame: p.frame, point: image.Pt(1172, 1331)}, now)
+	if a, ok := p.nextAction(now); ok {
+		t.Fatalf("dragged through visible fish: %+v", a)
 	}
-	if _, _, found, err := findHeroButtonWithScroll(context.Background(), &controls, controls.snapshot(), input, screen, func(image.Image) (bool, error) { scans++; return true, nil }); found || err != nil || scans != 1 {
-		t.Fatalf("fish did not block hero interaction: found=%t err=%v scans=%d", found, err, scans)
+	p.state[fishAnalysis] = observation{}
+	if _, ok := p.nextAction(now); ok {
+		t.Fatal("in-flight fish analysis treated as no fish")
 	}
 }

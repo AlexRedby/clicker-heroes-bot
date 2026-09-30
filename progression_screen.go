@@ -20,7 +20,7 @@ var progressionIconsPNG []byte
 var zoneLabel = regexp.MustCompile(`(?i)[li]v[li]\s*([0-9]+)\s*$`)
 
 func progressionMode(screen image.Image) (known, enabled bool, err error) {
-	if screen == nil || !heroQuantityBarPresent(screen) {
+	if screen == nil || screen.Bounds().Dx() < 500 || screen.Bounds().Dy() < 500 {
 		return false, false, nil
 	}
 	b := screen.Bounds()
@@ -34,9 +34,13 @@ func progressionMode(screen image.Image) (known, enabled bool, err error) {
 		return false, false, err
 	}
 	defer scene.Close()
-	atlas, err := gocv.IMDecode(progressionIconsPNG, gocv.IMReadColor)
+	atlasImage, err := progressionIconsImage.get(progressionIconsPNG)
 	if err != nil {
 		return false, false, err
+	}
+	atlas, err := gocv.ImageToMatRGB(atlasImage)
+	if err != nil {
+		return false, false, fmt.Errorf("convert progression icons: %w", err)
 	}
 	defer atlas.Close()
 	var scores [2]float32
@@ -53,11 +57,30 @@ func progressionMode(screen image.Image) (known, enabled bool, err error) {
 	return best >= 0.85 && margin >= 0.1, scores[0] > scores[1], nil
 }
 
-func readProgressionState(ctx context.Context, screen image.Image) (progressionState, error) {
+var progressionIconsImage decodedPNG
+
+func progressionBuffs(states [9]skillState) uint8 {
+	var buffs uint8
+	for bit, key := range []int{3, 7} {
+		state := states[key-1]
+		if state.Known && state.Active {
+			buffs |= 1 << bit
+			if state.Energized {
+				buffs |= 1 << (bit + 2)
+			}
+		}
+	}
+	return buffs
+}
+
+func readProgressionState(ctx context.Context, screen image.Image, states [9]skillState, modeOnly bool) (progressionState, error) {
 	known, enabled, err := progressionMode(screen)
 	s := progressionState{Known: known, Enabled: enabled}
 	if err != nil || !known {
 		return s, err
+	}
+	if modeOnly {
+		return s, nil
 	}
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
@@ -74,19 +97,7 @@ func readProgressionState(ctx context.Context, screen image.Image) (progressionS
 	if err != nil || s.Zone <= 0 {
 		return s, fmt.Errorf("invalid zone %q", match[1])
 	}
-	states, err := readSkillStates(ctx, screen)
-	if err != nil {
-		return s, err
-	}
-	for bit, key := range []int{3, 7} {
-		state := states[key-1]
-		if state.Known && state.Active {
-			s.Buffs |= 1 << bit
-			if state.Energized {
-				s.Buffs |= 1 << (bit + 2)
-			}
-		}
-	}
+	s.Buffs = progressionBuffs(states)
 	// Only farm decisions and boss baselines need damage OCR.
 	if !enabled || s.Zone%5 == 0 {
 		// Preserve antialiasing: a binary mask can turn small-font e into a digit.

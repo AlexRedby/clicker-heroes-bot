@@ -58,6 +58,32 @@ func TestReadSkillStatesRejectsUnknownIcons(t *testing.T) {
 	}
 }
 
+func TestProgressionReaderUsesSharedBuffsAndModeOnly(t *testing.T) {
+	states := [9]skillState{
+		2: {Known: true, Active: true},
+		6: {Known: true, Active: true, Energized: true},
+	}
+	if got, want := progressionBuffs(states), uint8(1|2|8); got != want {
+		t.Fatalf("progressionBuffs=%04b, want %04b", got, want)
+	}
+	screen := loadTestImage(t, "testdata/hero-tsuchi-x1.png")
+	// The progression boot icon is a global HUD control; a non-Heroes panel
+	// must not become unknown merely because the Heroes tab is hidden.
+	nonHeroes := image.NewRGBA(screen.Bounds())
+	draw.Draw(nonHeroes, nonHeroes.Bounds(), screen, screen.Bounds().Min, draw.Src)
+	b := nonHeroes.Bounds()
+	draw.Draw(nonHeroes, image.Rect(b.Min.X+b.Dx()*45/1000, b.Min.Y+b.Dy()*15/100, b.Min.X+b.Dx()*70/1000, b.Min.Y+b.Dy()*21/100), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	draw.Draw(nonHeroes, image.Rect(b.Min.X+b.Dx()*90/1000, b.Min.Y+b.Dy()*33/100, b.Min.X+b.Dx()*450/1000, b.Min.Y+b.Dy()*38/100), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	known, _, err := progressionMode(nonHeroes)
+	if err != nil || !known {
+		t.Fatalf("global progression HUD on non-Heroes panel: known=%t err=%v", known, err)
+	}
+	state, err := readProgressionState(context.Background(), nonHeroes, states, true)
+	if err != nil || !state.Known || state.Zone != 0 || state.Buffs != 0 {
+		t.Fatalf("mode-only state=%+v err=%v", state, err)
+	}
+}
+
 func BenchmarkReadSkillStates(b *testing.B) {
 	screen := loadTestImage(b, "testdata/hero-tsuchi-x1.png")
 	b.ResetTimer()

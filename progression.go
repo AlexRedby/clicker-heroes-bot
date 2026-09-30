@@ -1,9 +1,7 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"image"
 	"math"
 	"time"
 )
@@ -23,7 +21,9 @@ type progressionPlanner struct {
 	bossDamage, wallDamage           float64
 	bossDamageKnown, wallDamageKnown bool
 	bossBuffs, wallBuffs             uint8
-	nextAttempt, nextScan            time.Time
+	nextAttempt                      time.Time
+	pending                          *progressionAttempt
+	wantAction                       bool
 }
 
 func (p *progressionPlanner) rememberBoss(zone int, s progressionState) {
@@ -42,7 +42,7 @@ func (p *progressionPlanner) observe(s progressionState, now time.Time) bool {
 	}
 	if p.seen && s.Zone < p.lastZone-1 {
 		// Ascension or a manual zone jump starts a fresh progression assessment.
-		*p = progressionPlanner{nextScan: p.nextScan}
+		*p = progressionPlanner{}
 	}
 	if s.Enabled {
 		if p.wallZone > 0 && s.Zone > p.wallZone {
@@ -87,90 +87,40 @@ func (p *progressionPlanner) observe(s progressionState, now time.Time) bool {
 	return growth || strongerBuff
 }
 
-func (p *progressionPlanner) run(ctx context.Context, controls *pauseControl, generation uint64, input heroInput, read func(context.Context, image.Image) (progressionState, error), scanFish func(image.Image) (bool, error)) (bool, error) {
-	if !controls.valid(ctx, generation) || time.Now().Before(p.nextScan) {
-		return false, nil
-	}
-	p.nextScan = time.Now().Add(2 * time.Second)
-	frame, err := input.capture()
-	if err != nil {
-		return false, fmt.Errorf("capture progression: %w", err)
-	}
-	if frame == nil {
-		return false, fmt.Errorf("capture progression returned no image")
-	}
-	s, err := read(ctx, frame)
-	if ctx.Err() != nil || !controls.valid(ctx, generation) {
-		return false, nil
-	}
-	if err != nil {
-		p.nextScan = time.Now().Add(30 * time.Second)
-		fmt.Printf("progression numbers unreadable: %v; retrying in 30s\n", err)
-		return false, nil
-	}
-	if !p.observe(s, time.Now()) {
-		return false, nil
-	}
-	present, err := scanFish(frame)
-	if err != nil || present {
-		return false, err
-	}
-	// A is a toggle: re-read after fish detection before changing the mode.
-	frame, err = input.capture()
-	if err != nil {
-		return false, fmt.Errorf("capture progression before toggle: %w", err)
-	}
-	if frame == nil {
-		return false, fmt.Errorf("capture progression before toggle returned no image")
-	}
-	s, err = read(ctx, frame)
-	if !controls.valid(ctx, generation) || err != nil || !p.observe(s, time.Now()) {
-		return false, nil
-	}
-	before := s
-	p.nextAttempt = time.Now().Add(30 * time.Second)
-	pressed, err := tapGameKey(ctx, controls, generation, input, "a")
-	if err != nil {
-		return false, fmt.Errorf("enable progression: %w", err)
-	}
-	if !pressed {
-		return false, nil
-	}
-	for range 3 {
-		timer := time.NewTimer(150 * time.Millisecond)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return true, nil
-		case <-timer.C:
+type progressionAttempt struct {
+	before   progressionState
+	frameID  uint64
+	attempts int
+}
+
+func (p *progressionPlanner) observeFrame(s progressionState, frameID uint64, now time.Time) {
+	pending := p.pending
+	if pending != nil {
+		if frameID <= pending.frameID {
+			return
 		}
-		if !controls.valid(ctx, generation) {
-			return true, nil
-		}
-		after, err := input.capture()
-		if err != nil {
-			return true, fmt.Errorf("capture progression confirmation: %w", err)
-		}
-		if after == nil {
-			return true, fmt.Errorf("capture progression confirmation returned no image")
-		}
-		s, err = read(ctx, after)
-		if ctx.Err() != nil || !controls.valid(ctx, generation) {
-			return true, nil
-		}
-		if err != nil {
-			continue
-		}
-		if s.Known && s.Enabled && s.Zone > 0 {
+		pending.attempts++
+		if s.Known && s.Enabled {
+			// The mode-only confirmation reuses the decision's zone and boss baseline.
+			s.Zone = pending.before.Zone
 			if p.wallZone > 0 {
-				// Remember the confirmed attempt even if no boss frame is captured.
-				p.rememberBoss(p.wallZone, before)
+				p.rememberBoss(p.wallZone, pending.before)
 			}
-			p.observe(s, time.Now())
+			p.pending = nil
+			p.wantAction = false
+			p.observe(s, now)
 			fmt.Printf("enabled progression at zone %d\n", s.Zone)
-			return true, nil
+		} else if pending.attempts >= 3 {
+			p.pending = nil
+			p.wantAction = false
+			fmt.Println("progression activation not confirmed; retrying no earlier than 30s")
 		}
+		return
 	}
-	fmt.Println("progression activation not confirmed; retrying no earlier than 30s")
-	return true, nil
+	p.wantAction = p.observe(s, now)
+}
+func (p *progressionPlanner) sent(before progressionState, frameID uint64, now time.Time) {
+	p.wantAction = false
+	p.pending = &progressionAttempt{before: before, frameID: frameID}
+	p.nextAttempt = now.Add(30 * time.Second)
 }
