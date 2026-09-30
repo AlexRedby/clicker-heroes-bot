@@ -472,7 +472,7 @@ func TestActivateSkills(t *testing.T) {
 				if key == "1" && state == "up" && scenario == "pause/resume" {
 					go func() { controls.toggle(); controls.toggle() }()
 				}
-				if key == "3" {
+				if key == "4" {
 					if scenario == "cancelled down" && state == "down" {
 						cancel()
 					}
@@ -486,9 +486,9 @@ func TestActivateSkills(t *testing.T) {
 			want := "[]"
 			switch scenario {
 			case "success":
-				want = "[1:down 1:up 2:down 2:up 3:down 3:up 4:down 4:up 5:down 5:up 6:down 6:up 7:down 7:up 8:down 8:up 9:down 9:up]"
+				want = "[1:down 1:up 2:down 2:up 4:down 4:up 6:down 6:up 7:down 7:up 3:down 3:up 5:down 5:up 8:down 8:up 9:down 9:up]"
 			case "cancelled down", "down error", "up error":
-				want = "[1:down 1:up 2:down 2:up 3:down 3:up]"
+				want = "[1:down 1:up 2:down 2:up 4:down 4:up]"
 			case "pause/resume":
 				want = "[1:down 1:up]"
 			}

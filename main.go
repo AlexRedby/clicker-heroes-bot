@@ -427,10 +427,10 @@ func clickHeroMax(ctx context.Context, input heroInput, button image.Point) (err
 	return input.click(button)
 }
 
-// Try ordinary skills first, then keep Energize adjacent to Reload.
+// Keep Lucky Strikes and Golden Clicks last so Energized Reload can reset both.
 // The game handles locked skills and cooldowns; this is not an optimized rotation.
 func activateSkills(ctx context.Context, controls *pauseControl, generation uint64, input heroInput) (bool, error) {
-	for _, key := range []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"} {
+	for _, key := range []string{"1", "2", "4", "6", "7", "3", "5", "8", "9"} {
 		acted, err := controls.runClick(ctx, generation, func() (err error) {
 			defer func() { err = errors.Join(err, input.keyToggle(key, "up")) }()
 			if err = input.keyToggle(key, "down"); err != nil {
@@ -602,7 +602,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			}
 			if completed {
 				nextSkillScan = time.Now().Add(5 * time.Second)
-				fmt.Println("sent skill hotkeys 1-9")
+				fmt.Println("sent skill hotkeys 1,2,4,6,7,3,5,8,9")
 			}
 		}
 		if !heroPurchasesEnabled || fishClicked || ctx.Err() != nil || time.Now().Before(nextHeroScan) || controls.isPaused() {
