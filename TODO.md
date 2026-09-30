@@ -2,8 +2,7 @@
 
 ## Active skills
 
-- Verify skills 1-9 in the installed game, including the final `3,5,8,9` group, locked skills, cooldowns and F8 during activation.
-- Capture ready/cooldown/locked skill examples and use verified readiness before making Energize/Reload targets deterministic. A fixed key order cannot guarantee which earlier skills actually activated; cover partial cooldowns and manual skill use before adding permanent energized-buff or Dark Ritual strategies.
+- Verify all states and skill transitions in the installed game, including ready icons after cooldown, continuous energized buffs, the second wave after Reload, Dark Ritual's capped no-op, and simultaneous fish/hero actions.
 
 ## Screen and live-game validation
 

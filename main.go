@@ -427,37 +427,6 @@ func clickHeroMax(ctx context.Context, input heroInput, button image.Point) (err
 	return input.click(button)
 }
 
-// Keep Lucky Strikes and Golden Clicks last so Energized Reload can reset both.
-// The game handles locked skills and cooldowns; this is not an optimized rotation.
-func activateSkills(ctx context.Context, controls *pauseControl, generation uint64, input heroInput) (bool, error) {
-	for _, key := range []string{"1", "2", "4", "6", "7", "3", "5", "8", "9"} {
-		acted, err := controls.runClick(ctx, generation, func() (err error) {
-			defer func() { err = errors.Join(err, input.keyToggle(key, "up")) }()
-			if err = input.keyToggle(key, "down"); err != nil {
-				return err
-			}
-			// Hold across game frames rather than relying on a very short KeyTap.
-			timer := time.NewTimer(100 * time.Millisecond)
-			defer timer.Stop()
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-timer.C:
-				return nil
-			}
-		})
-		if err != nil {
-			return false, fmt.Errorf("skill hotkey %s: %w", key, err)
-		}
-		if !acted {
-			return false, nil
-		}
-		// Let the game consume key-up before the next key-down.
-		time.Sleep(50 * time.Millisecond)
-	}
-	return controls.valid(ctx, generation), nil
-}
-
 func saveForNextHero(gold, nextPrice float64) bool {
 	return nextPrice-gold <= 1
 }
@@ -575,7 +544,8 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	}
 	heroPurchasesEnabled := heroLevels
 	heroFailures := 0
-	var nextHeroScan, nextSkillScan time.Time
+	var nextHeroScan time.Time
+	skillPlan := skillPlanner{}
 	scan := func() error {
 		generation := controls.snapshot()
 		if !controls.valid(ctx, generation) {
@@ -595,14 +565,10 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		if err != nil {
 			return err
 		}
-		if skills && !fishClicked && !time.Now().Before(nextSkillScan) && heroQuantityBarPresent(screenshot) {
-			completed, err := activateSkills(ctx, &controls, generation, input)
+		if skills && !fishClicked && heroQuantityBarPresent(screenshot) {
+			_, err := skillPlan.run(ctx, &controls, generation, input, screenshot, readSkillStates)
 			if err != nil {
 				return err
-			}
-			if completed {
-				nextSkillScan = time.Now().Add(5 * time.Second)
-				fmt.Println("sent skill hotkeys 1,2,4,6,7,3,5,8,9")
 			}
 		}
 		if !heroPurchasesEnabled || fishClicked || ctx.Err() != nil || time.Now().Before(nextHeroScan) || controls.isPaused() {
