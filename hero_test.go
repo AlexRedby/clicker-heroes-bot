@@ -4,22 +4,13 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"image/jpeg"
-	"image/png"
+	_ "image/jpeg"
 	"os"
 	"testing"
 )
 
 func TestHeroLevelButton(t *testing.T) {
-	file, err := os.Open("testdata/no-fish-game-screen.jpg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	screen, err := jpeg.Decode(file)
-	if err != nil {
-		t.Fatal(err)
-	}
+	screen := loadTestImage(t, "testdata/no-fish-game-screen.jpg")
 	if heroQuantityBarPresent(screen) {
 		t.Fatal("missing quantity bar was accepted")
 	}
@@ -39,14 +30,14 @@ func TestHeroLevelButton(t *testing.T) {
 	if !found || absDiff(thumb.X, 494) > 3 || absDiff(thumb.Y, 291) > 12 {
 		t.Fatalf("moved hero scrollbar thumb = %v, found = %t", thumb, found)
 	}
-	if !heroListMoved(screen, movedThumb) {
-		t.Fatal("moved scrollbar thumb was missed")
+	if heroListStable(screen, movedThumb) {
+		t.Fatal("moved scrollbar thumb was treated as stable")
 	}
 	coveredThumb := image.NewRGBA(screen.Bounds())
 	draw.Draw(coveredThumb, coveredThumb.Bounds(), screen, screen.Bounds().Min, draw.Src)
 	draw.Draw(coveredThumb, image.Rect(483, 500, 505, 534), image.NewUniform(color.RGBA{R: 95, G: 62, B: 12, A: 255}), image.Point{}, draw.Src)
-	if heroListMoved(screen, coveredThumb) {
-		t.Fatal("partly covered scrollbar thumb was treated as moved")
+	if !heroListStable(screen, coveredThumb) {
+		t.Fatal("shortened thumb with unchanged top was mistaken for movement")
 	}
 
 	otherTab := image.NewRGBA(screen.Bounds())
@@ -68,10 +59,10 @@ func TestHeroLevelButton(t *testing.T) {
 
 	after := image.NewRGBA(screen.Bounds())
 	draw.Draw(after, after.Bounds(), screen, screen.Bounds().Min, draw.Src)
-	if heroListMoved(screen, after) {
-		t.Fatal("stationary hero list was treated as scrolled")
+	if !heroListStable(screen, after) {
+		t.Fatal("stationary hero list was treated as unstable")
 	}
-	if !sameHeroRow(screen, after, button, button) {
+	if !heroRowNameMatches(screen, after, button, button) {
 		t.Fatal("unchanged hero row was rejected")
 	}
 	draw.Draw(after, image.Rect(483, 450, 505, 534), image.NewUniform(color.Black), image.Point{}, draw.Src)
@@ -90,15 +81,7 @@ func TestNextLockedHero(t *testing.T) {
 		{"testdata/hero-panel-max.png", 905, 1140, false},
 		{"testdata/hero-owned-disabled.png", 700, 905, true},
 	} {
-		file, err := os.Open(test.path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		screen, err := png.Decode(file)
-		file.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
+		screen := loadTestImage(t, test.path)
 		if !heroQuantityBarPresent(screen) {
 			t.Fatal("visible quantity bar was missed")
 		}
@@ -113,14 +96,14 @@ func TestNextLockedHero(t *testing.T) {
 	}
 }
 
-func loadHeroScreen(t *testing.T, path string) image.Image {
+func loadTestImage(t testing.TB, path string) image.Image {
 	t.Helper()
 	f, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	screen, err := png.Decode(f)
+	screen, _, err := image.Decode(f)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,12 +111,12 @@ func loadHeroScreen(t *testing.T, path string) image.Image {
 }
 
 func TestHeroPurchaseGuards(t *testing.T) {
-	screen := loadHeroScreen(t, "testdata/hero-panel-max.png")
+	screen := loadTestImage(t, "testdata/hero-panel-max.png")
 	button, found := findHeroLevelButton(screen)
 	if !found || !heroCandidateKnown(screen, button) || !heroQuantitySelected(screen, 435) || heroQuantitySelected(screen, 122) || !heroLayoutValid(screen) {
 		t.Fatal("known MAX layout was rejected or x1 was falsely selected")
 	}
-	disabled := loadHeroScreen(t, "testdata/hero-owned-disabled.png")
+	disabled := loadTestImage(t, "testdata/hero-owned-disabled.png")
 	earlier, _ := findHeroLevelButton(disabled)
 	if heroCandidateKnown(disabled, earlier) {
 		t.Fatal("earlier hero accepted with latest owned hero disabled")
@@ -150,14 +133,14 @@ func TestHeroPurchaseGuards(t *testing.T) {
 	changed := image.NewRGBA(b)
 	draw.Draw(changed, b, screen, b.Min, draw.Src)
 	draw.Draw(changed, image.Rect(w*28/100, button.Y-h*5/100, w*365/1000, button.Y-h*3/100), image.NewUniform(color.White), image.Point{}, draw.Src)
-	if sameHeroRow(screen, changed, button, button) {
+	if heroRowNameMatches(screen, changed, button, button) {
 		t.Fatal("different row name accepted")
 	}
 }
 
 func TestHeroScrollbarFishRegression(t *testing.T) {
-	before := loadHeroScreen(t, "testdata/hero-scrollbar-before.png")
-	after := loadHeroScreen(t, "testdata/fish-over-scrollbar.png")
+	before := loadTestImage(t, "testdata/hero-scrollbar-before.png")
+	after := loadTestImage(t, "testdata/fish-over-scrollbar.png")
 	for _, screen := range []image.Image{before, after} {
 		thumb, height, found := heroScrollbarThumb(screen)
 		if !found || absDiff(thumb.X, 1172) > 5 || absDiff(thumb.Y, 1331) > 5 || absDiff(height, 111) > 8 || !heroScrollbarAtBottom(screen) {
@@ -168,7 +151,7 @@ func TestHeroScrollbarFishRegression(t *testing.T) {
 		t.Fatal("fish appearance was mistaken for hero list movement")
 	}
 	button := image.Pt(204, 894)
-	if !sameHeroRow(before, after, button, button) {
+	if !heroRowNameMatches(before, after, button, button) {
 		t.Fatal("unchanged Tsuchi row rejected")
 	}
 }

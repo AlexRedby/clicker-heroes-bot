@@ -5,8 +5,6 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"image/png"
-	"os"
 	"testing"
 
 	xdraw "golang.org/x/image/draw"
@@ -14,7 +12,7 @@ import (
 
 func TestReadSkillStatesRealFixtures(t *testing.T) {
 	for _, path := range []string{"testdata/hero-tsuchi-x1.png", "testdata/hero-economy-x1.png", "testdata/hero-gog-before.png", "testdata/hero-panel-max.png"} {
-		original := loadHeroScreen(t, path)
+		original := loadTestImage(t, path)
 		for _, scale := range []int{1, 2} {
 			screen := image.NewRGBA(image.Rect(0, 0, original.Bounds().Dx()/scale, original.Bounds().Dy()/scale))
 			xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
@@ -35,7 +33,7 @@ func TestReadSkillStatesRealFixtures(t *testing.T) {
 }
 
 func TestReadSkillStatesRejectsUnknownIcons(t *testing.T) {
-	original := loadHeroScreen(t, "testdata/hero-tsuchi-x1.png")
+	original := loadTestImage(t, "testdata/hero-tsuchi-x1.png")
 	for _, scenario := range []string{"blank", "covered", "wrong icon"} {
 		screen := image.NewRGBA(original.Bounds())
 		draw.Draw(screen, screen.Bounds(), original, original.Bounds().Min, draw.Src)
@@ -61,15 +59,7 @@ func TestReadSkillStatesRejectsUnknownIcons(t *testing.T) {
 }
 
 func BenchmarkReadSkillStates(b *testing.B) {
-	f, err := os.Open("testdata/hero-tsuchi-x1.png")
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer f.Close()
-	screen, err := png.Decode(f)
-	if err != nil {
-		b.Fatal(err)
-	}
+	screen := loadTestImage(b, "testdata/hero-tsuchi-x1.png")
 	b.ResetTimer()
 	for b.Loop() {
 		if _, err := readSkillStates(context.Background(), screen); err != nil {

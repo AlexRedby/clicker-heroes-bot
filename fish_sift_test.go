@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"image"
 	"image/draw"
-	"image/jpeg"
 	"image/png"
 	"math"
-	"os"
 	"testing"
 
 	xdraw "golang.org/x/image/draw"
@@ -20,15 +18,7 @@ func TestSIFTFishOnGameScreen(t *testing.T) {
 	}
 	defer detector.Close()
 
-	file, err := os.Open("testdata/no-fish-game-screen.jpg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	background, err := jpeg.Decode(file)
-	if err != nil {
-		t.Fatal(err)
-	}
+	background := loadTestImage(t, "testdata/no-fish-game-screen.jpg")
 	if point, found, err := detector.Find(background); err != nil || found {
 		t.Fatalf("fish-free screen: point=%v found=%t err=%v", point, found, err)
 	}
@@ -85,15 +75,7 @@ func TestSIFTFishOnHeroScreens(t *testing.T) {
 		{"testdata/fish-over-scrollbar.png", image.Pt(1211, 575)},
 	} {
 		t.Run(test.path, func(t *testing.T) {
-			file, err := os.Open(test.path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			screen, err := png.Decode(file)
-			file.Close()
-			if err != nil {
-				t.Fatal(err)
-			}
+			screen := loadTestImage(t, test.path)
 			point, found, err := detector.Find(screen)
 			if err != nil || !found || math.Abs(float64(point.X-test.expected.X)) > 15 || math.Abs(float64(point.Y-test.expected.Y)) > 15 {
 				t.Fatalf("fish screen: point=%v found=%t err=%v, want near %v", point, found, err, test.expected)
@@ -109,15 +91,7 @@ func TestSIFTFishAtScalesAndEdge(t *testing.T) {
 	}
 	defer detector.Close()
 
-	file, err := os.Open("testdata/no-fish-game-screen.jpg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	background, err := jpeg.Decode(file)
-	file.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
+	background := loadTestImage(t, "testdata/no-fish-game-screen.jpg")
 	fish, err := png.Decode(bytes.NewReader(fishPNG))
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +142,7 @@ func TestFishAbsentBeforeScrollbarOverlap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer detector.Close()
-	screen := loadHeroScreen(t, "testdata/hero-scrollbar-before.png")
+	screen := loadTestImage(t, "testdata/hero-scrollbar-before.png")
 	if point, found, err := detector.Find(screen); err != nil || found {
 		t.Fatalf("fish-free scrollbar frame: point=%v found=%t err=%v", point, found, err)
 	}

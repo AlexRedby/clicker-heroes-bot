@@ -26,7 +26,7 @@ func TestProgressionScreen(t *testing.T) {
 		{"hero-owned-disabled.png", true, 5707, 0, 0}, {"hero-economy-x1.png", true, 6344, 0, 0}, {"hero-panel-max.png", true, 5595, 349 + math.Log10(4.505), 0},
 		{"hero-tsuchi-x1.png", false, 12654, 819 + math.Log10(2.502), 2}, {"hero-gog-before.png", false, 2404, 158 + math.Log10(6.893), 0}, {"hero-gog-tooltip.png", false, 2404, 289 + math.Log10(1.168), 0},
 	} {
-		original := loadHeroScreen(t, "testdata/"+tc.path)
+		original := loadTestImage(t, "testdata/"+tc.path)
 		for _, divisor := range []int{1, 2} {
 			screen := image.NewRGBA(image.Rect(0, 0, original.Bounds().Dx()/divisor, original.Bounds().Dy()/divisor))
 			xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
@@ -51,7 +51,7 @@ func TestProgressionScreen(t *testing.T) {
 			}
 		}
 	}
-	screen := loadHeroScreen(t, "testdata/hero-tsuchi-x1.png")
+	screen := loadTestImage(t, "testdata/hero-tsuchi-x1.png")
 	covered := image.NewRGBA(screen.Bounds())
 	draw.Draw(covered, covered.Bounds(), screen, screen.Bounds().Min, draw.Src)
 	draw.Draw(covered, image.Rect(2430, 360, 2560, 480), image.NewUniform(color.Black), image.Point{}, draw.Src)

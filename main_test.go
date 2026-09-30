@@ -145,7 +145,7 @@ func TestHeroScrollAndQuantity(t *testing.T) {
 	ctx := context.Background()
 	controls := pauseControl{}
 	generation := controls.snapshot()
-	bottom := loadHeroScreen(t, "testdata/hero-panel-max.png")
+	bottom := loadTestImage(t, "testdata/hero-panel-max.png")
 	top := image.NewRGBA(bottom.Bounds())
 	draw.Draw(top, top.Bounds(), bottom, bottom.Bounds().Min, draw.Src)
 	thumb, height, found := heroScrollbarThumb(bottom)
@@ -239,8 +239,8 @@ func TestHeroCaptureClearsHover(t *testing.T) {
 }
 
 func TestHeroPurchaseTooltipRegression(t *testing.T) {
-	before := loadHeroScreen(t, "testdata/hero-gog-before.png")
-	after := loadHeroScreen(t, "testdata/hero-gog-tooltip.png")
+	before := loadTestImage(t, "testdata/hero-gog-before.png")
+	after := loadTestImage(t, "testdata/hero-gog-tooltip.png")
 	button := image.Pt(204, 894)
 	if !heroRowUnowned(before, button.Y) || !heroRowHasLevel(after, button.Y) {
 		t.Fatal("Gog purchase fixture did not change from unowned to leveled")
@@ -277,7 +277,7 @@ func TestHeroPurchaseTooltipRegression(t *testing.T) {
 		},
 	}
 	got, err := captureHeroScreen(ctx, &controls, controls.snapshot(), input, before.Bounds())
-	if err != nil || !sameHeroRow(before, got, button, button) || !heroRowHasLevel(got, button.Y) {
+	if err != nil || !heroRowNameMatches(before, got, button, button) || !heroRowHasLevel(got, button.Y) {
 		t.Fatalf("purchase frame rejected after hover was cleared: %v", err)
 	}
 }
@@ -286,7 +286,7 @@ func TestHeroQuantityHotkeyCycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	controls := pauseControl{}
-	original := loadHeroScreen(t, "testdata/hero-panel-max.png")
+	original := loadTestImage(t, "testdata/hero-panel-max.png")
 	quantities := []int{122, 200, 278, 356, 435}
 	state, taps := 3, 0
 	frame := func() image.Image {
@@ -462,7 +462,7 @@ func TestFishRetryRequiresVisibleFish(t *testing.T) {
 }
 
 func TestFishBeforeHeroDrag(t *testing.T) {
-	screen := loadHeroScreen(t, "testdata/fish-over-scrollbar.png")
+	screen := loadTestImage(t, "testdata/fish-over-scrollbar.png")
 	controls := pauseControl{}
 	scans := 0
 	input := heroInput{

@@ -14,6 +14,21 @@ type skillState struct {
 	Known, Ready, Active, Energized bool
 }
 
+func templateScore(scene, source gocv.Mat, size image.Point) (float32, error) {
+	reference, result, mask := gocv.NewMat(), gocv.NewMat(), gocv.NewMat()
+	defer reference.Close()
+	defer result.Close()
+	defer mask.Close()
+	if err := gocv.Resize(source, &reference, size, 0, 0, gocv.InterpolationArea); err != nil {
+		return 0, err
+	}
+	if err := gocv.MatchTemplate(scene, reference, &result, gocv.TmCcoeffNormed, mask); err != nil {
+		return 0, err
+	}
+	_, score, _, _ := gocv.MinMaxLoc(result)
+	return score, nil
+}
+
 // Upper icon strips exclude changing cooldown text and outer glow.
 //
 //go:embed assets/skill-icons.png
@@ -108,25 +123,19 @@ func readSkillStates(ctx context.Context, screen image.Image) ([9]skillState, er
 		if err != nil {
 			return states, err
 		}
-		gray, reference, result, mask := gocv.NewMat(), gocv.NewMat(), gocv.NewMat(), gocv.NewMat()
+		gray := gocv.NewMat()
 		strip := atlas.Region(image.Rect(0, i*11, 64, (i+1)*11))
 		err = gocv.CvtColor(color, &gray, gocv.ColorBGRToGray)
 		if err == nil {
-			err = gocv.Resize(strip, &reference, image.Pt(max(1, w*64/2560), max(1, h*11/1440)), 0, 0, gocv.InterpolationArea)
-		}
-		if err == nil {
-			err = gocv.MatchTemplate(gray, reference, &result, gocv.TmCcoeffNormed, mask)
-		}
-		if err == nil {
-			_, score, _, _ := gocv.MinMaxLoc(result)
-			states[i].Known = score >= 0.85
+			var score float32
+			score, err = templateScore(gray, strip, image.Pt(max(1, w*64/2560), max(1, h*11/1440)))
+			if err == nil {
+				states[i].Known = score >= 0.85
+			}
 		}
 		strip.Close()
 		color.Close()
 		gray.Close()
-		reference.Close()
-		result.Close()
-		mask.Close()
 		if err != nil {
 			return states, fmt.Errorf("recognize skill %d: %w", i+1, err)
 		}

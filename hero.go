@@ -159,15 +159,6 @@ func heroRowYellow(screen image.Image, y int) bool {
 	return samples > 0 && yellow*10 >= samples*4
 }
 
-func heroListMoved(before, after image.Image) bool {
-	if before == nil || after == nil || before.Bounds() != after.Bounds() {
-		return false
-	}
-	beforeThumb, beforeHeight, beforeFound := heroScrollbarThumb(before)
-	afterThumb, afterHeight, afterFound := heroScrollbarThumb(after)
-	return beforeFound && afterFound && absDiff(beforeThumb.Y-beforeHeight/2, afterThumb.Y-afterHeight/2) > max(3, before.Bounds().Dy()/100)
-}
-
 func heroScrollbarThumb(screen image.Image) (image.Point, int, bool) {
 	if screen == nil || !heroTabSelected(screen) {
 		return image.Point{}, 0, false
@@ -281,9 +272,9 @@ func heroListStable(before, after image.Image) bool {
 	if before == nil || after == nil || before.Bounds() != after.Bounds() {
 		return false
 	}
-	_, _, a := heroScrollbarThumb(before)
-	_, _, b := heroScrollbarThumb(after)
-	return a && b && !heroListMoved(before, after)
+	beforeThumb, beforeHeight, beforeFound := heroScrollbarThumb(before)
+	afterThumb, afterHeight, afterFound := heroScrollbarThumb(after)
+	return beforeFound && afterFound && absDiff(beforeThumb.Y-beforeHeight/2, afterThumb.Y-afterHeight/2) <= max(3, before.Bounds().Dy()/100)
 }
 
 func heroRowUnowned(screen image.Image, y int) bool {
@@ -321,8 +312,8 @@ func heroCandidateKnown(screen image.Image, button image.Point) bool {
 	return found && heroRowUnowned(screen, next.Y)
 }
 
-func sameHeroRow(before, after image.Image, old, current image.Point) bool {
-	if before == nil || after == nil || before.Bounds() != after.Bounds() || !heroListStable(before, after) {
+func heroRowNameMatches(before, after image.Image, old, current image.Point) bool {
+	if before == nil || after == nil || before.Bounds() != after.Bounds() {
 		return false
 	}
 	b := before.Bounds()

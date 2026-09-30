@@ -41,19 +41,9 @@ func progressionMode(screen image.Image) (known, enabled bool, err error) {
 	defer atlas.Close()
 	var scores [2]float32
 	for i := range scores {
-		reference, result, mask := gocv.NewMat(), gocv.NewMat(), gocv.NewMat()
 		icon := atlas.Region(image.Rect(i*48, 0, (i+1)*48, 48))
-		err = gocv.Resize(icon, &reference, image.Pt(max(1, w*48/2560), max(1, h*48/1440)), 0, 0, gocv.InterpolationArea)
-		if err == nil {
-			err = gocv.MatchTemplate(scene, reference, &result, gocv.TmCcoeffNormed, mask)
-		}
-		if err == nil {
-			_, scores[i], _, _ = gocv.MinMaxLoc(result)
-		}
+		scores[i], err = templateScore(scene, icon, image.Pt(max(1, w*48/2560), max(1, h*48/1440)))
 		icon.Close()
-		reference.Close()
-		result.Close()
-		mask.Close()
 		if err != nil {
 			return false, false, err
 		}

@@ -8,7 +8,6 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"image/jpeg"
 	"image/png"
 	"math"
 	"os"
@@ -38,15 +37,7 @@ func TestGameNumberAndCroppedOCR(t *testing.T) {
 		}
 		t.Skip("Tesseract is not installed")
 	}
-	file, err := os.Open("testdata/no-fish-game-screen.jpg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	screen, err := jpeg.Decode(file)
-	if err != nil {
-		t.Fatal(err)
-	}
+	screen := loadTestImage(t, "testdata/no-fish-game-screen.jpg")
 	gold, err := readHeroGold(context.Background(), screen)
 	if err != nil || math.Abs(gold-71.1000258) > 0.001 {
 		t.Fatalf("gold = %v, error = %v", gold, err)
@@ -63,15 +54,7 @@ func TestGameNumberAndCroppedOCR(t *testing.T) {
 	if err != nil || math.Abs(terraPrice-(69+math.Log10(9.537))) > 0.001 {
 		t.Fatalf("runtime Terra price=%v error=%v", terraPrice, err)
 	}
-	largeFile, err := os.Open("testdata/hero-panel-max.png")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer largeFile.Close()
-	largeScreen, err := png.Decode(largeFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	largeScreen := loadTestImage(t, "testdata/hero-panel-max.png")
 	largeGold, err := readHeroGold(context.Background(), largeScreen)
 	if err != nil || math.Abs(largeGold-367.067443) > 0.001 {
 		t.Fatalf("large screenshot gold = %v, error = %v", largeGold, err)
@@ -105,21 +88,13 @@ func TestHeroLevelOnRealScreensAndOverlay(t *testing.T) {
 		{"testdata/hero-scrollbar-before.png", 894, 1998},
 		{"testdata/fish-over-scrollbar.png", 894, 2035},
 	} {
-		screen := loadHeroScreen(t, tc.path)
+		screen := loadTestImage(t, tc.path)
 		got, err := readHeroLevel(ctx, screen, image.Pt(204, tc.y))
 		if err != nil || got != tc.want {
 			t.Fatalf("%s level=%d error=%v", tc.path, got, err)
 		}
 	}
-	f, err := os.Open("testdata/no-fish-game-screen.jpg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	screen, err := jpeg.Decode(f)
-	if err != nil {
-		t.Fatal(err)
-	}
+	screen := loadTestImage(t, "testdata/no-fish-game-screen.jpg")
 	button, _ := findHeroLevelButton(screen)
 	fishFile, err := os.ReadFile("assets/orange-fish.png")
 	if err != nil {
@@ -197,13 +172,13 @@ func TestHeroEconomyOnUserScreens(t *testing.T) {
 		{"testdata/hero-economy-x1.png", 1.651, 449},
 		{"testdata/hero-tsuchi-x1.png", 8.465, 848},
 	} {
-		screen := loadHeroScreen(t, tc.path)
+		screen := loadTestImage(t, tc.path)
 		gold, err := readHeroGold(ctx, screen)
 		if err != nil || math.Abs(gold-(float64(tc.exponent)+math.Log10(tc.mantissa))) > 0.001 {
 			t.Fatalf("%s gold=%v error=%v", tc.path, gold, err)
 		}
 	}
-	screen := loadHeroScreen(t, "testdata/hero-economy-x1.png")
+	screen := loadTestImage(t, "testdata/hero-economy-x1.png")
 	current, found := findHeroLevelButton(screen)
 	if !found {
 		t.Fatal("current hero not found")
