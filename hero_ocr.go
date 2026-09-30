@@ -92,6 +92,19 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 		return "", fmt.Errorf("empty OCR region %v", region)
 	}
 	whiteOnly := whiteThreshold > 0
+	yellowThreshold := 0
+	if !whiteOnly {
+		for y := region.Min.Y; y < region.Max.Y; y++ {
+			for x := region.Min.X; x < region.Max.X; x++ {
+				r, g, b := rgb(screen.At(x, y))
+				if r-b > 40 && g-b > 25 {
+					yellowThreshold = max(yellowThreshold, min(r, g))
+				}
+			}
+		}
+		// Disabled prices keep the yellow hue but have much lower brightness.
+		yellowThreshold = max(60, yellowThreshold*2/3)
+	}
 	source := image.NewGray(image.Rect(0, 0, region.Dx(), region.Dy()))
 	for y := 0; y < source.Bounds().Dy(); y++ {
 		for x := 0; x < source.Bounds().Dx(); x++ {
@@ -103,7 +116,7 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 			} else {
 				// Price text is yellow on a blue/dark button. Exclude its gold border and icon in the crop.
 				v := uint8(255)
-				if min(r, g) > 170 && r-b > 40 && g-b > 25 {
+				if min(r, g) > yellowThreshold && r-b > 40 && g-b > 25 {
 					v = 0
 				}
 				source.SetGray(x, y, color.Gray{Y: v})
@@ -136,7 +149,7 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 func readGameNumber(ctx context.Context, screen image.Image, region image.Rectangle, scale, psm int, whiteOnly bool) (float64, error) {
 	threshold := 0
 	if whiteOnly {
-		threshold = 135
+		threshold = 180
 	}
 	raw, err := readGameText(ctx, screen, region, scale, psm, threshold, "0123456789.eE")
 	if err != nil {
@@ -156,7 +169,7 @@ func readHeroGold(ctx context.Context, screen image.Image) (float64, error) {
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
 	region := image.Rect(b.Min.X+w*156/1000, b.Min.Y+h*25/1000, b.Min.X+w*34/100, b.Min.Y+h*12/100)
-	return readGameNumber(ctx, screen, region, max(3, 6144/w), 7, true)
+	return readGameNumber(ctx, screen, region, max(1, 2048/w), 7, true)
 }
 
 func readHeroPrice(ctx context.Context, screen image.Image, button image.Point) (float64, error) {
@@ -165,7 +178,23 @@ func readHeroPrice(ctx context.Context, screen image.Image, button image.Point) 
 	}
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
-	region := image.Rect(b.Min.X+w*52/1000, button.Y+h*18/1000, b.Min.X+w*126/1000, button.Y+h*56/1000)
+	start, end, top, bottom := 52, 126, 18, 56
+	if w >= 2000 {
+		start, end = 74, 137
+	}
+	bluePixels, samples := 0, 0
+	for x := b.Min.X + w*55/1000; x < b.Min.X+w*130/1000; x += max(1, w/500) {
+		r, g, blue := rgb(screen.At(x, button.Y))
+		if blue > 150 && blue > r+40 && blue >= g-10 && g > 90 {
+			bluePixels++
+		}
+		samples++
+	}
+	if bluePixels*10 < samples*3 {
+		// Dark-button detection includes more of the border, so its center is lower.
+		top, bottom = 7, 50
+	}
+	region := image.Rect(b.Min.X+w*start/1000, button.Y+h*top/1000, b.Min.X+w*end/1000, button.Y+h*bottom/1000)
 	return readGameNumber(ctx, screen, region, max(3, 6144/w), 7, false)
 }
 
@@ -176,7 +205,7 @@ func readHeroLevel(ctx context.Context, screen image.Image, button image.Point) 
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
 	region := image.Rect(b.Min.X+w*26/100, button.Y-h*6/100, b.Min.X+w*38/100, button.Y+h*3/100).Intersect(b)
-	// Find the tallest white text line, excluding the shorter name above it.
+	// The level line is nearest the button center; the hero name can be taller.
 	start, last, bestStart, bestEnd := -1, -1, -1, -1
 	for y := region.Min.Y; y <= region.Max.Y+2; y++ {
 		white := 0
@@ -196,7 +225,7 @@ func readHeroLevel(ctx context.Context, screen image.Image, button image.Point) 
 			continue
 		}
 		if start >= 0 && y-last > 2 {
-			if last-start > bestEnd-bestStart {
+			if bestStart < 0 || absDiff((start+last)/2, button.Y) < absDiff((bestStart+bestEnd)/2, button.Y) {
 				bestStart, bestEnd = start, last
 			}
 			start = -1

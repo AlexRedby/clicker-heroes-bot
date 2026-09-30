@@ -244,6 +244,28 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.misses = 0
 }
 
+func captureHeroScreen(ctx context.Context, controls *pauseControl, generation uint64, input heroInput, bounds image.Rectangle) (image.Image, error) {
+	// Leaving hero buttons clears tooltips that can obscure the scrollbar and level text.
+	acted, err := controls.runClick(ctx, generation, func() error {
+		return input.move(image.Pt(bounds.Min.X+bounds.Dx()*85/100, bounds.Min.Y+bounds.Dy()/2))
+	})
+	if err != nil || !acted {
+		return nil, err
+	}
+	time.Sleep(200 * time.Millisecond)
+	if !controls.valid(ctx, generation) {
+		return nil, nil
+	}
+	capture, err := input.capture()
+	if err != nil {
+		return nil, fmt.Errorf("capture hero screen: %w", err)
+	}
+	if capture == nil {
+		return nil, errors.New("capture hero screen returned no image")
+	}
+	return capture, nil
+}
+
 func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, generation uint64, input heroInput, screen image.Image, scanFish func(image.Image) (bool, error)) (image.Image, image.Point, bool, error) {
 	if !heroTabSelected(screen) {
 		return nil, image.Point{}, false, nil
@@ -294,19 +316,9 @@ func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, gener
 	if !controls.valid(ctx, generation) || !heroTabSelected(screen) {
 		return nil, image.Point{}, false, nil
 	}
-	acted, err := controls.runClick(ctx, generation, func() error {
-		return input.move(image.Pt(bounds.Min.X+bounds.Dx()*60/100, bounds.Min.Y+bounds.Dy()/2))
-	})
-	if err != nil || !acted {
+	capture, err := captureHeroScreen(ctx, controls, generation, input, bounds)
+	if err != nil || capture == nil {
 		return nil, image.Point{}, false, err
-	}
-	time.Sleep(100 * time.Millisecond)
-	capture, err := input.capture()
-	if err != nil {
-		return nil, image.Point{}, false, fmt.Errorf("capture hero screen before click: %w", err)
-	}
-	if capture == nil {
-		return nil, image.Point{}, false, errors.New("capture hero screen before click returned no image")
 	}
 	clicked, err := scanFish(capture)
 	if err != nil || clicked {
@@ -537,8 +549,14 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		if found && heroRowHasLevel(x1Screen, button.Y) {
 			if next, hasNext := findNextHeroButton(x1Screen, button); hasNext {
 				gold, readErr = readHeroGold(ctx, x1Screen)
+				if readErr != nil {
+					readErr = fmt.Errorf("gold: %w", readErr)
+				}
 				if readErr == nil {
 					nextPrice, readErr = readHeroPrice(ctx, x1Screen, next)
+					if readErr != nil {
+						readErr = fmt.Errorf("next hero price: %w", readErr)
+					}
 				}
 			}
 		}
@@ -594,28 +612,27 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			return nil
 		}
 		clicks++
-		var listMoved, levelChanged bool
+		var listStable, levelChanged bool
 		var lastAfter image.Image
 		for range 5 {
 			if !controls.valid(ctx, generation) {
 				return nil
 			}
-			time.Sleep(200 * time.Millisecond)
-			after, err := robotgo.CaptureImg()
+			after, err := captureHeroScreen(ctx, &controls, generation, input, heroScreen.Bounds())
 			if err != nil {
 				return fmt.Errorf("capture hero screen after click: %w", err)
 			}
 			if after == nil {
-				return errors.New("capture hero screen after click returned no image")
+				return nil
 			}
 			lastAfter = after
-			listMoved = !heroListStable(heroScreen, after)
+			listStable = heroListStable(heroScreen, after)
 			levelChanged = false
-			if !listMoved && sameHeroRow(heroScreen, after, button, button) {
+			if listStable && sameHeroRow(heroScreen, after, button, button) {
 				afterLevel, readErr := readHeroLevel(ctx, after, button)
 				levelChanged = readErr == nil && afterLevel > beforeLevel
 			}
-			if !listMoved && levelChanged {
+			if listStable && levelChanged {
 				heroFailures = 0
 				nextHeroScan = time.Now().Add(5 * time.Second)
 				fmt.Printf("leveled hero at (%d, %d)\n", button.X, button.Y)
@@ -645,11 +662,11 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		heroFailures++
 		if heroFailures >= 3 {
 			heroPurchasesEnabled = false
-			fmt.Printf("hero level change not confirmed at (%d, %d) three times (list moved=%t, level increased=%t); hero purchases stopped\n", button.X, button.Y, listMoved, levelChanged)
+			fmt.Printf("hero level change not confirmed at (%d, %d) three times (list stable=%t, level increased=%t); hero purchases stopped\n", button.X, button.Y, listStable, levelChanged)
 			return nil
 		}
 		nextHeroScan = time.Now().Add(30 * time.Second)
-		fmt.Printf("hero level change not confirmed at (%d, %d) (list moved=%t, level increased=%t); retrying hero purchases in 30s\n", button.X, button.Y, listMoved, levelChanged)
+		fmt.Printf("hero level change not confirmed at (%d, %d) (list stable=%t, level increased=%t); retrying hero purchases in 30s\n", button.X, button.Y, listStable, levelChanged)
 		return nil
 	}
 	if err := scan(); err != nil {

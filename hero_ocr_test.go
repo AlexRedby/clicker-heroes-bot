@@ -175,3 +175,61 @@ func TestOCRCancellationAndDiagnostics(t *testing.T) {
 		t.Fatal("missing English data accepted")
 	}
 }
+
+func TestHeroEconomyOnUserScreens(t *testing.T) {
+	if _, err := exec.LookPath("tesseract"); err != nil {
+		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
+			t.Fatal(err)
+		}
+		t.Skip("Tesseract is not installed")
+	}
+	ctx := context.Background()
+	for _, tc := range []struct {
+		path     string
+		mantissa float64
+		exponent int
+	}{
+		{"testdata/hero-gog-before.png", 2.730, 227},
+		{"testdata/hero-gog-tooltip.png", 1.710, 226},
+		{"testdata/hero-economy-x1.png", 1.651, 449},
+	} {
+		screen := loadHeroScreen(t, tc.path)
+		gold, err := readHeroGold(ctx, screen)
+		if err != nil || math.Abs(gold-(float64(tc.exponent)+math.Log10(tc.mantissa))) > 0.001 {
+			t.Fatalf("%s gold=%v error=%v", tc.path, gold, err)
+		}
+	}
+	screen := loadHeroScreen(t, "testdata/hero-economy-x1.png")
+	current, found := findHeroLevelButton(screen)
+	if !found {
+		t.Fatal("current hero not found")
+	}
+	next, found := findNextHeroButton(screen, current)
+	if !found {
+		t.Fatal("locked next hero not found")
+	}
+	for _, tc := range []struct {
+		button   image.Point
+		mantissa float64
+		exponent int
+	}{
+		{current, 2.955, 414},
+		{next, 3.828, 499},
+	} {
+		price, err := readHeroPrice(ctx, screen, tc.button)
+		if err != nil || math.Abs(price-(float64(tc.exponent)+math.Log10(tc.mantissa))) > 0.001 {
+			t.Fatalf("button=%v price=%v error=%v", tc.button, price, err)
+		}
+	}
+	if level, err := readHeroLevel(ctx, screen, current); err != nil || level != 6122 {
+		t.Fatalf("Wepwawet level=%d error=%v", level, err)
+	}
+	// A fully covered price must remain unreadable rather than turn into a purchase decision.
+	covered := image.NewRGBA(screen.Bounds())
+	draw.Draw(covered, covered.Bounds(), screen, screen.Bounds().Min, draw.Src)
+	b := screen.Bounds()
+	draw.Draw(covered, image.Rect(b.Dx()*52/1000, next.Y, b.Dx()*15/100, next.Y+b.Dy()*6/100), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	if _, err := readHeroPrice(ctx, covered, next); err == nil {
+		t.Fatal("covered price was accepted")
+	}
+}

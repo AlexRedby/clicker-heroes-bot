@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -195,5 +196,81 @@ func TestHeroScrollAndQuantity(t *testing.T) {
 	}
 	if _, selected, err := selectHeroQuantity(ctx, &controls, generation, input, 435); selected || err != nil {
 		t.Fatal("selection from an invalidated frame accepted")
+	}
+}
+
+func TestHeroCaptureClearsHover(t *testing.T) {
+	controls := pauseControl{}
+	generation := controls.snapshot()
+	screen := image.NewRGBA(image.Rect(0, 0, 2560, 1440))
+	moved, captured := false, false
+	input := heroInput{
+		move: func(p image.Point) error {
+			if p.X <= screen.Bounds().Dx()*75/100 || !p.In(screen.Bounds()) {
+				t.Fatalf("cursor did not leave the hero tooltip: %v", p)
+			}
+			moved = true
+			return nil
+		},
+		capture: func() (image.Image, error) {
+			if !moved {
+				t.Fatal("capture happened before clearing hover")
+			}
+			captured = true
+			return screen, nil
+		},
+	}
+	if got, err := captureHeroScreen(context.Background(), &controls, generation, input, screen.Bounds()); err != nil || got != screen || !captured {
+		t.Fatalf("hero capture: image=%v error=%v captured=%t", got, err, captured)
+	}
+	// Pause after moving the mouse invalidates the frame before it is captured.
+	captured = false
+	input.move = func(image.Point) error { go controls.toggle(); return nil }
+	if got, err := captureHeroScreen(context.Background(), &controls, generation, input, screen.Bounds()); got != nil || err != nil || captured {
+		t.Fatalf("paused hero capture: image=%v error=%v captured=%t", got, err, captured)
+	}
+}
+
+func TestHeroPurchaseTooltipRegression(t *testing.T) {
+	before := loadHeroScreen(t, "testdata/hero-gog-before.png")
+	after := loadHeroScreen(t, "testdata/hero-gog-tooltip.png")
+	button := image.Pt(204, 894)
+	if !heroRowUnowned(before, button.Y) || !heroRowHasLevel(after, button.Y) {
+		t.Fatal("Gog purchase fixture did not change from unowned to leveled")
+	}
+	if heroListStable(before, after) {
+		t.Fatal("tooltip-covered scrollbar must not be treated as verified")
+	}
+	if _, err := exec.LookPath("tesseract"); err == nil {
+		if level, err := readHeroLevel(context.Background(), after, button); err != nil || level != 227 {
+			t.Fatalf("actual Gog purchase level=%d error=%v, want 227", level, err)
+		}
+	} else if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	controls := pauseControl{}
+	cleared := image.NewRGBA(after.Bounds())
+	draw.Draw(cleared, cleared.Bounds(), after, after.Bounds().Min, draw.Src)
+	moved := false
+	input := heroInput{
+		move: func(image.Point) error {
+			moved = true
+			// Simulate dismissing the tooltip: restore only the unchanged scrollbar.
+			b := before.Bounds()
+			track := image.Rect(b.Dx()*445/1000, b.Dy()*32/100, b.Dx()*495/1000, b.Dy()*965/1000)
+			draw.Draw(cleared, track, before, track.Min, draw.Src)
+			return nil
+		},
+		capture: func() (image.Image, error) {
+			if !moved {
+				return after, nil
+			}
+			return cleared, nil
+		},
+	}
+	got, err := captureHeroScreen(ctx, &controls, controls.snapshot(), input, before.Bounds())
+	if err != nil || !sameHeroRow(before, got, button, button) || !heroRowHasLevel(got, button.Y) {
+		t.Fatalf("purchase frame rejected after hover was cleared: %v", err)
 	}
 }
