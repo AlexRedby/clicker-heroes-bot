@@ -133,7 +133,7 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 				p.failures = 0
 				p.pending = nil
 				p.latest = heroObservation{}
-				p.nextScan = now.Add(5 * time.Second)
+				p.nextScan = now
 				return
 			}
 			if fish.found {
@@ -214,18 +214,19 @@ func (p *heroRunner) action(now time.Time) (gameAction, bool) {
 	switch {
 	case !o.thumbFound:
 		if p.parked {
+			fmt.Println("hero scrollbar not recognized; retrying in 30s")
 			p.nextScan = now.Add(30 * time.Second)
 			p.latest = heroObservation{}
 			return a, false
 		}
 		a.kind = parkPointer
 		a.point = parkPoint(o.frame.context.bounds)
-	case !o.x1:
-		a.kind = selectQuantity
 	case !o.bottom:
 		a.kind = scrollHeroes
 		a.point = o.thumb
 		a.target = image.Pt(o.thumb.X, o.frame.context.bounds.Max.Y-1)
+	case !o.x1:
+		a.kind = selectQuantity
 	case o.found:
 		a.kind = buyHero
 		a.point = o.button

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"image"
+	"image/color"
+	"image/draw"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -170,9 +172,13 @@ func TestPipelineQueueAndInputGuards(t *testing.T) {
 	frame.context.heroes = true
 	p.frame = frame
 	now := frame.at
-	p.enqueue(gameAction{kind: selectQuantity, frame: frame}, now)
+	p.enqueue(gameAction{kind: scrollHeroes, frame: frame}, now)
 	if _, ok := p.nextAction(now); ok {
 		t.Fatal("unknown fish allowed mouse-related action")
+	}
+	p.enqueue(gameAction{kind: selectQuantity, frame: frame}, now)
+	if a, ok := p.nextAction(now); !ok || a.kind != selectQuantity {
+		t.Fatal("T hotkey waited for fish analysis")
 	}
 	p.enqueue(gameAction{kind: castSkill, frame: frame, key: 1}, now)
 	p.state[skillAnalysis] = observation{frame: frame, skills: skillsReady(1)}
@@ -231,7 +237,13 @@ func TestPipelineHeroPurchaseSharedConfirmation(t *testing.T) {
 		},
 		fish: func(image.Image) (image.Point, bool, error) { fish.Add(1); return image.Point{}, false, nil },
 		heroes: heroReaders{
-			gold:  func(context.Context, image.Image) (float64, error) { gold.Add(1); return 100, nil },
+			gold: func(context.Context, image.Image) (float64, error) {
+				gold.Add(1)
+				if clicked.Load() {
+					return 101.5, nil
+				}
+				return 100, nil
+			},
 			price: func(context.Context, image.Image, image.Point) (float64, error) { prices.Add(1); return 102, nil },
 			level: func(context.Context, image.Image, image.Point) (int, error) {
 				levels.Add(1)
@@ -249,7 +261,7 @@ func TestPipelineHeroPurchaseSharedConfirmation(t *testing.T) {
 	}, read, pipelineOptions{heroes: true, fishInterval: time.Hour})
 	done := make(chan error, 1)
 	go func() { done <- p.run(ctx) }()
-	// The controller schedules its next scan five seconds after confirmation.
+	// After confirmation, a new economy read must choose saving rather than reuse the purchase.
 	time.Sleep(1200 * time.Millisecond)
 	cancel()
 	if err := <-done; err != nil {
@@ -258,7 +270,7 @@ func TestPipelineHeroPurchaseSharedConfirmation(t *testing.T) {
 	if !clicked.Load() || p.hero.pending != nil || p.hero.failures != 0 || p.metrics.actions != 1 {
 		t.Fatalf("purchase/confirmation: %+v %s", p.hero, p.metrics.String())
 	}
-	if fish.Load() != 1 || gold.Load() != 1 || prices.Load() != 1 || levels.Load() < 2 || captures.Load() < 2 {
+	if fish.Load() != 1 || gold.Load() != 2 || prices.Load() != 2 || levels.Load() < 2 || captures.Load() < 2 {
 		t.Fatalf("duplicate full recognition: fish=%d gold=%d prices=%d level=%d captures=%d", fish.Load(), gold.Load(), prices.Load(), levels.Load(), captures.Load())
 	}
 }
@@ -355,5 +367,79 @@ func TestSlowCapturePreservesInterval(t *testing.T) {
 	}
 	if !p.frame.at.Equal(start) {
 		t.Fatal("capture-start timestamp no longer conservatively identifies the source frame")
+	}
+}
+
+func TestPipelineScrollWaitsForFishAndConfirmsBottom(t *testing.T) {
+	bottom := loadTestImage(t, "testdata/hero-panel-max.png")
+	thumb, height, found := heroScrollbarThumb(bottom)
+	if !found {
+		t.Fatal("fixture thumb missing")
+	}
+	top := image.NewRGBA(bottom.Bounds())
+	draw.Draw(top, top.Bounds(), bottom, bottom.Bounds().Min, draw.Src)
+	region := image.Rect(thumb.X-30, thumb.Y-height/2-3, thumb.X+31, thumb.Y+height/2+4)
+	draw.Draw(top, region, image.NewUniform(color.RGBA{R: 30, G: 25, B: 10, A: 255}), image.Point{}, draw.Src)
+	moved := region.Add(image.Pt(0, bottom.Bounds().Dy()/2-thumb.Y))
+	draw.Draw(top, moved, bottom, region.Min, draw.Src)
+	if heroScrollbarAtBottom(top) {
+		t.Fatal("test thumb did not move")
+	}
+	frame := gameFrame{id: 1, layout: 1, at: time.Now(), image: top, context: gameContext{known: true, heroes: true, bounds: top.Bounds()}}
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true, fishInterval: time.Second})
+	p.frame, p.layout = frame, 1
+	out, err := readHeroObservation(context.Background(), frame, heroReaders{}, nil)
+	if err != nil || !out.thumbFound {
+		t.Fatalf("top geometry: %+v %v", out, err)
+	}
+	p.hero.observe(out, observation{}, frame.at)
+	p.plan(frame.at)
+	if _, ok := p.nextAction(frame.at); ok {
+		t.Fatal("scroll ran before fish analysis")
+	}
+	now := frame.at.Add(4 * time.Second)
+	// Slow first SIFT expires the original intent; fresh geometry must recreate it.
+	p.nextAction(now)
+	frame.id++
+	frame.at = now
+	p.frame = frame
+	out, err = readHeroObservation(context.Background(), frame, heroReaders{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.hero.observe(out, observation{}, now)
+	fishFrame := frame
+	fishFrame.id = 1
+	fishFrame.at = now.Add(-4 * time.Second)
+	p.state[fishAnalysis] = observation{frame: fishFrame, elapsed: 4 * time.Second}
+	p.plan(now)
+	a, ok := p.nextAction(now)
+	if !ok || a.kind != scrollHeroes {
+		t.Fatalf("fresh scroll missing after slow SIFT: %+v %+v", a, p.hero)
+	}
+	p.input.drag = func(from, to image.Point) error {
+		if from != out.thumb || to.Y != bottom.Bounds().Max.Y-1 {
+			t.Fatalf("drag: %v -> %v", from, to)
+		}
+		return nil
+	}
+	if acted, err := p.execute(context.Background(), a); !acted || err != nil {
+		t.Fatalf("drag=%t %v", acted, err)
+	}
+	p.actionCompleted(actionResult{action: a, acted: true}, now)
+	frame.id++
+	frame.at = now.Add(time.Second)
+	frame.image = bottom
+	confirmed, err := readHeroObservation(context.Background(), frame, heroReaders{
+		gold:  func(context.Context, image.Image) (float64, error) { return 100, nil },
+		price: func(context.Context, image.Image, image.Point) (float64, error) { return 102, nil },
+		level: func(context.Context, image.Image, image.Point) (int, error) { return 100, nil },
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.hero.observe(confirmed, p.state[fishAnalysis], frame.at)
+	if p.hero.pending != nil || !p.hero.latest.bottom {
+		t.Fatalf("bottom not confirmed: %+v", p.hero)
 	}
 }

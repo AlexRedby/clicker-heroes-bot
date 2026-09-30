@@ -521,7 +521,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 				delete(p.queue, kind)
 				continue
 			}
-			if !p.fishFresh(now) || p.state[fishAnalysis].found {
+			if kind != selectQuantity && (!p.fishFresh(now) || p.state[fishAnalysis].found) {
 				continue
 			}
 			if kind == buyHero && (!heroListStable(action.frame.image, p.frame.image) || !heroRowNameMatches(action.frame.image, p.frame.image, action.point, action.point) || !heroQuantitySelected(p.frame.image, 122)) {
@@ -617,6 +617,9 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.nextProgression = time.Time{}
 	case buyHero, scrollHeroes, selectQuantity, parkPointer:
 		p.hero.sent(a, now)
+		if a.kind == scrollHeroes {
+			fmt.Printf("dragged hero scrollbar from (%d, %d); waiting for bottom confirmation\n", a.point.X, a.point.Y)
+		}
 		invalidate(heroAnalysis)
 		if a.kind == buyHero {
 			invalidate(progressionAnalysis)

@@ -156,7 +156,15 @@ func readSkillStates(ctx context.Context, screen image.Image) ([9]skillState, er
 			var score float32
 			score, err = templateScore(gray, strip, image.Pt(max(1, w*64/2560), max(1, h*11/1440)))
 			if err == nil {
-				states[i].Known = score >= 0.85
+				threshold := float32(0.85)
+				// Utility icon strips lose more detail at the game's smaller scales.
+				if i == 7 {
+					threshold = 0.84
+				}
+				if i == 8 {
+					threshold = 0.80
+				}
+				states[i].Known = score >= threshold
 			}
 		}
 		strip.Close()
