@@ -154,10 +154,12 @@ func clickAt(ctx context.Context, x, y int) error {
 }
 
 type heroInput struct {
-	capture func() (image.Image, error)
-	move    func(image.Point) error
-	drag    func(image.Point, image.Point) error
-	click   func(image.Point) error
+	capture   func() (image.Image, error)
+	move      func(image.Point) error
+	drag      func(image.Point, image.Point) error
+	click     func(image.Point) error
+	keyTap    func(string) error
+	keyToggle func(string, string) error
 }
 
 type pauseControl struct {
@@ -337,36 +339,52 @@ func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, gener
 	return capture, button, true, nil
 }
 
-func selectHeroQuantity(ctx context.Context, controls *pauseControl, generation uint64, input heroInput, xPercent int) (image.Image, bool, error) {
+func selectHeroX1(ctx context.Context, controls *pauseControl, generation uint64, input heroInput, screen image.Image) (image.Image, bool, error) {
 	if !controls.valid(ctx, generation) {
 		return nil, false, nil
 	}
-	screen, err := input.capture()
-	if err != nil {
-		return nil, false, fmt.Errorf("capture hero quantity bar: %w", err)
-	}
-	if screen == nil {
-		return nil, false, errors.New("capture hero quantity bar returned no image")
-	}
-	if !heroQuantityBarPresent(screen) {
+	if screen == nil || !heroQuantityBarPresent(screen) {
 		return nil, false, nil
 	}
 	b := screen.Bounds()
-	clicked, err := controls.runClick(ctx, generation, func() error {
-		return input.click(image.Pt(b.Min.X+b.Dx()*xPercent/1000, b.Min.Y+b.Dy()*345/1000))
-	})
-	if err != nil || !clicked {
-		return nil, clicked, err
+	// T cycles the five purchase quantities; verify each frame instead of assuming an order.
+	for taps := 0; taps <= 5; taps++ {
+		if !controls.valid(ctx, generation) || screen.Bounds() != b || !heroQuantityBarPresent(screen) {
+			return screen, false, nil
+		}
+		if heroQuantitySelected(screen, 122) {
+			return screen, true, nil
+		}
+		if taps == 5 {
+			break
+		}
+		acted, err := controls.runClick(ctx, generation, func() error { return input.keyTap("t") })
+		if err != nil || !acted {
+			return nil, false, err
+		}
+		time.Sleep(100 * time.Millisecond)
+		captured, err := input.capture()
+		screen = captured
+		if err != nil {
+			return nil, false, fmt.Errorf("capture hero quantity selection: %w", err)
+		}
+		if screen == nil {
+			return nil, false, errors.New("capture hero quantity selection returned no image")
+		}
 	}
-	time.Sleep(100 * time.Millisecond)
-	updated, err := input.capture()
-	if err != nil {
-		return nil, false, fmt.Errorf("capture hero quantity selection: %w", err)
+	return screen, false, nil
+}
+
+func clickHeroMax(ctx context.Context, input heroInput, button image.Point) (err error) {
+	// Release Q before confirmation captures, fish clicks or any error return.
+	defer func() { err = errors.Join(err, input.keyToggle("q", "up")) }()
+	if err = input.keyToggle("q", "down"); err != nil {
+		return err
 	}
-	if updated == nil {
-		return nil, false, errors.New("capture hero quantity selection returned no image")
+	if err = ctx.Err(); err != nil {
+		return err
 	}
-	return updated, controls.valid(ctx, generation) && updated.Bounds() == b && heroQuantitySelected(updated, xPercent), nil
+	return input.click(button)
 }
 
 func saveForNextHero(gold, nextPrice float64) bool {
@@ -398,9 +416,11 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		}
 	}
 	input := heroInput{
-		capture: func() (image.Image, error) { return robotgo.CaptureImg() },
-		move:    moveAt,
-		click:   func(p image.Point) error { return clickAt(ctx, p.X, p.Y) },
+		capture:   func() (image.Image, error) { return robotgo.CaptureImg() },
+		move:      moveAt,
+		click:     func(p image.Point) error { return clickAt(ctx, p.X, p.Y) },
+		keyTap:    func(key string) error { return robotgo.KeyTap(key) },
+		keyToggle: func(key, state string) error { return robotgo.KeyToggle(key, state) },
 		drag: func(from, to image.Point) error {
 			if err := moveAt(from); err != nil {
 				return err
@@ -523,16 +543,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			nextHeroScan = time.Now().Add(30 * time.Second)
 			return nil
 		}
-		quantityPending := true
-		defer func() {
-			if quantityPending && controls.valid(ctx, generation) {
-				_, restored, err := selectHeroQuantity(ctx, &controls, generation, input, 435)
-				if err != nil || !restored {
-					fmt.Printf("MAX restoration not confirmed: %v; next attempt will verify quantity again\n", err)
-				}
-			}
-		}()
-		x1Screen, selected, err := selectHeroQuantity(ctx, &controls, generation, input, 122)
+		x1Screen, selected, err := selectHeroX1(ctx, &controls, generation, input, heroScreen)
 		if err != nil {
 			return fmt.Errorf("select x1 hero levels: %w", err)
 		}
@@ -560,16 +571,8 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 				}
 			}
 		}
-		maxScreen, restored, restoreErr := selectHeroQuantity(ctx, &controls, generation, input, 435)
-		quantityPending = !restored
 		if findErr != nil {
 			return findErr
-		}
-		if restoreErr != nil {
-			return fmt.Errorf("restore MAX hero levels: %w", restoreErr)
-		}
-		if !restored {
-			return nil
 		}
 		if !found || ctx.Err() != nil {
 			if !found && hadHeroTab && !fishClicked && !controls.isPaused() && ctx.Err() == nil {
@@ -586,12 +589,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			fmt.Println("saving gold for next hero")
 			return nil
 		}
-		current, enabled := findHeroLevelButton(maxScreen)
-		if !enabled || !sameHeroRow(x1Screen, maxScreen, button, current) || !heroCandidateKnown(maxScreen, current) || !heroQuantitySelected(maxScreen, 435) {
-			return nil
-		}
-		button = current
-		heroScreen = maxScreen
+		heroScreen = x1Screen
 		beforeLevel := 0
 		if heroRowHasLevel(heroScreen, button.Y) {
 			beforeLevel, err = readHeroLevel(ctx, heroScreen, button)
@@ -604,7 +602,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			return nil
 		}
 
-		clicked, err := controls.runClick(ctx, generation, func() error { return input.click(button) })
+		clicked, err := controls.runClick(ctx, generation, func() error { return clickHeroMax(ctx, input, button) })
 		if err != nil {
 			return fmt.Errorf("click hero level: %w", err)
 		}

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -176,25 +178,29 @@ func TestHeroScrollAndQuantity(t *testing.T) {
 	if _, _, found, err := findHeroButtonWithScroll(ctx, &controls, generation, input, bottom, fish); !found || err != nil || drags != beforeDrags {
 		t.Fatalf("already at bottom: found=%t err=%v drags=%d, want %d", found, err, drags, beforeDrags)
 	}
-	input.click = func(image.Point) error { return nil }
-	if _, selected, err := selectHeroQuantity(ctx, &controls, generation, input, 122); selected || err != nil {
-		t.Fatal("failed x1 selection accepted")
+	taps := 0
+	input.keyTap = func(key string) error {
+		if key != "t" {
+			t.Fatalf("unexpected key %q", key)
+		}
+		taps++
+		return nil
 	}
-	if _, selected, err := selectHeroQuantity(ctx, &controls, generation, input, 435); !selected || err != nil {
-		t.Fatal("confirmed MAX selection rejected")
+	input.click = func(image.Point) error { t.Fatal("quantity selection used a mouse click"); return nil }
+	if _, selected, err := selectHeroX1(ctx, &controls, generation, input, bottom); selected || err != nil || taps != 5 {
+		t.Fatal("unresponsive x1 hotkey was accepted or retried beyond one cycle")
 	}
-	// Simulate pause/resume while awaiting the selection screenshot, outside the input lock.
+	// Simulate pause/resume while awaiting a screenshot after pressing T.
 	captures := 0
-	input.click = func(image.Point) error { return nil }
 	input.capture = func() (image.Image, error) {
 		captures++
-		if captures == 2 {
+		if captures == 1 {
 			controls.toggle()
 			controls.toggle()
 		}
 		return bottom, nil
 	}
-	if _, selected, err := selectHeroQuantity(ctx, &controls, generation, input, 435); selected || err != nil {
+	if _, selected, err := selectHeroX1(ctx, &controls, generation, input, bottom); selected || err != nil {
 		t.Fatal("selection from an invalidated frame accepted")
 	}
 }
@@ -272,5 +278,116 @@ func TestHeroPurchaseTooltipRegression(t *testing.T) {
 	got, err := captureHeroScreen(ctx, &controls, controls.snapshot(), input, before.Bounds())
 	if err != nil || !sameHeroRow(before, got, button, button) || !heroRowHasLevel(got, button.Y) {
 		t.Fatalf("purchase frame rejected after hover was cleared: %v", err)
+	}
+}
+
+func TestHeroQuantityHotkeyCycle(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	controls := pauseControl{}
+	original := loadHeroScreen(t, "testdata/hero-panel-max.png")
+	quantities := []int{122, 200, 278, 356, 435}
+	state, taps := 3, 0
+	frame := func() image.Image {
+		screen := image.NewRGBA(original.Bounds())
+		draw.Draw(screen, screen.Bounds(), original, original.Bounds().Min, draw.Src)
+		b := screen.Bounds()
+		for _, quantity := range quantities {
+			colour := color.RGBA{R: 255, G: 210, B: 30, A: 255}
+			if quantity == quantities[state] {
+				colour = color.RGBA{R: 240, G: 140, B: 20, A: 255}
+			}
+			x, y := b.Dx()*(quantity-25)/1000, b.Dy()*345/1000
+			draw.Draw(screen, image.Rect(x-2, y-2, x+3, y+3), image.NewUniform(colour), image.Point{}, draw.Src)
+		}
+		return screen
+	}
+	input := heroInput{
+		capture: func() (image.Image, error) { return frame(), nil },
+		click:   func(image.Point) error { t.Fatal("quantity selection clicked the screen"); return nil },
+		keyTap: func(key string) error {
+			if key != "t" {
+				t.Fatalf("unexpected key %q", key)
+			}
+			taps++
+			state = (state + 1) % len(quantities)
+			return nil
+		},
+	}
+	if _, selected, err := selectHeroX1(ctx, &controls, controls.snapshot(), input, frame()); !selected || err != nil || taps != 2 {
+		t.Fatalf("x100 to x1: selected=%t error=%v taps=%d", selected, err, taps)
+	}
+	if _, selected, err := selectHeroX1(ctx, &controls, controls.snapshot(), input, frame()); !selected || err != nil || taps != 2 {
+		t.Fatal("already-selected x1 should not require input")
+	}
+	state = 3
+	failure := errors.New("keyboard unavailable")
+	input.keyTap = func(string) error { return failure }
+	if _, selected, err := selectHeroX1(ctx, &controls, controls.snapshot(), input, frame()); selected || !errors.Is(err, failure) {
+		t.Fatalf("failed key event accepted: selected=%t error=%v", selected, err)
+	}
+	input.keyTap = func(string) error { cancel(); return nil }
+	if _, selected, err := selectHeroX1(ctx, &controls, controls.snapshot(), input, frame()); selected || err != nil {
+		t.Fatalf("cancelled key selection accepted: selected=%t error=%v", selected, err)
+	}
+}
+
+func TestHeroMaxKeyRelease(t *testing.T) {
+	failure := errors.New("input failed")
+	button := image.Pt(204, 894)
+	for _, scenario := range []string{"success", "down error", "click error", "up error", "cancelled", "paused"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			controls := pauseControl{paused: scenario == "paused"}
+			var events []string
+			input := heroInput{
+				capture: func() (image.Image, error) { t.Fatal("Q purchase must not capture a MAX check"); return nil, nil },
+				keyToggle: func(key, state string) error {
+					if key != "q" {
+						t.Fatalf("unexpected key %q", key)
+					}
+					events = append(events, state)
+					if scenario == "cancelled" && state == "down" {
+						cancel()
+					}
+					if scenario == state+" error" {
+						return failure
+					}
+					return nil
+				},
+				click: func(point image.Point) error {
+					if point != button {
+						t.Fatalf("wrong hero target: %v", point)
+					}
+					events = append(events, "click")
+					if scenario == "click error" {
+						return failure
+					}
+					return nil
+				},
+			}
+			acted, err := controls.runClick(ctx, controls.snapshot(), func() error { return clickHeroMax(ctx, input, button) })
+			want := "[down click up]"
+			if scenario == "down error" || scenario == "cancelled" {
+				want = "[down up]"
+			}
+			if scenario == "paused" {
+				want = "[]"
+			}
+			if fmt.Sprint(events) != want {
+				t.Fatalf("events=%v, want %s", events, want)
+			}
+			if acted != (scenario == "success") {
+				t.Fatalf("acted=%t for %s", acted, scenario)
+			}
+			if scenario == "down error" || scenario == "click error" || scenario == "up error" {
+				if !errors.Is(err, failure) {
+					t.Fatalf("lost input error: %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
