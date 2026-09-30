@@ -156,7 +156,13 @@ func TestHeroScrollAndQuantity(t *testing.T) {
 		t.Fatal("partial drag considered bottom")
 	}
 	drags := 0
-	input := heroInput{capture: func() (image.Image, error) { return top, nil }, drag: func(image.Point, image.Point) error { drags++; return nil }, move: func(image.Point) error { return nil }}
+	input := heroInput{capture: func() (image.Image, error) { return top, nil }, drag: func(from, to image.Point) error {
+		drags++
+		if from.X != to.X || to.Y != bottom.Bounds().Max.Y-1 {
+			t.Fatalf("drag target %v is not the bottom screen edge below %v", to, from)
+		}
+		return nil
+	}, move: func(image.Point) error { return nil }}
 	fish := func(image.Image) (bool, error) { return false, nil }
 	if _, _, found, err := findHeroButtonWithScroll(ctx, &controls, generation, input, top, fish); found || err != nil || drags != 1 {
 		t.Fatalf("partial drag: found=%t err=%v drags=%d", found, err, drags)
@@ -164,6 +170,10 @@ func TestHeroScrollAndQuantity(t *testing.T) {
 	input.capture = func() (image.Image, error) { return bottom, nil }
 	if _, _, found, err := findHeroButtonWithScroll(ctx, &controls, generation, input, top, fish); !found || err != nil {
 		t.Fatalf("completed drag: found=%t err=%v", found, err)
+	}
+	beforeDrags := drags
+	if _, _, found, err := findHeroButtonWithScroll(ctx, &controls, generation, input, bottom, fish); !found || err != nil || drags != beforeDrags {
+		t.Fatalf("already at bottom: found=%t err=%v drags=%d, want %d", found, err, drags, beforeDrags)
 	}
 	input.click = func(image.Point) error { return nil }
 	if _, selected, err := selectHeroQuantity(ctx, &controls, generation, input, 122); selected || err != nil {

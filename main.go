@@ -258,7 +258,10 @@ func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, gener
 		if err != nil || !acted {
 			return nil, false, err
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
+		if !controls.valid(ctx, generation) {
+			return nil, false, nil
+		}
 		capture, err := input.capture()
 		if err != nil {
 			return nil, false, fmt.Errorf("capture hero list after drag: %w", err)
@@ -274,13 +277,12 @@ func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, gener
 	}
 
 	bounds := screen.Bounds()
-	thumb, height, found := heroScrollbarThumb(screen)
+	thumb, _, found := heroScrollbarThumb(screen)
 	if !found {
 		return nil, image.Point{}, false, nil
 	}
-	bottom := bounds.Min.Y + bounds.Dy()*965/1000 - height/2
-	if thumb.Y < bottom-bounds.Dy()/100 {
-		capture, _, err := drag(thumb, bottom)
+	if !heroScrollbarAtBottom(screen) {
+		capture, _, err := drag(thumb, bounds.Max.Y-1)
 		if err != nil || capture == nil {
 			return nil, image.Point{}, false, err
 		}
@@ -395,8 +397,8 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			if err != nil {
 				return err
 			}
-			time.Sleep(50 * time.Millisecond)
-			robotgo.DragSmooth(target.X, target.Y, 0.1, 0.2, 0)
+			time.Sleep(100 * time.Millisecond)
+			robotgo.DragSmooth(target.X, target.Y)
 			return nil
 		},
 	}

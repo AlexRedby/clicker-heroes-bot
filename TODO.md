@@ -3,7 +3,7 @@
 ## Screen and live-game validation
 
 - Verify the corrected hero loop in a running game: capture a live `x1` frame with a locked next hero, check its detected row and price crop, and verify the saving decision and transition to the next available hero.
-- Verify bottom-only scrolling, `x1`/`MAX` selected states, actual level confirmation, F8 interruption/resume, and simultaneous fish collection. Use saved before/after screenshots to diagnose any remaining unconfirmed purchase.
+- Verify that the game registers RobotGo's standard bottom-edge drag and that F8 taking effect after an ongoing native drag finishes is acceptable. Verify bottom-only scrolling, `x1`/`MAX` selected states, actual level confirmation, F8 interruption/resume, and simultaneous fish collection. Use saved before/after screenshots to diagnose any remaining unconfirmed purchase.
 - Measure complete hero/fish cycle latency on the target machine. OCR is cancellable and bounded per read, but the serial cycle can exceed the configured fish interval; tune only after measuring the live workload.
 - Resolve macOS capture/input permissions and verify screenshot-pixel to desktop-point conversion, fish clicks, optional monster clicks, and F8 on Windows/macOS with display scaling and multiple displays. Capture and CLI coordinates currently target the primary display.
 - Add recognition of a game viewport inside a window before supporting non-full-screen layouts. The current bot requires a recognizable full-screen Heroes layout and skips unknown layouts.
