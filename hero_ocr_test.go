@@ -102,6 +102,8 @@ func TestHeroLevelOnRealScreensAndOverlay(t *testing.T) {
 		{"testdata/hero-panel-max.png", 896, 4367},
 		{"testdata/hero-owned-disabled.png", 917, 4695},
 		{"testdata/hero-tsuchi-x1.png", 894, 11873},
+		{"testdata/hero-scrollbar-before.png", 894, 1998},
+		{"testdata/fish-over-scrollbar.png", 894, 2035},
 	} {
 		screen := loadHeroScreen(t, tc.path)
 		got, err := readHeroLevel(ctx, screen, image.Pt(204, tc.y))

@@ -6,6 +6,8 @@
 
 ## Screen and live-game validation
 
+- Verify live recovery when a fish appears over the scrollbar or obscures purchase confirmation: collect it, resume hero actions, and avoid counting the obstruction as a failed purchase. Persistent visible fish should retry after five seconds; vanished fish must not be clicked again.
+
 - Before implementing the corresponding features, verify the unconfirmed mappings in docs/hotkeys.md against the installed game: A, Ancient quantity multipliers, and collapse/expand controls.
 
 - Verify repeated Q hero purchases with the 100 ms mouse hold and 100 ms release-settling wait in a running game, including F8 pause/resume. Then verify the full hero loop: tooltip dismissal after purchase, confirmation of the increased level, the saving decision and transition to the next available hero. Locked next-hero price and gold OCR are covered by real `x1` screenshot regressions.

@@ -177,6 +177,24 @@ func heroScrollbarThumb(screen image.Image) (image.Point, int, bool) {
 	xStart, xEnd := bounds.Min.X+w*445/1000, bounds.Min.X+w*495/1000
 	yStart, yEnd := bounds.Min.Y+h*32/100, bounds.Min.Y+h*965/1000
 	bestScore, bestY, bestHeight, bestX := 0, 0, 0, 0
+	span := func(x, y int) (int, int) {
+		left, right := x, x
+		for left > xStart {
+			r, g, b := rgb(screen.At(left-1, y))
+			if r <= 190 || g <= 145 || b >= 160 {
+				break
+			}
+			left--
+		}
+		for right+1 < xEnd {
+			r, g, b := rgb(screen.At(right+1, y))
+			if r <= 190 || g <= 145 || b >= 160 {
+				break
+			}
+			right++
+		}
+		return left, right
+	}
 	for x := xStart; x < xEnd; x += max(1, w/1000) {
 		type run struct{ start, end, count int }
 		var runs []run
@@ -200,33 +218,33 @@ func heroScrollbarThumb(screen image.Image) (image.Point, int, bool) {
 				continue
 			}
 			score := 2*candidate.count - gold
-			if score > bestScore {
-				bestScore = score
-				bestX = x
-				bestY = (candidate.start + candidate.end) / 2
-				bestHeight = height
+			if score <= bestScore {
+				continue
+			}
+			centerY := (candidate.start + candidate.end) / 2
+			left, right := span(x, centerY)
+			width := right - left + 1
+			if width < w*8/1000 || width > w*25/1000 || left == xStart || right == xEnd-1 {
+				continue
+			}
+			// A thumb has parallel sides; an orange fish can contain a tall gold run.
+			rectangular := true
+			for _, y := range []int{centerY - height*3/10, centerY + height*3/10} {
+				l, r := span(x, y)
+				if absDiff(l, left) > max(2, w/1000) || absDiff(r, right) > max(2, w/1000) {
+					rectangular = false
+					break
+				}
+			}
+			if rectangular {
+				bestScore, bestX, bestY, bestHeight = score, (left+right)/2, centerY, height
 			}
 		}
 	}
 	if bestScore <= 0 {
 		return image.Point{}, 0, false
 	}
-	left, right := bestX, bestX
-	for left > xStart {
-		r, g, b := rgb(screen.At(left-1, bestY))
-		if r <= 190 || g <= 145 || b >= 160 {
-			break
-		}
-		left--
-	}
-	for right+1 < xEnd {
-		r, g, b := rgb(screen.At(right+1, bestY))
-		if r <= 190 || g <= 145 || b >= 160 {
-			break
-		}
-		right++
-	}
-	return image.Pt((left+right)/2, bestY), bestHeight, true
+	return image.Pt(bestX, bestY), bestHeight, true
 }
 
 func rgb(c color.Color) (int, int, int) {

@@ -444,3 +444,32 @@ func TestClickLeftHoldAndRelease(t *testing.T) {
 		})
 	}
 }
+
+func TestFishRetryRequiresVisibleFish(t *testing.T) {
+	tracker := fishClickTracker{}
+	point := image.Pt(1211, 575)
+	tracker.recordClick(point)
+	if tracker.shouldClick(point, true) {
+		t.Fatal("immediate duplicate fish click")
+	}
+	tracker.lastClickAt = time.Now().Add(-6 * time.Second)
+	if tracker.shouldClick(image.Point{}, false) {
+		t.Fatal("retried a vanished fish")
+	}
+	if !tracker.shouldClick(point, true) {
+		t.Fatal("persistent visible fish never retried")
+	}
+}
+
+func TestFishBeforeHeroDrag(t *testing.T) {
+	screen := loadHeroScreen(t, "testdata/fish-over-scrollbar.png")
+	controls := pauseControl{}
+	scans := 0
+	input := heroInput{
+		drag: func(image.Point, image.Point) error { t.Fatal("dragged before resolving fish"); return nil },
+		move: func(image.Point) error { t.Fatal("moved before resolving fish"); return nil },
+	}
+	if _, _, found, err := findHeroButtonWithScroll(context.Background(), &controls, controls.snapshot(), input, screen, func(image.Image) (bool, error) { scans++; return true, nil }); found || err != nil || scans != 1 {
+		t.Fatalf("fish did not block hero interaction: found=%t err=%v scans=%d", found, err, scans)
+	}
+}

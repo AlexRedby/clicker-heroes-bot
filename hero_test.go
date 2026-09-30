@@ -154,3 +154,21 @@ func TestHeroPurchaseGuards(t *testing.T) {
 		t.Fatal("different row name accepted")
 	}
 }
+
+func TestHeroScrollbarFishRegression(t *testing.T) {
+	before := loadHeroScreen(t, "testdata/hero-scrollbar-before.png")
+	after := loadHeroScreen(t, "testdata/fish-over-scrollbar.png")
+	for _, screen := range []image.Image{before, after} {
+		thumb, height, found := heroScrollbarThumb(screen)
+		if !found || absDiff(thumb.X, 1172) > 5 || absDiff(thumb.Y, 1331) > 5 || absDiff(height, 111) > 8 || !heroScrollbarAtBottom(screen) {
+			t.Fatalf("fish mistaken for thumb: thumb=%v height=%d found=%t", thumb, height, found)
+		}
+	}
+	if !heroListStable(before, after) {
+		t.Fatal("fish appearance was mistaken for hero list movement")
+	}
+	button := image.Pt(204, 894)
+	if !sameHeroRow(before, after, button, button) {
+		t.Fatal("unchanged Tsuchi row rejected")
+	}
+}

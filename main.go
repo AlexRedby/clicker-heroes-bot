@@ -158,7 +158,7 @@ func clickAt(ctx context.Context, x, y int) error {
 	return robotgo.Click("left")
 }
 
-func clickHeroAt(ctx context.Context, point image.Point) error {
+func clickGameAt(ctx context.Context, point image.Point) error {
 	if err := moveForClick(ctx, point); err != nil {
 		return err
 	}
@@ -261,9 +261,10 @@ func isPauseKey(event hook.Event) bool {
 }
 
 type fishClickTracker struct {
-	last    image.Point
-	clicked bool
-	misses  int
+	last        image.Point
+	clicked     bool
+	misses      int
+	lastClickAt time.Time
 }
 
 func (tracker *fishClickTracker) shouldClick(point image.Point, found bool) bool {
@@ -277,11 +278,13 @@ func (tracker *fishClickTracker) shouldClick(point image.Point, found bool) bool
 	tracker.misses = 0
 	// A fish rotates and detection jitters; a nearby match is still the same fish.
 	delta := point.Sub(tracker.last)
-	return !tracker.clicked || delta.X*delta.X+delta.Y*delta.Y > 150*150
+	// Retry only a fish still recognized on a fresh frame; the game may miss input.
+	return !tracker.clicked || delta.X*delta.X+delta.Y*delta.Y > 150*150 || time.Since(tracker.lastClickAt) >= 5*time.Second
 }
 
 func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.last = point
+	tracker.lastClickAt = time.Now()
 	tracker.clicked = true
 	tracker.misses = 0
 }
@@ -309,8 +312,12 @@ func captureHeroScreen(ctx context.Context, controls *pauseControl, generation u
 }
 
 func findHeroButtonWithScroll(ctx context.Context, controls *pauseControl, generation uint64, input heroInput, screen image.Image, scanFish func(image.Image) (bool, error)) (image.Image, image.Point, bool, error) {
-	if !heroTabSelected(screen) {
+	if !controls.valid(ctx, generation) || !heroTabSelected(screen) {
 		return nil, image.Point{}, false, nil
+	}
+	// A fish can appear after quantity selection and before the first drag.
+	if found, err := scanFish(screen); err != nil || found {
+		return nil, image.Point{}, false, err
 	}
 	drag := func(thumb image.Point, targetY int) (image.Image, bool, error) {
 		if ctx.Err() != nil {
@@ -458,7 +465,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	input := heroInput{
 		capture:   func() (image.Image, error) { return robotgo.CaptureImg() },
 		move:      moveAt,
-		click:     func(p image.Point) error { return clickHeroAt(ctx, p) },
+		click:     func(p image.Point) error { return clickGameAt(ctx, p) },
 		keyTap:    func(key string) error { return robotgo.KeyTap(key) },
 		keyToggle: func(key, state string) error { return robotgo.KeyToggle(key, state) },
 		drag: func(from, to image.Point) error {
@@ -519,8 +526,9 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	clicks := 0
 	fishClicks := fishClickTracker{}
 	var lastFishScan time.Time
-	scanFish := func(screen image.Image, generation uint64) (bool, error) {
-		if !controls.valid(ctx, generation) || time.Since(lastFishScan) < fishInterval {
+	scanFish := func(screen image.Image, generation uint64, force bool) (bool, error) {
+		// Hero interaction checks must inspect their fresh frame, even between periodic ticks.
+		if !controls.valid(ctx, generation) || (!force && time.Since(lastFishScan) < fishInterval) {
 			return false, nil
 		}
 		lastFishScan = time.Now()
@@ -528,10 +536,13 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		if err != nil {
 			return false, fmt.Errorf("find fish with OpenCV: %w", err)
 		}
-		if !controls.valid(ctx, generation) || !fishClicks.shouldClick(point, found) {
+		if !controls.valid(ctx, generation) {
 			return false, nil
 		}
-		clicked, err := controls.runClick(ctx, generation, func() error { return clickAt(ctx, point.X, point.Y) })
+		if !fishClicks.shouldClick(point, found) {
+			return found, nil
+		}
+		clicked, err := controls.runClick(ctx, generation, func() error { return clickGameAt(ctx, point) })
 		if err != nil {
 			return false, fmt.Errorf("click fish: %w", err)
 		}
@@ -540,7 +551,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			fmt.Printf("clicked fish at (%d, %d)\n", point.X, point.Y)
 			clicks++
 		}
-		return clicked, nil
+		return found, nil
 	}
 	heroPurchasesEnabled := heroLevels
 	heroFailures := 0
@@ -561,17 +572,17 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		if ctx.Err() != nil {
 			return nil
 		}
-		fishClicked, err := scanFish(screenshot, generation)
+		fishPresent, err := scanFish(screenshot, generation, false)
 		if err != nil {
 			return err
 		}
-		if skills && !fishClicked && heroQuantityBarPresent(screenshot) {
+		if skills && !fishPresent && heroQuantityBarPresent(screenshot) {
 			_, err := skillPlan.run(ctx, &controls, generation, input, screenshot, readSkillStates)
 			if err != nil {
 				return err
 			}
 		}
-		if !heroPurchasesEnabled || fishClicked || ctx.Err() != nil || time.Now().Before(nextHeroScan) || controls.isPaused() {
+		if !heroPurchasesEnabled || fishPresent || ctx.Err() != nil || time.Now().Before(nextHeroScan) || controls.isPaused() {
 			return nil
 		}
 		nextHeroScan = time.Now().Add(5 * time.Second)
@@ -598,9 +609,9 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			return nil
 		}
 		x1Screen, button, found, findErr := findHeroButtonWithScroll(ctx, &controls, generation, input, x1Screen, func(screen image.Image) (bool, error) {
-			clicked, err := scanFish(screen, generation)
-			fishClicked = fishClicked || clicked
-			return clicked, err
+			present, err := scanFish(screen, generation, true)
+			fishPresent = fishPresent || present
+			return present, err
 		})
 		var gold, nextPrice float64
 		var readErr error
@@ -622,7 +633,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			return findErr
 		}
 		if !found || ctx.Err() != nil {
-			if !found && hadHeroTab && !fishClicked && !controls.isPaused() && ctx.Err() == nil {
+			if !found && hadHeroTab && !fishPresent && !controls.isPaused() && ctx.Err() == nil {
 				nextHeroScan = time.Now().Add(30 * time.Second)
 			}
 			return nil
@@ -683,8 +694,14 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 				fmt.Printf("leveled hero at (%d, %d)\n", button.X, button.Y)
 				return nil
 			}
-			if _, err := scanFish(after, generation); err != nil {
+			present, err := scanFish(after, generation, true)
+			if err != nil {
 				return err
+			}
+			if present {
+				// A fish obscuring confirmation is not a failed hero purchase.
+				nextHeroScan = time.Now().Add(5 * time.Second)
+				return nil
 			}
 
 		}

@@ -82,6 +82,7 @@ func TestSIFTFishOnHeroScreens(t *testing.T) {
 	}{
 		{"testdata/hero-panel-max.png", image.Pt(611, 978)},
 		{"testdata/hero-owned-disabled.png", image.Pt(1143, 671)},
+		{"testdata/fish-over-scrollbar.png", image.Pt(1211, 575)},
 	} {
 		t.Run(test.path, func(t *testing.T) {
 			file, err := os.Open(test.path)
@@ -158,5 +159,17 @@ func TestFishCenterBounds(t *testing.T) {
 		if ok != tc.inside || (ok && !p.In(image.Rectangle{Max: size})) {
 			t.Fatalf("center(%v,%v)=%v %t", tc.x, tc.y, p, ok)
 		}
+	}
+}
+
+func TestFishAbsentBeforeScrollbarOverlap(t *testing.T) {
+	detector, err := newSIFTFishDetector()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer detector.Close()
+	screen := loadHeroScreen(t, "testdata/hero-scrollbar-before.png")
+	if point, found, err := detector.Find(screen); err != nil || found {
+		t.Fatalf("fish-free scrollbar frame: point=%v found=%t err=%v", point, found, err)
 	}
 }
