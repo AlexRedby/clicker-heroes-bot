@@ -1,28 +1,41 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	xdraw "golang.org/x/image/draw"
 	"image"
+	"image/color"
+	"image/draw"
 	"image/jpeg"
 	"image/png"
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestGameNumberAndCroppedOCR(t *testing.T) {
-	for input, want := range map[string]float64{"225": 2.3521825, "1.259e71": 71.1000258, "1.168e367": 367.067443} {
+	for input, want := range map[string]float64{"0": math.Inf(-1), "225": 2.3521825, "1.259e71": 71.1000258, "1.168e367": 367.067443} {
 		got, ok := parseGameNumber(input)
-		if !ok || math.Abs(got-want) > 0.001 {
+		if !ok || (math.IsInf(want, -1) && !math.IsInf(got, -1)) || (!math.IsInf(want, -1) && math.Abs(got-want) > 0.001) {
 			t.Fatalf("parseGameNumber(%q) = %v, %t", input, got, ok)
 		}
 	}
-	for _, input := range []string{"", "MAX", "1.2e", "1.2e7x", "-5"} {
+	for _, input := range []string{"", "MAX", "1.2e", "1.2e7x", "-5", "91537e69", "9.537069"} {
 		if _, ok := parseGameNumber(input); ok {
 			t.Fatalf("accepted %q", input)
 		}
 	}
 	if _, err := exec.LookPath("tesseract"); err != nil {
+		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
+			t.Fatal("required Tesseract is not installed")
+		}
 		t.Skip("Tesseract is not installed")
 	}
 	file, err := os.Open("testdata/no-fish-game-screen.jpg")
@@ -34,13 +47,21 @@ func TestGameNumberAndCroppedOCR(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gold, err := readHeroGold(screen)
+	gold, err := readHeroGold(context.Background(), screen)
 	if err != nil || math.Abs(gold-71.1000258) > 0.001 {
 		t.Fatalf("gold = %v, error = %v", gold, err)
 	}
-	price, err := readHeroPrice(screen, image.Pt(81, 210))
+	price, err := readHeroPrice(context.Background(), screen, image.Pt(81, 210))
 	if err != nil || math.Abs(price-2.3521825) > 0.001 {
 		t.Fatalf("first hero price = %v, error = %v", price, err)
+	}
+	button, found := findHeroLevelButton(screen)
+	if !found {
+		t.Fatal("runtime hero button missing")
+	}
+	terraPrice, err := readHeroPrice(context.Background(), screen, button)
+	if err != nil || math.Abs(terraPrice-(69+math.Log10(9.537))) > 0.001 {
+		t.Fatalf("runtime Terra price=%v error=%v", terraPrice, err)
 	}
 	largeFile, err := os.Open("testdata/hero-panel-max.png")
 	if err != nil {
@@ -51,8 +72,106 @@ func TestGameNumberAndCroppedOCR(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	largeGold, err := readHeroGold(largeScreen)
+	largeGold, err := readHeroGold(context.Background(), largeScreen)
 	if err != nil || math.Abs(largeGold-367.067443) > 0.001 {
 		t.Fatalf("large screenshot gold = %v, error = %v", largeGold, err)
+	}
+	if level, err := readHeroLevel(context.Background(), screen, image.Pt(81, 498)); err != nil || level != 5 {
+		t.Fatalf("Terra level = %d, error = %v", level, err)
+	}
+	if level, err := readHeroLevel(context.Background(), screen, image.Pt(81, 210)); err != nil || level != 1300 {
+		t.Fatalf("Frostleaf level = %d, error = %v", level, err)
+	}
+	if err := checkHeroOCR(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHeroLevelOnRealScreensAndOverlay(t *testing.T) {
+	if _, err := exec.LookPath("tesseract"); err != nil {
+		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
+			t.Fatal(err)
+		}
+		t.Skip("Tesseract is not installed")
+	}
+	ctx := context.Background()
+	for _, tc := range []struct {
+		path    string
+		y, want int
+	}{
+		{"testdata/hero-panel-max.png", 896, 4367},
+		{"testdata/hero-owned-disabled.png", 917, 4695},
+	} {
+		screen := loadHeroScreen(t, tc.path)
+		got, err := readHeroLevel(ctx, screen, image.Pt(204, tc.y))
+		if err != nil || got != tc.want {
+			t.Fatalf("%s level=%d error=%v", tc.path, got, err)
+		}
+	}
+	f, err := os.Open("testdata/no-fish-game-screen.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	screen, err := jpeg.Decode(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	button, _ := findHeroLevelButton(screen)
+	fishFile, err := os.ReadFile("assets/orange-fish.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fish, err := png.Decode(bytes.NewReader(fishFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	small := image.NewRGBA(image.Rect(0, 0, fish.Bounds().Dx()*50/fish.Bounds().Dy(), 50))
+	xdraw.ApproxBiLinear.Scale(small, small.Bounds(), fish, fish.Bounds(), draw.Src, nil)
+	after := image.NewRGBA(screen.Bounds())
+	draw.Draw(after, after.Bounds(), screen, screen.Bounds().Min, draw.Src)
+	pos := image.Pt(screen.Bounds().Dx()*32/100, button.Y-screen.Bounds().Dy()*3/100)
+	draw.Draw(after, small.Bounds().Add(pos), small, image.Point{}, draw.Over)
+	level, err := readHeroLevel(ctx, after, button)
+	if err == nil && level > 5 {
+		t.Fatalf("fish overlay falsely increased level: %d", level)
+	}
+	// A missing/covered level must not be interpreted as zero or a successful purchase.
+	draw.Draw(after, image.Rect(266, 480, 390, 510), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	if _, err := readHeroLevel(ctx, after, button); err == nil {
+		t.Fatal("covered level was accepted")
+	}
+}
+
+func TestOCRCancellationAndDiagnostics(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is Unix only")
+	}
+	original := tesseractExecutable
+	t.Cleanup(func() { tesseractExecutable = original })
+	fake := filepath.Join(t.TempDir(), "tesseract")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexec sleep 10\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	tesseractExecutable = fake
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := runTesseract(ctx, nil)
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > time.Second {
+		t.Fatalf("slow OCR cancellation: %v elapsed=%s", err, time.Since(start))
+	}
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho missing-traineddata >&2\nexit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	_, err = runTesseract(context.Background(), nil)
+	if err == nil || !strings.Contains(err.Error(), "missing-traineddata") {
+		t.Fatalf("OCR diagnostics lost: %v", err)
+	}
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho 'List of available languages (1):'\necho osd\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkHeroOCR(context.Background()); err == nil {
+		t.Fatal("missing English data accepted")
 	}
 }

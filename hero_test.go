@@ -71,21 +71,14 @@ func TestHeroLevelButton(t *testing.T) {
 	if heroListMoved(screen, after) {
 		t.Fatal("stationary hero list was treated as scrolled")
 	}
-	if heroLevelChanged(screen, after, button) {
-		t.Fatal("unchanged hero level was accepted")
+	if !sameHeroRow(screen, after, button, button) {
+		t.Fatal("unchanged hero row was rejected")
 	}
-	draw.Draw(after, image.Rect(370, 488, 382, 510), image.NewUniform(color.Black), image.Point{}, draw.Src)
-	if heroListMoved(screen, after) {
-		t.Fatal("changed hero text was treated as scrolling")
+	draw.Draw(after, image.Rect(483, 450, 505, 534), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	if heroListStable(screen, after) {
+		t.Fatal("missing scrollbar was accepted as a stationary list")
 	}
-	if !heroLevelChanged(screen, after, button) {
-		t.Fatal("changed hero level was missed")
-	}
-	region := image.Rect(screen.Bounds().Dx()*17/100, screen.Bounds().Dy()*40/100, screen.Bounds().Dx()*28/100, screen.Bounds().Dy()*52/100)
-	draw.Draw(after, region, image.NewUniform(color.Black), image.Point{}, draw.Src)
-	if heroListMoved(screen, after) || !heroLevelChanged(screen, after, button) {
-		t.Fatal("changing hero cards and level text was treated as scrolling")
-	}
+
 }
 
 func TestNextLockedHero(t *testing.T) {
@@ -117,5 +110,47 @@ func TestNextLockedHero(t *testing.T) {
 		if !found || absDiff(next.Y, test.nextY) > 80 || heroRowHasLevel(screen, next.Y) != test.nextAlreadyHasLevels {
 			t.Fatalf("%s: next row = %v, found = %t, owned = %t", test.path, next, found, heroRowHasLevel(screen, next.Y))
 		}
+	}
+}
+
+func loadHeroScreen(t *testing.T, path string) image.Image {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	screen, err := png.Decode(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return screen
+}
+
+func TestHeroPurchaseGuards(t *testing.T) {
+	screen := loadHeroScreen(t, "testdata/hero-panel-max.png")
+	button, found := findHeroLevelButton(screen)
+	if !found || !heroCandidateKnown(screen, button) || !heroQuantitySelected(screen, 435) || heroQuantitySelected(screen, 122) || !heroLayoutValid(screen) {
+		t.Fatal("known MAX layout was rejected or x1 was falsely selected")
+	}
+	disabled := loadHeroScreen(t, "testdata/hero-owned-disabled.png")
+	earlier, _ := findHeroLevelButton(disabled)
+	if heroCandidateKnown(disabled, earlier) {
+		t.Fatal("earlier hero accepted with latest owned hero disabled")
+	}
+	b := screen.Bounds()
+	w, h := b.Dx(), b.Dy()
+	obscured := image.NewRGBA(b)
+	draw.Draw(obscured, b, screen, b.Min, draw.Src)
+	next, _ := findNextHeroButton(screen, button)
+	draw.Draw(obscured, image.Rect(w*26/100, next.Y-h*3/100, w*36/100, next.Y+h*3/100), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	if heroCandidateKnown(obscured, button) {
+		t.Fatal("obscured next row accepted as unowned")
+	}
+	changed := image.NewRGBA(b)
+	draw.Draw(changed, b, screen, b.Min, draw.Src)
+	draw.Draw(changed, image.Rect(w*28/100, button.Y-h*5/100, w*365/1000, button.Y-h*3/100), image.NewUniform(color.White), image.Point{}, draw.Src)
+	if sameHeroRow(screen, changed, button, button) {
+		t.Fatal("different row name accepted")
 	}
 }

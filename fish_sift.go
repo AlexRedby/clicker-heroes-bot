@@ -169,9 +169,18 @@ func (detector *siftFishDetector) matchReference(reference fishReference, sceneP
 	height := float64(reference.height) * math.Hypot(a, c)
 	x := a*float64(reference.width)/2 + b*float64(reference.height)/2 + tx
 	y := c*float64(reference.width)/2 + d*float64(reference.height)/2 + ty
+	center, inside := fishCenter(x, y, screenSize)
 	if height < 50 || height > math.Min(400, float64(screenSize.Y)/4) ||
-		x < 0 || x >= float64(screenSize.X) || y < 0 || y >= float64(screenSize.Y) {
+		!inside {
 		return image.Point{}, 0
 	}
-	return image.Pt(int(math.Round(x)), int(math.Round(y))), inliers
+	return center, inliers
+}
+
+func fishCenter(x, y float64, size image.Point) (image.Point, bool) {
+	if math.IsNaN(x) || math.IsNaN(y) || math.IsInf(x, 0) || math.IsInf(y, 0) {
+		return image.Point{}, false
+	}
+	center := image.Pt(int(math.Round(x)), int(math.Round(y)))
+	return center, center.In(image.Rectangle{Max: size})
 }
