@@ -317,3 +317,80 @@ func TestMercenaryTransientOCRDoesNotAbandonVisit(t *testing.T) {
 		t.Fatal("persistent unreadability did not safely close the dialog")
 	}
 }
+
+func TestMercenaryManualFailedQuestStillCollectsRemainingRewards(t *testing.T) {
+	now := time.Now()
+	bounds := image.Rect(0, 0, 2560, 1440)
+	roster := mercenaryObservation{frame: gameFrame{context: gameContext{known: true, mercenaries: true, bounds: bounds}}, readable: true, top: true, thumbFound: true, thumb: image.Pt(1172, 890), start: []image.Point{image.Pt(768, 1027)}}
+	p := mercenaryPlanner{}
+	id := uint64(0)
+	observe := func(o mercenaryObservation) {
+		now = now.Add(300 * time.Millisecond)
+		id++
+		o.frame.id = id
+		o.frame.at = now
+		p.observe(o, now)
+	}
+	send := func(step mercenaryStep) gameAction {
+		t.Helper()
+		a, ok := p.action(now)
+		if !ok || a.mercenary.step != step {
+			t.Fatalf("wanted step%d got%+v ok%t planner%+v", step, a.mercenary, ok, p)
+		}
+		p.sent(a, now)
+		return a
+	}
+	observe(roster)
+	send(openMercenaryQuest)
+	dialog := mercenaryObservation{frame: gameFrame{context: gameContext{known: true, mercenaries: true, questDialog: true, bounds: bounds}}, selected: -1}
+	observe(dialog)
+	if _, ok := p.action(now); ok {
+		t.Fatal("unreadable offers were clicked")
+	}
+	now = now.Add(6 * time.Second)
+	send(closeMercenaryQuest)
+	roster.start = nil
+	roster.collect = []image.Point{image.Pt(768, 597), image.Pt(768, 810)}
+	observe(roster)
+	if !p.collectOnly || !p.returnHeroes {
+		t.Fatal("manual failed selection did not recover into reward collection")
+	}
+	for len(roster.collect) > 0 {
+		a := send(claimMercenaryReward)
+		if a.point != roster.collect[0] {
+			t.Fatal("wrong remaining reward clicked")
+		}
+		roster.start = append(roster.start, a.point)
+		roster.collect = roster.collect[1:]
+		observe(roster)
+	}
+	send(scrollMercenariesBottom)
+	roster.top, roster.bottom = false, true
+	roster.thumb = image.Pt(1172, 1055)
+	roster.start = []image.Point{image.Pt(768, 810)}
+	roster.collect = []image.Point{image.Pt(768, 1245)}
+	observe(roster)
+	a := send(claimMercenaryReward)
+	if a.point != roster.collect[0] {
+		t.Fatal("fifth mercenary reward was skipped")
+	}
+	roster.start = append(roster.start, a.point)
+	roster.collect = nil
+	observe(roster)
+	send(returnToHeroes)
+	observe(mercenaryObservation{frame: gameFrame{context: gameContext{known: true, heroes: true, bounds: bounds}}})
+	if p.active || p.pending != nil {
+		t.Fatal("manual error left the bot stuck in the roster")
+	}
+	// A missed reward click must stop recovery instead of retrying forever.
+	p = mercenaryPlanner{active: true, returnHeroes: true, topVisited: true, aborting: true, collectOnly: true}
+	roster.collect = []image.Point{image.Pt(768, 1245)}
+	observe(roster)
+	send(claimMercenaryReward)
+	now = now.Add(6 * time.Second)
+	observe(roster)
+	if p.collectOnly || !p.aborting {
+		t.Fatal("unconfirmed reward click kept recovery active")
+	}
+	send(returnToHeroes)
+}

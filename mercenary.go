@@ -59,6 +59,7 @@ type mercenaryPlanner struct {
 	returnHeroes          bool
 	topVisited            bool
 	aborting              bool
+	collectOnly           bool
 	questRow              image.Point
 	questThumb            image.Point
 	chosenQuest           int
@@ -176,6 +177,7 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 		if !confirmed {
 			fmt.Printf("mercenary action %d not confirmed; leaving quests for the next check\n", a.mercenary.step)
 			p.aborting = true
+			p.collectOnly = false
 			// A failed close/return must not cause a rapid retry loop.
 			if a.mercenary.step == closeMercenaryQuest || a.mercenary.step == returnToHeroes {
 				p.active = false
@@ -188,7 +190,18 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 			case returnToHeroes:
 				p.active = false
 				p.returnHeroes = false
+				p.questRow = image.Point{}
 				p.nextScan = now.Add(time.Minute)
+			case claimMercenaryReward:
+				p.questRow = a.point
+			case closeMercenaryQuest:
+				// Only a confirmed closed quest lets us resume safe reward collection.
+				p.collectOnly = p.aborting && p.questRow != (image.Point{})
+				p.questRow = image.Point{}
+				p.unreadableUntil = time.Time{}
+				if p.collectOnly {
+					fmt.Println("mercenary quest skipped; collecting remaining rewards before returning to Heroes")
+				}
 			case confirmMercenaryQuest:
 				fmt.Println("mercenary quest confirmed")
 				p.questRow = image.Point{}
@@ -226,11 +239,11 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 			return a, false
 		}
 		// Also service a roster left open by the user or an interrupted run.
-		p.active, p.topVisited, p.aborting = true, false, false
+		p.active, p.returnHeroes, p.topVisited, p.aborting, p.collectOnly = true, true, false, false, false
 	}
 	// Buttons can be briefly unreadable while a reward or tab animates. Wait
 	// for a fresh readable frame before abandoning the visit; never click guesses.
-	if !o.readable && !p.aborting && now.Before(p.unreadableUntil) {
+	if !o.readable && (!p.aborting || p.collectOnly) && now.Before(p.unreadableUntil) {
 		return a, false
 	}
 	if c.questDialog {
@@ -260,21 +273,26 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 	}
 	if !o.readable {
 		p.aborting = true
+		p.collectOnly = false
 	}
-	if !p.aborting {
+	if !p.aborting || p.collectOnly {
 		if !p.topVisited && o.thumbFound && !o.top {
 			a.mercenary.step, a.point = scrollMercenariesTop, o.thumb
 			a.target = mercenaryPoint(c.bounds, 458, 387)
 			return a, true
 		}
 		p.topVisited = true
-		// Dispatch newly idle mercenaries before collecting the next reward.
-		if len(o.start) > 0 {
-			a.mercenary.step, a.point = openMercenaryQuest, o.start[0]
+		// Pair a confirmed reward with dispatch for that same mercenary.
+		if !p.aborting && p.questRow != (image.Point{}) && hasMercenaryPoint(o.start, p.questRow) {
+			a.mercenary.step, a.point = openMercenaryQuest, p.questRow
 			return a, true
 		}
 		if len(o.collect) > 0 {
 			a.mercenary.step, a.point = claimMercenaryReward, o.collect[0]
+			return a, true
+		}
+		if !p.aborting && len(o.start) > 0 {
+			a.mercenary.step, a.point = openMercenaryQuest, o.start[0]
 			return a, true
 		}
 		if o.thumbFound && !o.bottom {
@@ -300,6 +318,7 @@ func (p *mercenaryPlanner) sent(a gameAction, now time.Time) {
 	switch a.mercenary.step {
 	case openMercenaries:
 		p.active, p.returnHeroes, p.topVisited, p.aborting = true, true, false, false
+		p.collectOnly = false
 	case openMercenaryQuest:
 		p.questRow = a.point
 		p.questThumb = a.mercenaryThumb

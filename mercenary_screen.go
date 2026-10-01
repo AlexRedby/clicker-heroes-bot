@@ -228,7 +228,7 @@ func parseMercenaryReward(raw string) (string, bool) {
 			return "relics", true
 		case "souls":
 			return "hero souls", true
-		case "skills":
+		case "skill", "skills":
 			return "skills", true
 		case "mercenary":
 			return "recruitment", true

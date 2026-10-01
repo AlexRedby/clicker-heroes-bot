@@ -151,7 +151,7 @@ func TestMercenaryQuestOCR(t *testing.T) {
 	for _, tc := range []struct {
 		path     string
 		selected int
-	}{{"testdata/mercenary-quests.png", -1}, {"testdata/mercenary-selected.png", 0}, {"testdata/mercenary-quests-24-hours.png", -1}} {
+	}{{"testdata/mercenary-quests.png", -1}, {"testdata/mercenary-selected.png", 0}, {"testdata/mercenary-quests-24-hours.png", -1}, {"testdata/mercenary-quests-random-skill.png", -1}} {
 		for _, scale := range []int{1, 2} {
 			im := mercenaryScaled(t, tc.path, scale)
 			c, contextErr := recognizedGame(im)
@@ -177,6 +177,13 @@ func TestMercenaryQuestOCR(t *testing.T) {
 					durations = []time.Duration{30 * time.Minute, 2 * time.Hour, 24 * time.Hour, 48 * time.Hour}
 					if chooseMercenaryQuest(o.quests) != 0 {
 						t.Fatal("the real 24-hour offer blocked choosing the 30-minute Hero Souls quest")
+					}
+				}
+				if tc.path == "testdata/mercenary-quests-random-skill.png" {
+					want = []string{"gold", "skills", "rubies", "gold"}
+					durations = []time.Duration{5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 4 * time.Hour}
+					if chooseMercenaryQuest(o.quests) != 2 {
+						t.Fatal("random skill reward blocked selecting the two-hour ruby quest")
 					}
 				}
 				for i, q := range o.quests {
@@ -232,6 +239,30 @@ func TestMercenaryParsingRejectsAmbiguity(t *testing.T) {
 	for _, raw := range []string{"Revive: 30 rubies", "Reroll 30 rubies", "Reward: unknown"} {
 		if _, ok := parseMercenaryReward(raw); ok {
 			t.Fatalf("accepted unsafe reward %q", raw)
+		}
+	}
+}
+
+func TestMercenaryManuallyOpenedMixedRoster(t *testing.T) {
+	if os.Getenv("REQUIRE_OCR_TESTS") == "" {
+		t.Skip("set REQUIRE_OCR_TESTS=1")
+	}
+	for _, scale := range []int{1, 2} {
+		im := mercenaryScaled(t, "testdata/mercenary-mixed-roster.png", scale)
+		c, err := recognizedGame(im)
+		if err != nil || !c.known || !c.mercenaries || c.questDialog {
+			t.Fatalf("context=%+v err=%v", c, err)
+		}
+		now := time.Now()
+		o, err := readMercenaryObservation(context.Background(), gameFrame{id: 1, at: now, image: im, context: c})
+		if err != nil || !o.readable || len(o.collect) != 2 || len(o.start) != 1 || len(o.running) != 1 || !o.top || o.bottom {
+			t.Fatalf("mixed roster=%+v err=%v", o, err)
+		}
+		p := mercenaryPlanner{}
+		p.observe(o, now)
+		a, ok := p.action(now)
+		if !ok || a.mercenary.step != claimMercenaryReward || a.point != o.collect[0] || !p.returnHeroes {
+			t.Fatal("manual visit did not collect the first reward before unrelated idle quests")
 		}
 	}
 }
