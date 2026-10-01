@@ -86,6 +86,9 @@ func readHeroObservation(ctx context.Context, frame gameFrame, read heroReaders,
 		}
 		level, err := read.level(ctx, frame.image, before.button)
 		out.level = level
+		if err != nil {
+			err = fmt.Errorf("hero level at %v: %w", before.button, err)
+		}
 		return out, err
 	}
 	if !out.bottom || !out.x1 {
@@ -112,6 +115,15 @@ func readHeroObservation(ctx context.Context, frame gameFrame, read heroReaders,
 	go func() { defer wg.Done(); out.nextPrice, priceErr = read.price(ctx, frame.image, next) }()
 	go func() { defer wg.Done(); out.level, levelErr = read.level(ctx, frame.image, out.button) }()
 	wg.Wait()
+	if goldErr != nil {
+		goldErr = fmt.Errorf("hero gold: %w", goldErr)
+	}
+	if priceErr != nil {
+		priceErr = fmt.Errorf("next hero price at %v: %w", next, priceErr)
+	}
+	if levelErr != nil {
+		levelErr = fmt.Errorf("hero level at %v: %w", out.button, levelErr)
+	}
 	return out, errors.Join(goldErr, priceErr, levelErr)
 }
 

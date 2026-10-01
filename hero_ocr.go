@@ -247,7 +247,12 @@ func readHeroPrice(ctx context.Context, screen image.Image, button image.Point) 
 		top, bottom = 7, 35
 	}
 	region := image.Rect(b.Min.X+w*start/1000, button.Y+h*top/1000, b.Min.X+w*end/1000, button.Y+h*bottom/1000)
-	return readGameNumber(ctx, screen, region, max(3, 6144/w), 7, 0)
+	// Large captures already have readable glyphs; oversizing this font can lose the entire line.
+	scale := 1
+	if w < 2048 {
+		scale = max(3, 6144/w)
+	}
+	return readGameNumber(ctx, screen, region, scale, 7, 0)
 }
 
 func readHeroLevel(ctx context.Context, screen image.Image, button image.Point) (int, error) {

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"image"
+	"strings"
 	"testing"
 	"time"
 )
@@ -139,6 +141,50 @@ func TestHeroObservationInterruptedOCR(t *testing.T) {
 			}
 			if p.hero.latest.frame.id != 0 || p.hero.failures != 2 {
 				t.Fatal("stale OCR was consumed")
+			}
+		})
+	}
+}
+
+func TestHeroObservationNamesFailedOCRFields(t *testing.T) {
+	screen := loadTestImage(t, "testdata/hero-skogur-hire.png")
+	c, err := recognizedGame(screen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := gameFrame{id: 1, at: time.Now(), image: screen, context: c}
+	for _, field := range []string{"hero gold", "next hero price", "hero level"} {
+		t.Run(field, func(t *testing.T) {
+			failure := errUnreadableGameNumber
+			reader := heroReaders{
+				gold: func(context.Context, image.Image) (float64, error) {
+					if field == "hero gold" {
+						return 0, failure
+					}
+					return 996, nil
+				},
+				price: func(context.Context, image.Image, image.Point) (float64, error) {
+					if field == "next hero price" {
+						return 0, failure
+					}
+					return 999, nil
+				},
+				level: func(context.Context, image.Image, image.Point) (int, error) {
+					if field == "hero level" {
+						return 0, failure
+					}
+					return 16014, nil
+				},
+			}
+			out, err := readHeroObservation(context.Background(), frame, reader, nil)
+			if !errors.Is(err, failure) || !strings.Contains(err.Error(), field) {
+				t.Fatalf("field error=%v", err)
+			}
+			if field == "hero level" {
+				_, err = readHeroObservation(context.Background(), frame, reader, &out)
+				if !errors.Is(err, failure) || !strings.Contains(err.Error(), field) {
+					t.Fatalf("confirmation error=%v", err)
+				}
 			}
 		})
 	}

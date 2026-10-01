@@ -307,3 +307,44 @@ func TestNonGildedSuccessorPurchaseDecision(t *testing.T) {
 		t.Fatalf("Skogur purchase missing: %+v %t", a, ok)
 	}
 }
+
+func TestSkogurHirePriceAndTsuchiDecision(t *testing.T) {
+	if _, err := exec.LookPath("tesseract"); err != nil {
+		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
+			t.Fatal(err)
+		}
+		t.Skip("Tesseract is not installed")
+	}
+	screen := loadTestImage(t, "testdata/hero-skogur-hire.png")
+	now := time.Now()
+	c, err := recognizedGame(screen)
+	if err != nil || !c.heroes {
+		t.Fatalf("context=%+v err=%v", c, err)
+	}
+	frame := gameFrame{id: 1, layout: 1, at: now, image: screen, context: c}
+	out, err := readHeroObservation(context.Background(), frame, heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.found || !out.owned || out.level != 16014 || math.Abs(out.gold-(996+math.Log10(3.742))) > 0.001 || math.Abs(out.nextPrice-(999+math.Log10(2.039))) > 0.001 {
+		t.Fatalf("incorrect inputs: %+v", out)
+	}
+	p := heroRunner{enabled: true}
+	p.observe(out, observation{}, now)
+	a, ok := p.action(now)
+	if !ok || a.kind != buyHero || a.point != out.button {
+		t.Fatalf("Tsuchi purchase missing: %+v %t", a, ok)
+	}
+	// Readability cannot turn a fully hidden successor price into a purchase decision.
+	next, found := findNextHeroButton(screen, out.button)
+	if !found {
+		t.Fatal("successor missing")
+	}
+	covered := image.NewRGBA(screen.Bounds())
+	draw.Draw(covered, covered.Bounds(), screen, screen.Bounds().Min, draw.Src)
+	b := screen.Bounds()
+	draw.Draw(covered, image.Rect(b.Dx()*74/1000, next.Y+b.Dy()*7/1000, b.Dx()*137/1000, next.Y+b.Dy()*35/1000), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	if _, err := readHeroPrice(context.Background(), covered, next); !errors.Is(err, errUnreadableGameNumber) {
+		t.Fatalf("covered price=%v", err)
+	}
+}
