@@ -32,7 +32,7 @@ func TestGildScreenshotWorkflow(t *testing.T) {
 		modal gildModal
 		point image.Point
 	}{
-		{"hud", noGildModal, image.Pt(1212, 587)},
+		{"hud", noGildModal, image.Pt(1217, 581)},
 		{"chest", gildChestModal, image.Pt(640, 349)},
 		{"reward", gildRewardModal, image.Pt(937, 556)},
 		{"roster", gildRosterModal, image.Pt(1149, 39)},
@@ -130,11 +130,34 @@ func TestGildGiftIgnoresAnimatedNotification(t *testing.T) {
 				if err != nil || found != (state != "gift absent") {
 					t.Fatalf("point=%v found=%v err=%v", point, found, err)
 				}
-				if found && (absDiff(point.X, 1212*scale) > 1 || absDiff(point.Y, 587*scale) > 1) {
+				if found && (absDiff(point.X, 1217*scale) > 1 || absDiff(point.Y, 581*scale) > 1) {
 					t.Fatalf("click outside gift body: %v", point)
 				}
 			})
 		}
+	}
+}
+
+func TestGildGiftOnBrightScenery(t *testing.T) {
+	// Native 2560x1440 screenshot crop at (2360,1060)-(2560,1260).
+	patch := gildFixture(t, "gift-beach")
+	hud := gildFixture(t, "hud")
+	for _, scale := range []int{1, 2} {
+		t.Run(string(rune('0'+scale)), func(t *testing.T) {
+			img := image.NewRGBA(image.Rect(0, 0, 1280*scale, 720*scale))
+			xdraw.CatmullRom.Scale(img, img.Bounds(), hud, hud.Bounds(), draw.Src, nil)
+			region := image.Rect(1180*scale, 530*scale, 1280*scale, 630*scale)
+			xdraw.CatmullRom.Scale(img, region, patch, patch.Bounds(), draw.Src, nil)
+			point, found, err := gildActionPoint(gameFrame{image: img})
+			if err != nil || !found || absDiff(point.X, 1217*scale) > 1 || absDiff(point.Y, 581*scale) > 1 {
+				t.Fatalf("bright scenery: point=%v found=%v err=%v", point, found, err)
+			}
+			// Bright scenery without a gift must not cause a click.
+			draw.Draw(img, region, image.NewUniform(color.White), image.Point{}, draw.Src)
+			if _, found, err := gildActionPoint(gameFrame{image: img}); err != nil || found {
+				t.Fatalf("empty bright scenery: found=%v err=%v", found, err)
+			}
+		})
 	}
 }
 
