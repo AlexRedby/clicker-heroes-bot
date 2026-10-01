@@ -18,6 +18,7 @@ const (
 	progressionAnalysis
 	heroAnalysis
 	mercenaryAnalysis
+	ascensionAnalysis
 	analysisCount
 )
 
@@ -29,6 +30,7 @@ const (
 	castSkill
 	enableProgression
 	handleMercenary
+	handleAscension
 	parkPointer
 	selectQuantity
 	scrollHeroes
@@ -37,10 +39,10 @@ const (
 )
 
 type gameContext struct {
-	known, heroes, mercenaries, questDialog bool
-	modal                                   gildModal
-	window                                  string
-	bounds                                  image.Rectangle
+	known, heroes, mercenaries, questDialog, ascension bool
+	modal                                              gildModal
+	window                                             string
+	bounds                                             image.Rectangle
 }
 type gameFrame struct {
 	id, generation, layout uint64
@@ -64,6 +66,7 @@ type observation struct {
 	progression progressionState
 	hero        heroObservation
 	mercenary   mercenaryObservation
+	ascension   ascensionObservation
 	err         error
 }
 type gameAction struct {
@@ -75,6 +78,7 @@ type gameAction struct {
 	skills         [9]skillState
 	progression    progressionState
 	mercenary      mercenaryCommand
+	ascension      ascensionStep
 	mercenaryThumb image.Point
 	queuedAt       time.Time
 }
@@ -91,13 +95,15 @@ type pipelineReaders struct {
 	skills      func(context.Context, image.Image) ([9]skillState, error)
 	progression func(context.Context, image.Image, [9]skillState, bool) (progressionState, error)
 	mercenaries func(context.Context, gameFrame) (mercenaryObservation, error)
+	ascension   func(context.Context, gameFrame) (ascensionObservation, error)
 	heroes      heroReaders
 	window      func() string
 }
 type pipelineOptions struct {
-	heroes, skills, progression, mercenaries, monster, gilds bool
-	monsterPoint                                             image.Point
-	fishInterval, clickInterval, gildInterval                time.Duration
+	heroes, skills, progression, mercenaries, monster, gilds, ascension bool
+	ascensionStall                                                      time.Duration
+	monsterPoint                                                        image.Point
+	fishInterval, clickInterval, gildInterval                           time.Duration
 }
 type pipelineMetrics struct {
 	captures                          uint64
@@ -119,6 +125,7 @@ type gamePipeline struct {
 	hero                                                heroRunner
 	skill                                               skillPlanner
 	progression                                         progressionPlanner
+	ascension                                           ascensionPlanner
 	mercenary                                           mercenaryPlanner
 	fish                                                fishClickTracker
 	gild                                                gildCollector
@@ -153,6 +160,11 @@ func recognizedGame(screen image.Image) (gameContext, error) {
 		return c, errors.New("capture returned no image")
 	}
 	c.bounds = screen.Bounds()
+	ascension, err := ascensionDialog(screen)
+	if err != nil || ascension {
+		c.known, c.ascension = ascension, ascension
+		return c, err
+	}
 	// The quest dialog dims the HUD, including the normal game-context anchor.
 	if mercenaryQuestDialog(screen) {
 		c.known, c.mercenaries, c.questDialog = true, true, true
@@ -185,6 +197,8 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 		out.hero, out.err = readHeroObservation(ctx, job.frame, p.readers.heroes, job.heroBefore)
 	case mercenaryAnalysis:
 		out.mercenary, out.err = p.readers.mercenaries(ctx, job.frame)
+	case ascensionAnalysis:
+		out.ascension, out.err = p.readers.ascension(ctx, job.frame)
 	}
 	out.elapsed = time.Since(start)
 	return out
@@ -208,6 +222,7 @@ func replaceJob(ch chan analysisJob, job analysisJob) {
 }
 
 func (p *gamePipeline) reset(generation uint64) {
+	p.ascension.interrupt()
 	p.generation = generation
 	p.layout++
 	p.queue = make(map[actionKind]gameAction)
@@ -354,7 +369,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	if p.readers.window != nil {
 		c.window = p.readers.window()
 		if c.window == "!outside-game" {
-			c.known, c.heroes, c.mercenaries, c.questDialog, c.modal = false, false, false, false, noGildModal
+			c.known, c.heroes, c.mercenaries, c.questDialog, c.ascension, c.modal = false, false, false, false, false, noGildModal
 		}
 		if c.window == "" && !p.focusFallback {
 			fmt.Println("foreground window identity unavailable; using visual context and F8")
@@ -363,10 +378,14 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	}
 	_, err = p.controls.runClick(ctx, p.generation, func() error {
 		old := p.frame.context
-		if c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.bounds != old.bounds || c.window != old.window {
+		if c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.bounds != old.bounds || c.window != old.window {
 			if c.bounds != old.bounds || c.window != old.window || !p.mercenary.expects(c) {
 				p.mercenary.interrupt()
 			}
+			if !p.ascension.active || c.bounds != old.bounds || c.window != old.window {
+				p.ascension.interrupt()
+			}
+			p.ascension.jobFrame = 0
 			p.mercenaryJobFrame = 0
 			p.nextMercenary = time.Time{}
 			p.layout++
@@ -388,7 +407,12 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		p.frame = gameFrame{p.frame.id + 1, p.generation, p.layout, now, image, c}
 		// Slow capture must not consume its own interval and immediately repeat.
 		p.nextCapture = now.Add(time.Since(start) + min(250*time.Millisecond, p.options.fishInterval))
-		if !c.known || c.modal != noGildModal || p.gild.active {
+		if p.ascension.active && (p.ascension.step == openAscension || p.ascension.step == waitAscensionReset || p.ascension.latest.frame.id == 0) && c.window != "!outside-game" && p.ascension.jobFrame == 0 && p.frame.id > p.ascension.lastInputFrame && !now.Before(p.ascension.nextRead) {
+			p.ascension.jobFrame = p.frame.id
+			replaceJob(jobs[ascensionAnalysis], analysisJob{frame: p.frame})
+			p.ascension.nextRead = now.Add(time.Second)
+		}
+		if c.ascension || p.ascension.active || !c.known || c.modal != noGildModal || p.gild.active {
 			return nil
 		}
 		if p.options.mercenaries && (c.heroes || c.mercenaries) && p.mercenaryJobFrame == 0 && !now.Before(p.mercenary.nextScan) && !now.Before(p.nextMercenary) {
@@ -426,6 +450,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 }
 
 func (p *gamePipeline) accept(ctx context.Context, out observation, now time.Time) error {
+	if out.kind == ascensionAnalysis && out.frame.id == p.ascension.jobFrame {
+		p.ascension.jobFrame = 0
+	}
 	if out.kind == mercenaryAnalysis && out.frame.id == p.mercenaryJobFrame {
 		p.mercenaryJobFrame = 0
 	}
@@ -446,6 +473,21 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		p.metrics.dropped++
 		return nil
 	}
+	if (p.frame.context.ascension || p.ascension.active) && out.kind != ascensionAnalysis {
+		p.metrics.dropped++
+		return nil
+	}
+	if out.kind == ascensionAnalysis {
+		if p.ascension.observe(out.ascension, out.err, now) {
+			p.progression = progressionPlanner{}
+			p.hero.failures, p.hero.enabled = 0, p.options.heroes
+			// accept() already owns the pause-control mutex.
+			p.controls.paused = true
+			p.controls.generation++
+			fmt.Println("Ascension confirmed at zone 1; paused for Hero Souls spending and restart setup; press F8 when ready")
+		}
+		return nil
+	}
 	if out.err != nil {
 		if ctx.Err() != nil {
 			return nil
@@ -455,11 +497,13 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			out.mercenary = mercenaryObservation{frame: out.frame, selected: -1}
 			fmt.Printf("mercenary panel unreadable: %v\n", out.err)
 		case heroAnalysis:
+			p.ascension.interrupt()
 			if p.hero.pending == nil {
 				p.hero.readFailed(out.err, now)
 				return nil
 			}
 		case progressionAnalysis:
+			p.ascension.interrupt()
 			p.nextProgression = now.Add(30 * time.Second)
 			fmt.Printf("progression numbers unreadable: %v; retrying in 30s\n", out.err)
 			return nil
@@ -495,6 +539,9 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		p.hero.observe(out.hero, p.state[fishAnalysis], now)
 	case progressionAnalysis:
 		p.progression.observeFrame(out.progression, out.frame.id, now)
+		if p.options.ascension && out.frame.context.heroes {
+			p.ascension.observeProgress(out.progression, p.progression.wallZone, now)
+		}
 		if !p.progression.wantAction {
 			delete(p.queue, enableProgression)
 		}
@@ -523,7 +570,7 @@ func (p *gamePipeline) plan(now time.Time) {
 	if now.Before(p.settleUntil) {
 		return
 	}
-	if p.planGilds(now) || !p.frame.context.known {
+	if p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
 		return
 	}
 	if p.options.mercenaries {
@@ -559,12 +606,19 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 	if p.mercenary.pending != nil && p.frame.id <= p.mercenary.pending.action.frame.id {
 		return gameAction{}, false
 	}
+	if p.ascension.active && p.frame.id <= p.ascension.lastInputFrame {
+		return gameAction{}, false
+	}
 	for kind := collectFish; kind <= clickMonster; kind++ {
 		action, ok := p.queue[kind]
 		if !ok {
 			continue
 		}
 		if action.frame.layout != p.layout || action.frame.generation != p.generation || !p.frame.context.known || ((p.frame.context.modal != noGildModal || p.gild.active) && kind != collectGilds) {
+			delete(p.queue, kind)
+			continue
+		}
+		if (p.ascension.active || p.frame.context.ascension) && kind != handleAscension {
 			delete(p.queue, kind)
 			continue
 		}
@@ -582,6 +636,12 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 				p.hero.latest = heroObservation{}
 				p.hero.nextScan = now
 			}
+			continue
+		}
+		if kind == handleAscension && ((action.ascension == openAscension && !p.ascensionReady(now)) || !ascensionActionStable(action, p.frame)) {
+			delete(p.queue, kind)
+			p.ascension.latest = ascensionObservation{}
+			p.ascension.nextRead = now
 			continue
 		}
 		if kind == collectGilds && action.frame.id != p.frame.id {
@@ -667,7 +727,7 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			return p.input.move(parkPoint(a.frame.context.bounds))
 		case clickMonster:
 			return p.input.monsterClick(a.point)
-		case collectFish, collectGilds:
+		case collectFish, collectGilds, handleAscension:
 			return p.input.click(a.point)
 		case castSkill:
 			return holdGameKey(ctx, p.input, fmt.Sprint(a.key))
@@ -705,6 +765,13 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 	}
 	invalidate := func(kind analysisKind) { p.barriers[kind] = p.frame.id + 1; p.state[kind] = observation{} }
 	switch a.kind {
+	case handleAscension:
+		p.ascension.sent(a.ascension, a.frame.id, now)
+		ascension := p.ascension
+		p.reset(p.generation)
+		p.ascension = ascension
+		p.frame.context = gameContext{bounds: a.frame.context.bounds, window: a.frame.context.window}
+		fmt.Printf("Ascension %s at (%d, %d)\n", [...]string{"dialog opened", "confirmed", "cancelled"}[a.ascension], a.point.X, a.point.Y)
 	case collectGilds:
 		p.gild.active = true
 		p.gild.opening = a.frame.context.modal == noGildModal
@@ -745,6 +812,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.hero.obstructed(now)
 		fmt.Printf("clicked fish at (%d, %d)\n", a.point.X, a.point.Y)
 	case castSkill:
+		p.ascension.nextCheck = now.Add(10 * time.Second)
 		p.skill.sent(a.key, a.skills, a.frame.id, now)
 		invalidate(skillAnalysis)
 		invalidate(heroAnalysis)
@@ -768,6 +836,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		}
 		invalidate(heroAnalysis)
 		if a.kind == buyHero {
+			p.ascension.nextCheck = now.Add(10 * time.Second)
 			invalidate(progressionAnalysis)
 			delete(p.queue, enableProgression)
 			p.progression.wantAction = false
@@ -783,7 +852,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 
 func (m pipelineMetrics) String() string {
 	parts := []string{fmt.Sprintf("captures=%d capture=%s actions=%d input=%s queue=%s stale=%d", m.captures, m.captureTime, m.actions, m.inputTime, m.queueTime, m.dropped)}
-	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries"} {
+	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension"} {
 		parts = append(parts, fmt.Sprintf("%s=%d/%s", name, m.counts[i], m.elapsed[i]))
 	}
 	return strings.Join(parts, " ")
@@ -848,4 +917,48 @@ func (p *gamePipeline) planGilds(now time.Time) bool {
 		p.gild.opening = false
 	}
 	return exclusive
+}
+
+// Ascension is exclusive from opening the dialog through reset confirmation.
+func (p *gamePipeline) planAscension(now time.Time) bool {
+	if !p.ascension.active {
+		if p.frame.context.ascension {
+			return true // A manually opened dialog is never permission to confirm it.
+		}
+		if !p.ascensionReady(now) {
+			return false
+		}
+		point, found, err := ascensionControl(p.frame.image, ascensionSpiral)
+		if found && err == nil {
+			p.enqueue(gameAction{kind: handleAscension, frame: p.frame, point: point, ascension: openAscension}, now)
+		}
+		return false
+	}
+	if now.After(p.ascension.deadline) {
+		fmt.Println("Ascension did not advance; paused, check the dialog or relic junk pile and press F8 to resume")
+		p.controls.pause()
+		return true
+	}
+	if now.Before(p.ascension.nextAction) || p.ascension.latest.frame.id == 0 || !p.frame.context.ascension {
+		return true
+	}
+	control := ascensionYes
+	if p.ascension.step == cancelAscension {
+		control = ascensionNo
+	} else if p.ascension.step != confirmAscension {
+		return true
+	}
+	point, found, err := ascensionControl(p.frame.image, control)
+	if found && err == nil {
+		p.enqueue(gameAction{kind: handleAscension, frame: p.ascension.latest.frame, point: point, ascension: p.ascension.step}, now)
+	}
+	return true
+}
+
+func (p *gamePipeline) ascensionReady(now time.Time) bool {
+	if !p.options.ascension || !p.frame.context.heroes || p.gild.active || p.mercenary.active || p.mercenary.pending != nil || p.hero.pending != nil || !p.hero.enabled || p.skill.pending != nil || p.progression.pending != nil || p.progression.wantAction || !p.ascension.due(now, p.options.ascensionStall) {
+		return false
+	}
+	hero := p.state[heroAnalysis]
+	return hero.frame.id > 0 && now.Sub(hero.frame.at) <= 10*time.Second && hero.hero.found && p.fishFresh(now) && !p.state[fishAnalysis].found
 }

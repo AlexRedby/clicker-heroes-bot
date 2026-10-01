@@ -87,6 +87,10 @@ The opt-in `-progression` mode uses `A` only when the boot toggle is recognized 
 
 For skills, also check that the skill is unlocked and ready. Use the top-row number keys for initial testing; keypad behavior has not been checked. No direct shortcut for fish collection, scrolling the Heroes list, claiming mercenary quests, Ascension or Transcension was established by this research.
 
+## Ascension
+
+No direct Ascension hotkey has been confirmed. The installed `1.0e12-6144` screenshots show the red spiral at the right edge opening **Do you wish to ascend?**. Green `Yes` performs the World Ascension; green `No` cancels. The blue **Buy Quick Ascension** below them spends rubies and is a different action. The bot uses the recognized spiral and `Yes`, never a guessed keyboard shortcut or the paid button.
+
 ## Bot controls
 
 | Input | Context | Effect |

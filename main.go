@@ -34,6 +34,8 @@ func main() {
 	heroLevels := flag.Bool("hero-levels", false, "scroll the Heroes list and buy hero levels in run mode")
 	gilds := flag.Bool("gilds", false, "open earned gild gifts in batches in run mode")
 	gildInterval := flag.Duration("gild-interval", 5*time.Minute, "time between earned gild gift checks")
+	ascension := flag.Bool("ascension", false, "ascend after a confirmed progress stall; pause after the reset")
+	ascensionStall := flag.Duration("ascension-stall", 15*time.Minute, "continuous lack of zone progress before automatic Ascension")
 	mercenaries := flag.Bool("mercenaries", false, "collect mercenary rewards and send new quests without spending rubies")
 	duration := flag.Duration("duration", 0, "maximum run time (0 means unlimited)")
 	stats := flag.Bool("stats", false, "print pipeline timing and analysis counters when run stops")
@@ -76,7 +78,7 @@ func main() {
 	case "click":
 		err = clickAt(context.Background(), *x, *y)
 	case "run":
-		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval)
+		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -295,7 +297,10 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.misses = 0
 }
 
-func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration) error {
+func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration) error {
+	if ascension && (!heroLevels || !progression || ascensionStall <= 0) {
+		return errors.New("-ascension requires -hero-levels, -progression and a positive -ascension-stall")
+	}
 	if gilds && gildInterval <= 0 {
 		return errors.New("-gild-interval must be positive")
 	}
@@ -379,9 +384,9 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 
 	fmt.Println("paused; press F8 to start or pause, Ctrl+C to stop")
 	pipeline := newGamePipeline(&controls, input, pipelineReaders{
-		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation,
+		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation,
 		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: foregroundGameWindow,
-	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval,
+	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall,
 		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval})
 	err = pipeline.run(ctx)
 	fmt.Printf("stopped after %d actions\n", pipeline.metrics.actions)

@@ -82,21 +82,12 @@ func readProgressionState(ctx context.Context, screen image.Image, states [9]ski
 	if modeOnly {
 		return s, nil
 	}
-	b := screen.Bounds()
-	w, h := b.Dx(), b.Dy()
-	scale := max(3, 8192/w)
-	raw, err := readGameText(ctx, screen, image.Rect(b.Min.X+w*62/100, b.Min.Y+h*118/1000, b.Min.X+w*89/100, b.Min.Y+h*154/1000), scale, 7, -150, "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ")
+	s.Zone, err = readProgressionZone(ctx, screen)
 	if err != nil {
 		return s, err
 	}
-	match := zoneLabel.FindStringSubmatch(strings.TrimSpace(raw))
-	if match == nil {
-		return s, fmt.Errorf("unreadable zone %q", strings.TrimSpace(raw))
-	}
-	s.Zone, err = strconv.Atoi(match[1])
-	if err != nil || s.Zone <= 0 {
-		return s, fmt.Errorf("invalid zone %q", match[1])
-	}
+	b := screen.Bounds()
+	w, h := b.Dx(), b.Dy()
 	s.Buffs = progressionBuffs(states)
 	// Only farm decisions and boss baselines need damage OCR.
 	if !enabled || s.Zone%5 == 0 {
@@ -104,7 +95,7 @@ func readProgressionState(ctx context.Context, screen image.Image, states [9]ski
 		region := image.Rect(b.Min.X+w*35/1000, b.Min.Y+h*243/1000, b.Min.X+w*150/1000, b.Min.Y+h*307/1000).Intersect(b)
 		damage := image.NewRGBA(image.Rect(0, 0, region.Dx()*2, region.Dy()*2))
 		xdraw.CatmullRom.Scale(damage, damage.Bounds(), screen, region, draw.Src, nil)
-		raw, err = readTextImage(ctx, damage, 6, "0123456789.eE ")
+		raw, err := readTextImage(ctx, damage, 6, "0123456789.eE ")
 		if err != nil {
 			return s, err
 		}
@@ -120,4 +111,23 @@ func readProgressionState(ctx context.Context, screen image.Image, states [9]ski
 		s.Damage, s.DamageKnown = max(dps, click), true
 	}
 	return s, nil
+}
+
+func readProgressionZone(ctx context.Context, screen image.Image) (int, error) {
+	b := screen.Bounds()
+	w, h := b.Dx(), b.Dy()
+	scale := max(3, 8192/w)
+	raw, err := readGameText(ctx, screen, image.Rect(b.Min.X+w*62/100, b.Min.Y+h*118/1000, b.Min.X+w*89/100, b.Min.Y+h*154/1000), scale, 7, -150, "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ")
+	if err != nil {
+		return 0, err
+	}
+	match := zoneLabel.FindStringSubmatch(strings.TrimSpace(raw))
+	if match == nil {
+		return 0, fmt.Errorf("unreadable zone %q", strings.TrimSpace(raw))
+	}
+	zone, err := strconv.Atoi(match[1])
+	if err != nil || zone <= 0 {
+		return 0, fmt.Errorf("invalid zone %q", match[1])
+	}
+	return zone, nil
 }

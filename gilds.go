@@ -23,7 +23,7 @@ const (
 	unknownGildModal
 )
 
-func gildRect(screen image.Image, r image.Rectangle) image.Rectangle {
+func controlRect(screen image.Image, r image.Rectangle) image.Rectangle {
 	b := screen.Bounds()
 	return image.Rect(b.Min.X+r.Min.X*b.Dx()/1280, b.Min.Y+r.Min.Y*b.Dy()/720,
 		b.Min.X+r.Max.X*b.Dx()/1280, b.Min.Y+r.Max.Y*b.Dy()/720)
@@ -31,7 +31,15 @@ func gildRect(screen image.Image, r image.Rectangle) image.Rectangle {
 
 // Match only the fixed control region, allowing a few pixels of rendering offset.
 func gildMatch(screen image.Image, region, reference image.Rectangle) (bool, error) {
-	r := gildRect(screen, region)
+	atlas, err := gildControlsImage.get(gildControlsPNG)
+	if err != nil {
+		return false, err
+	}
+	return matchControl(screen, region, atlas, reference)
+}
+
+func matchControl(screen image.Image, region image.Rectangle, atlas image.Image, reference image.Rectangle) (bool, error) {
+	r := controlRect(screen, region)
 	margin := max(2, screen.Bounds().Dx()/640)
 	search := r.Inset(-margin).Intersect(screen.Bounds())
 	if r.Empty() || search.Dx() < r.Dx() || search.Dy() < r.Dy() {
@@ -44,10 +52,6 @@ func gildMatch(screen image.Image, region, reference image.Rectangle) (bool, err
 		return false, err
 	}
 	defer scene.Close()
-	atlas, err := gildControlsImage.get(gildControlsPNG)
-	if err != nil {
-		return false, err
-	}
 	patch := image.NewRGBA(image.Rect(0, 0, reference.Dx(), reference.Dy()))
 	draw.Draw(patch, patch.Bounds(), atlas, reference.Min, draw.Src)
 	source, err := gocv.ImageToMatRGB(patch)
@@ -66,7 +70,7 @@ func readGildModal(screen image.Image) (gildModal, error) {
 	// Check each modal's empty corners before running local template matches.
 	cream := func(points []image.Point) bool {
 		for _, point := range points {
-			p := gildRect(screen, image.Rect(point.X, point.Y, point.X+1, point.Y+1)).Min
+			p := controlRect(screen, image.Rect(point.X, point.Y, point.X+1, point.Y+1)).Min
 			r, g, b := rgb(screen.At(p.X, p.Y))
 			if r < 235 || g < 225 || b < 160 {
 				return false
@@ -104,13 +108,13 @@ func gildActionPoint(frame gameFrame) (image.Point, bool, error) {
 		// Match and click the left gift body; the exclamation mark bounces vertically on the right.
 		region, reference = image.Rect(1195, 555, 1230, 620), image.Rect(0, 0, 35, 65)
 	case gildChestModal:
-		r := gildRect(frame.image, image.Rect(599, 304, 681, 394))
+		r := controlRect(frame.image, image.Rect(599, 304, 681, 394))
 		return r.Min.Add(r.Size().Div(2)), true, nil
 	case gildRewardModal:
 		region, reference = image.Rect(891, 534, 984, 579), image.Rect(0, 176, 93, 221)
 		found, err := gildMatch(frame.image, region, reference)
 		if found || err != nil {
-			return gildRect(frame.image, region).Min.Add(gildRect(frame.image, region).Size().Div(2)), found, err
+			return controlRect(frame.image, region).Min.Add(controlRect(frame.image, region).Size().Div(2)), found, err
 		}
 		// One or two pending gifts may have no Open All; finish via the visible close button.
 		region, reference = image.Rect(973, 106, 1016, 150), image.Rect(0, 221, 43, 265)
@@ -120,7 +124,7 @@ func gildActionPoint(frame gameFrame) (image.Point, bool, error) {
 		return image.Point{}, false, nil
 	}
 	found, err := gildMatch(frame.image, region, reference)
-	r := gildRect(frame.image, region)
+	r := controlRect(frame.image, region)
 	return r.Min.Add(r.Size().Div(2)), found, err
 }
 

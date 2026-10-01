@@ -43,12 +43,10 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ### Automatic Ascension
 
-- Use a configurable stall window (initial default: 15 minutes) based on the highest observed zone, recognized boss fallback and existing progression/skill recovery. Pause, missing OCR, tab changes and manual zone navigation must not count as evidence of a stalled run. Do not reset solely because progression is switched off.
-- Verify the installed game's Ascension button, confirmation dialog and expected Hero Souls from real screenshots. Recognize the relic-junk blocker and report it without deleting or replacing relics automatically. Distinguish normal Ascension from Quick Ascension, Transcension and any ruby purchase. No confirmed Ascension hotkey has been found; prefer the recognized game control.
-- Require working hero leveling and progression management for the opt-in mode. Implement a shared-pipeline transaction: decide -> open -> read reward -> confirm -> observe restart. During modal transitions, invalidate stale actions and suspend unrelated clicks/hotkeys; F8 must interrupt cleanly. Require positive expected souls and a fresh, known game state before confirmation.
-- Complete restart support before enabling automatic resets: recognize the initial short hero list, buy the latest affordable hero, dismiss/unlock required controls, restore autoclicker targets if reset clears them, and enable progression. Obtain real immediate-post-reset screenshots for these steps.
-- Add real-frame positive/negative recognition and decision tests, including a temporary boss loss, unreadable reward, unrelated/blocked dialog, pause/resume, missed confirmation and reset completion. Run OCR regressions, shared-pipeline tests, race checks, build and vet.
-- Verify one complete live Ascension and restart loop before starting automatic Hero Souls spending.
+- Verify one live opt-in `-ascension` reset: the observed boss wall and configured stall window, red spiral -> readable positive Hero Souls reward -> green Yes -> zone 1 -> automatic pause. Test a missed click, manual cancellation and F8 with the dialog open. Real-frame recognition, modal isolation, reward changes and decision cancellation are covered by regression tests.
+- Capture the immediate post-reset HUD to verify zone-1 OCR and initial controls in the installed game. The first implementation pauses after reset; complete initial short-list hero buying, Amenhotep's Ascension unlock and Auto Clicker target setup before enabling repeated unattended runs.
+- Capture the relic-junk blocking screen and recognize/report it specifically; keep automatic relic destruction/equipment outside this mode. Unknown or blocked transitions currently time out to a pause.
+- Verify the Ascension/restart stages live before enabling automatic Hero Souls spending.
 
 ### Hero Souls spending
 
