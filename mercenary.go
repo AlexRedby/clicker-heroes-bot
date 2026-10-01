@@ -36,6 +36,7 @@ const (
 	scrollMercenariesTop
 	scrollMercenariesBottom
 	returnToHeroes
+	claimAndOpenMercenaryQuest
 )
 
 type mercenaryCommand struct {
@@ -55,9 +56,11 @@ type mercenaryPlanner struct {
 	pending               *mercenaryAttempt
 	nextScan              time.Time
 	unreadableUntil       time.Time
+	contextUntil          time.Time
 	active                bool
 	returnHeroes          bool
 	topVisited            bool
+	bottomVisited         bool
 	aborting              bool
 	collectOnly           bool
 	questRow              image.Point
@@ -116,14 +119,28 @@ func (p *mercenaryPlanner) interrupt() {
 	*p = mercenaryPlanner{}
 }
 
-func (p *mercenaryPlanner) expects(c gameContext) bool {
+func (p *mercenaryPlanner) expects(c gameContext, now time.Time) bool {
+	if c.known {
+		p.contextUntil = time.Time{}
+	}
+	if p.pending != nil && c == p.pending.action.frame.context {
+		// A delayed or missed input may leave the original screen visible.
+		return true
+	}
+	if !c.known && c.modal == noGildModal && (p.active || p.pending != nil) {
+		// A transient HUD miss during an input must not restart the roster sweep.
+		if p.contextUntil.IsZero() {
+			p.contextUntil = now.Add(5 * time.Second)
+		}
+		return now.Before(p.contextUntil)
+	}
 	if p.pending == nil {
-		return false
+		return p.active && c.known && c.mercenaries && !c.questDialog
 	}
 	switch p.pending.action.mercenary.step {
-	case openMercenaries, confirmMercenaryQuest, closeMercenaryQuest:
+	case openMercenaries, claimMercenaryReward, confirmMercenaryQuest, closeMercenaryQuest, scrollMercenariesTop, scrollMercenariesBottom:
 		return c.known && c.mercenaries && !c.questDialog
-	case openMercenaryQuest:
+	case openMercenaryQuest, claimAndOpenMercenaryQuest, selectMercenaryQuest:
 		return c.known && c.questDialog
 	case returnToHeroes:
 		return c.known && c.heroes
@@ -155,7 +172,7 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 			confirmed = o.frame.context.mercenaries && !o.frame.context.questDialog
 		case claimMercenaryReward:
 			confirmed = o.readable && hasMercenaryPoint(o.start, a.point) && !hasMercenaryPoint(o.collect, a.point)
-		case openMercenaryQuest:
+		case openMercenaryQuest, claimAndOpenMercenaryQuest:
 			confirmed = o.frame.context.questDialog
 		case selectMercenaryQuest:
 			confirmed = o.readable && o.frame.context.questDialog && o.selected == a.mercenary.quest && o.okay != (image.Point{}) && mercenaryOfferMatches(o, a.mercenary.quest, a.mercenary.offer)
@@ -187,6 +204,8 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 			switch a.mercenary.step {
 			case scrollMercenariesTop:
 				p.topVisited = true
+			case scrollMercenariesBottom:
+				p.bottomVisited = true
 			case returnToHeroes:
 				p.active = false
 				p.returnHeroes = false
@@ -239,7 +258,7 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 			return a, false
 		}
 		// Also service a roster left open by the user or an interrupted run.
-		p.active, p.returnHeroes, p.topVisited, p.aborting, p.collectOnly = true, true, false, false, false
+		p.active, p.returnHeroes, p.topVisited, p.bottomVisited, p.aborting, p.collectOnly = true, true, false, false, false, false
 	}
 	// Buttons can be briefly unreadable while a reward or tab animates. Wait
 	// for a fresh readable frame before abandoning the visit; never click guesses.
@@ -289,13 +308,16 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 		}
 		if len(o.collect) > 0 {
 			a.mercenary.step, a.point = claimMercenaryReward, o.collect[0]
+			if !p.aborting {
+				a.mercenary.step = claimAndOpenMercenaryQuest
+			}
 			return a, true
 		}
 		if !p.aborting && len(o.start) > 0 {
 			a.mercenary.step, a.point = openMercenaryQuest, o.start[0]
 			return a, true
 		}
-		if o.thumbFound && !o.bottom {
+		if o.thumbFound && !o.bottom && !p.bottomVisited {
 			a.mercenary.step, a.point = scrollMercenariesBottom, o.thumb
 			a.target = mercenaryPoint(c.bounds, 458, 964)
 			return a, true
@@ -318,8 +340,9 @@ func (p *mercenaryPlanner) sent(a gameAction, now time.Time) {
 	switch a.mercenary.step {
 	case openMercenaries:
 		p.active, p.returnHeroes, p.topVisited, p.aborting = true, true, false, false
+		p.bottomVisited = false
 		p.collectOnly = false
-	case openMercenaryQuest:
+	case openMercenaryQuest, claimAndOpenMercenaryQuest:
 		p.questRow = a.point
 		p.questThumb = a.mercenaryThumb
 		p.chosenQuest = -1

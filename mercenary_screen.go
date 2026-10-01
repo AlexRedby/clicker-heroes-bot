@@ -250,6 +250,10 @@ func parseMercenaryReward(raw string) (string, bool) {
 }
 
 func readMercenaryObservation(ctx context.Context, frame gameFrame) (mercenaryObservation, error) {
+	return readMercenaryObservationAfter(ctx, frame, mercenaryObservation{})
+}
+
+func readMercenaryObservationAfter(ctx context.Context, frame gameFrame, before mercenaryObservation) (mercenaryObservation, error) {
 	out := mercenaryObservation{frame: frame, selected: -1}
 	if frame.image == nil {
 		return out, fmt.Errorf("nil mercenary screen")
@@ -267,13 +271,67 @@ func readMercenaryObservation(ctx context.Context, frame gameFrame) (mercenaryOb
 		if len(rows) == 0 {
 			return out, fmt.Errorf("mercenary roster cards not recognized")
 		}
+		var changed []image.Point
 		for _, point := range rows {
-			region := image.Rect(b.Min.X+w*237/1000, point.Y-h*27/1000, b.Min.X+w*371/1000, point.Y+h*27/1000)
-			raw, err := readGameText(ctx, screen, region, max(2, 4096/w), 7, -170, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789: ")
+			if before.readable && before.frame.image != nil && before.frame.generation == frame.generation &&
+				before.frame.context.bounds == frame.context.bounds && before.frame.context.window == frame.context.window &&
+				before.thumbFound == out.thumbFound && absDiff(before.thumb.Y, out.thumb.Y) <= 2 &&
+				mercenaryButtonUnchanged(before.frame.image, screen, point) {
+				switch {
+				case hasMercenaryPoint(before.collect, point):
+					out.collect = append(out.collect, point)
+					continue
+				case hasMercenaryPoint(before.start, point):
+					out.start = append(out.start, point)
+					continue
+				case hasMercenaryPoint(before.running, point):
+					out.running = append(out.running, point)
+					continue
+				}
+			}
+			changed = append(changed, point)
+		}
+		// Pack buttons into one OCR request; TSV coordinates keep missing lines
+		// from shifting another button's label onto the wrong mercenary.
+		cropHeight := 2 * (h * 27 / 1000)
+		buttons := image.NewRGBA(image.Rect(0, 0, w*371/1000-w*237/1000, (cropHeight+2)*len(changed)))
+		for i, point := range changed {
+			region := image.Rect(0, i*(cropHeight+2), buttons.Bounds().Dx(), i*(cropHeight+2)+cropHeight)
+			draw.Draw(buttons, region, screen, image.Pt(b.Min.X+w*237/1000, point.Y-h*27/1000), draw.Src)
+		}
+		labels := make([]string, len(changed))
+		if len(changed) > 0 {
+			scale := max(2, 4096/w)
+			raw, err := readGameText(ctx, buttons, buttons.Bounds(), scale, 6, -170, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789: ", "tsv")
 			if err != nil {
 				return out, err
 			}
-			label := strings.TrimSpace(raw)
+			for _, line := range strings.Split(raw, "\n") {
+				fields := strings.Split(line, "\t")
+				if len(fields) != 12 || fields[0] != "5" || strings.TrimSpace(fields[11]) == "" {
+					continue
+				}
+				y, yErr := strconv.Atoi(fields[7])
+				height, hErr := strconv.Atoi(fields[9])
+				index := (y - gameTextPadding) / (scale * (cropHeight + 2))
+				if yErr != nil || hErr != nil || height <= 0 || y < gameTextPadding || index < 0 || index >= len(labels) ||
+					y+height > gameTextPadding+scale*(index*(cropHeight+2)+cropHeight) {
+					return out, fmt.Errorf("ambiguous mercenary OCR word position %q", line)
+				}
+				labels[index] += " " + fields[11]
+			}
+		}
+		for i, point := range changed {
+			label := strings.TrimSpace(labels[i])
+			if label == "" {
+				// A blank crop stays attached to its own row; retry it individually.
+				region := image.Rect(b.Min.X+w*237/1000, point.Y-h*27/1000, b.Min.X+w*371/1000, point.Y+h*27/1000)
+				raw, err := readGameText(ctx, screen, region, max(2, 4096/w), 7, -170, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789: ")
+				if err != nil {
+					return out, err
+				}
+				label = strings.TrimSpace(raw)
+			}
 			compact := strings.ToLower(strings.Join(strings.Fields(label), ""))
 			switch {
 			case compact == "collect":
@@ -342,4 +400,28 @@ func readMercenaryObservation(ctx context.Context, frame gameFrame) (mercenaryOb
 	}
 	out.readable = true
 	return out, nil
+}
+
+func mercenaryButtonUnchanged(before, after image.Image, point image.Point) bool {
+	if before.Bounds() != after.Bounds() {
+		return false
+	}
+	b := after.Bounds()
+	region := image.Rect(b.Min.X+b.Dx()*237/1000, point.Y-b.Dy()*27/1000, b.Min.X+b.Dx()*371/1000, point.Y+b.Dy()*27/1000)
+	text := 0
+	for y := region.Min.Y; y < region.Max.Y; y++ {
+		for x := region.Min.X; x < region.Max.X; x++ {
+			r, g, blue := rgb(before.At(x, y))
+			cr, cg, cb := rgb(after.At(x, y))
+			white := min(r, g, blue) > 170 && max(r, g, blue)-min(r, g, blue) < 55
+			currentWhite := min(cr, cg, cb) > 170 && max(cr, cg, cb)-min(cr, cg, cb) < 55
+			if white != currentWhite {
+				return false
+			}
+			if white {
+				text++
+			}
+		}
+	}
+	return text > 0
 }

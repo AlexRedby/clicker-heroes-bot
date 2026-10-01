@@ -59,17 +59,15 @@ func TestMercenaryPolicyAndConfirmedCycle(t *testing.T) {
 	}
 	merc := mercenaryObservation{frame: gameFrame{context: gameContext{known: true, mercenaries: true, bounds: bounds}}, collect: []image.Point{row}, thumb: thumb, thumbFound: true, top: true, selected: -1, readable: true}
 	step(openMercenaries, merc)
-	merc.collect, merc.start = nil, []image.Point{row}
-	step(claimMercenaryReward, merc)
 	dialog := mercenaryObservation{frame: gameFrame{context: gameContext{known: true, mercenaries: true, questDialog: true, bounds: bounds}}, selected: -1, readable: true,
 		quests: []mercenaryQuest{{reward: "gold", duration: 2 * time.Hour, point: image.Pt(1000, 390)}, {reward: "gold", duration: 4 * time.Hour, point: image.Pt(1000, 600)}}}
-	step(openMercenaryQuest, dialog)
+	step(claimAndOpenMercenaryQuest, dialog)
 	dialog.selected, dialog.okay = 0, image.Pt(1815, 720)
 	a := step(selectMercenaryQuest, dialog)
 	if a.mercenary.quest != 0 {
 		t.Fatalf("wrong quest: %+v", a)
 	}
-	merc.start = nil
+	merc.collect, merc.start = nil, nil
 	merc.running = []image.Point{row}
 	step(confirmMercenaryQuest, merc)
 	merc.top, merc.bottom = false, true
@@ -218,7 +216,7 @@ func TestMercenaryCaptureSchedulesActionAndPreservesExpectedTabChange(t *testing
 	}
 	p.state[fishAnalysis] = observation{frame: p.frame}
 	p.plan(now.Add(310 * time.Millisecond))
-	if a, ok := p.nextAction(now.Add(310 * time.Millisecond)); !ok || a.mercenary.step != claimMercenaryReward {
+	if a, ok := p.nextAction(now.Add(310 * time.Millisecond)); !ok || a.mercenary.step != claimAndOpenMercenaryQuest {
 		t.Fatal("confirmed roster did not lead to reward collection")
 	}
 }
@@ -273,15 +271,17 @@ func TestMercenaryTransientOCRDoesNotAbandonVisit(t *testing.T) {
 	o := mercenaryObservation{frame: gameFrame{id: 1, at: now, context: c}, readable: true, bottom: true, collect: []image.Point{row}}
 	p.observe(o, now)
 	a, ok := p.action(now)
-	if !ok || a.mercenary.step != claimMercenaryReward {
+	if !ok || a.mercenary.step != claimAndOpenMercenaryQuest {
 		t.Fatal("reward was not collected")
 	}
 	p.sent(a, now)
 	o.frame.id++
-	o.collect, o.start = nil, []image.Point{row}
+	o.collect = nil
+	o.frame.context.questDialog = true
+	o.readable = false
 	p.observe(o, now.Add(300*time.Millisecond))
 	if p.pending != nil {
-		t.Fatal("claim was not confirmed by Start Quest")
+		t.Fatal("claim/open was not confirmed by the quest dialog")
 	}
 	// A transient empty OCR result after the reward must not cause a return.
 	o.frame.id++
@@ -292,14 +292,18 @@ func TestMercenaryTransientOCRDoesNotAbandonVisit(t *testing.T) {
 	}
 	o.frame.id++
 	o.readable = true
-	o.collect = []image.Point{image.Pt(768, 810)}
+	o.selected = -1
+	o.quests = []mercenaryQuest{{reward: "gold", duration: time.Hour, point: image.Pt(1000, 390)}}
 	p.observe(o, now.Add(600*time.Millisecond))
 	a, ok = p.action(now.Add(600 * time.Millisecond))
-	if !ok || a.mercenary.step != openMercenaryQuest || a.point != row {
-		t.Fatal("recovered frame did not dispatch the idle fifth mercenary first")
+	if !ok || a.mercenary.step != selectMercenaryQuest || p.questRow != row {
+		t.Fatal("recovered frame did not select a quest for the fifth mercenary")
 	}
 	// Persistent unreadability has a bounded timeout and no guessed clicks.
 	p.sent(a, now.Add(600*time.Millisecond))
+	o.frame.id++
+	o.selected, o.okay = 0, image.Pt(1815, 720)
+	p.observe(o, now.Add(650*time.Millisecond))
 	o.frame.id++
 	o.frame.context.questDialog = true
 	o.readable = false
@@ -315,6 +319,144 @@ func TestMercenaryTransientOCRDoesNotAbandonVisit(t *testing.T) {
 	a, ok = p.action(now.Add(6 * time.Second))
 	if !ok || a.mercenary.step != closeMercenaryQuest || !p.aborting {
 		t.Fatal("persistent unreadability did not safely close the dialog")
+	}
+}
+
+func TestMercenaryFastClaimAndSingleSweep(t *testing.T) {
+	ctx, now := context.Background(), time.Now()
+	bounds := image.Rect(0, 0, 2560, 1440)
+	roster := mercenaryObservation{frame: gameFrame{context: gameContext{known: true, mercenaries: true, bounds: bounds}}, readable: true, top: true, thumbFound: true, thumb: image.Pt(1172, 890)}
+	p := mercenaryPlanner{}
+	id := uint64(0)
+	observe := func(o mercenaryObservation) {
+		id++
+		now = now.Add(300 * time.Millisecond)
+		o.frame.id, o.frame.at = id, now
+		p.observe(o, now)
+	}
+	send := func(step mercenaryStep) gameAction {
+		t.Helper()
+		a, ok := p.action(now)
+		if !ok || a.mercenary.step != step {
+			t.Fatalf("wanted step %d got %+v ok=%t", step, a.mercenary, ok)
+		}
+		p.sent(a, now)
+		return a
+	}
+	rows := []image.Point{image.Pt(768, 597), image.Pt(768, 810), image.Pt(768, 1027), image.Pt(768, 1240)}
+	roster.collect = append([]image.Point(nil), rows...)
+	observe(roster)
+	dialog := mercenaryObservation{frame: gameFrame{context: gameContext{known: true, mercenaries: true, questDialog: true, bounds: bounds}}, readable: true,
+		quests: []mercenaryQuest{{reward: "rubies", duration: time.Hour, point: image.Pt(1000, 390)}}}
+	for i := 0; i < 5; i++ {
+		row := roster.collect[0]
+		a := send(claimAndOpenMercenaryQuest)
+		var clicks []image.Point
+		input := heroInput{click: func(point image.Point) error { clicks = append(clicks, point); return nil }, move: func(image.Point) error { return nil }}
+		pipeline := newGamePipeline(&pauseControl{}, input, pipelineReaders{}, pipelineOptions{})
+		acted, err := pipeline.execute(ctx, a)
+		if !acted || err != nil || len(clicks) != 2 || clicks[0] != row || clicks[1] != row {
+			t.Fatalf("claim/start clicks=%v acted=%t err=%v", clicks, acted, err)
+		}
+		pipeline.controls.toggle()
+		if acted, err := pipeline.execute(ctx, a); acted || err != nil || len(clicks) != 2 {
+			t.Fatal("F8 allowed a queued claim/start pair")
+		}
+		dialog.selected, dialog.okay = -1, image.Point{}
+		observe(dialog)
+		send(selectMercenaryQuest)
+		dialog.selected, dialog.okay = 0, image.Pt(1815, 720)
+		observe(dialog)
+		send(confirmMercenaryQuest)
+		roster.collect = roster.collect[1:]
+		roster.running = append(roster.running, row)
+		observe(roster)
+		if i == 3 {
+			send(scrollMercenariesBottom)
+			roster.top, roster.bottom = false, true
+			roster.thumb = image.Pt(1172, 1055)
+			roster.collect = []image.Point{image.Pt(768, 1245)}
+			observe(roster)
+		}
+	}
+	// Even if a later readable frame reports a different thumb position, the
+	// completed sweep must not start another down/up cycle to wait for timers.
+	roster.bottom = false
+	observe(roster)
+	send(returnToHeroes)
+	observe(mercenaryObservation{frame: gameFrame{context: gameContext{known: true, heroes: true, bounds: bounds}}})
+	if p.active || p.pending != nil {
+		t.Fatal("five running quests did not finish the visit")
+	}
+	// A missed second click leaves Start Quest visible and must not cause a
+	// rapid repeat of Collect/Start or a guessed selection.
+	p = mercenaryPlanner{active: true, returnHeroes: true, topVisited: true}
+	roster.collect, roster.running, roster.start = []image.Point{rows[0]}, nil, nil
+	observe(roster)
+	send(claimAndOpenMercenaryQuest)
+	roster.collect, roster.start = nil, []image.Point{rows[0]}
+	observe(roster)
+	if _, ok := p.action(now); ok {
+		t.Fatal("unconfirmed quest open emitted another click")
+	}
+	now = now.Add(6 * time.Second)
+	observe(roster)
+	send(returnToHeroes)
+}
+
+func TestMercenaryScrollContextFlickerDoesNotRestartVisit(t *testing.T) {
+	ctx, now := context.Background(), time.Now()
+	im := loadTestImage(t, "testdata/mercenary-bottom-idle.png")
+	bounds := im.Bounds()
+	c := gameContext{known: true, mercenaries: true, bounds: bounds}
+	p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return im, nil }}, pipelineReaders{context: func(image.Image) (gameContext, error) { return c, nil }}, pipelineOptions{})
+	p.frame = gameFrame{id: 1, image: im, context: c}
+	p.mercenary = mercenaryPlanner{active: true, returnHeroes: true, topVisited: true}
+	jobs := make([]chan analysisJob, analysisCount)
+	for i := range jobs {
+		jobs[i] = make(chan analysisJob, 1)
+	}
+	// Capture can see an intermediate HUD before the native drag returns and
+	// actionCompleted installs its pending confirmation.
+	c.known, c.mercenaries = false, false
+	if err := p.capture(ctx, now.Add(100*time.Millisecond), jobs); err != nil {
+		t.Fatal(err)
+	}
+	if !p.mercenary.active || !p.mercenary.topVisited {
+		t.Fatal("unknown context before input completion restarted the visit")
+	}
+	probe := p.mercenary
+	if probe.expects(c, now.Add(6*time.Second)) {
+		t.Fatal("unknown context retained a visit indefinitely")
+	}
+	c.known, c.mercenaries = true, true
+	if err := p.capture(ctx, now.Add(200*time.Millisecond), jobs); err != nil {
+		t.Fatal(err)
+	}
+	p.mercenary.sent(gameAction{kind: handleMercenary, frame: p.frame, mercenary: mercenaryCommand{step: scrollMercenariesBottom}}, now)
+	c.known, c.mercenaries = false, false
+	if err := p.capture(ctx, now.Add(300*time.Millisecond), jobs); err != nil {
+		t.Fatal(err)
+	}
+	c.known, c.mercenaries = true, true
+	if err := p.capture(ctx, now.Add(600*time.Millisecond), jobs); err != nil {
+		t.Fatal(err)
+	}
+	if !p.mercenary.topVisited || !p.mercenary.active || p.mercenary.pending == nil {
+		t.Fatal("temporary unknown context restarted the sweep")
+	}
+	p.mercenary.observe(mercenaryObservation{frame: p.frame, readable: true, bottom: true, thumbFound: true, running: []image.Point{image.Pt(768, 1245)}}, now.Add(600*time.Millisecond))
+	a, ok := p.mercenary.action(now.Add(600 * time.Millisecond))
+	if !ok || a.mercenary.step != returnToHeroes {
+		t.Fatal("confirmed bottom did not return to Heroes")
+	}
+	// A deliberate tab change still invalidates all mercenary work.
+	c.mercenaries, c.heroes = false, true
+	if err := p.capture(ctx, now.Add(900*time.Millisecond), jobs); err != nil {
+		t.Fatal(err)
+	}
+	if p.mercenary.active {
+		t.Fatal("manual tab change retained mercenary work")
 	}
 }
 

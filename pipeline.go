@@ -379,7 +379,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	_, err = p.controls.runClick(ctx, p.generation, func() error {
 		old := p.frame.context
 		if c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.bounds != old.bounds || c.window != old.window {
-			if c.bounds != old.bounds || c.window != old.window || !p.mercenary.expects(c) {
+			if c.bounds != old.bounds || c.window != old.window || !p.mercenary.expects(c, now) {
 				p.mercenary.interrupt()
 			}
 			if !p.ascension.active || c.bounds != old.bounds || c.window != old.window {
@@ -723,6 +723,12 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			}
 			if err := p.input.click(a.point); err != nil {
 				return err
+			}
+			if a.mercenary.step == claimAndOpenMercenaryQuest {
+				// Collect becomes Start Quest in place; each click includes release settling.
+				if err := p.input.click(a.point); err != nil {
+					return err
+				}
 			}
 			return p.input.move(parkPoint(a.frame.context.bounds))
 		case clickMonster:

@@ -346,7 +346,13 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 				return err
 			}
 			time.Sleep(100 * time.Millisecond)
-			robotgo.DragSmooth(target.X, target.Y, 0.5, 1.5)
+			highDelay := 0.75
+			if runtime.GOOS == "windows" {
+				// RobotGo truncates Windows Sleep to integer milliseconds: keep
+				// 1 ms on a quarter of steps instead of removing the delay entirely.
+				highDelay = 1.25
+			}
+			robotgo.DragSmooth(target.X, target.Y, 0.25, highDelay)
 			return nil
 		},
 	}
@@ -383,8 +389,16 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	}()
 
 	fmt.Println("paused; press F8 to start or pause, Ctrl+C to stop")
+	var mercenaryRoster mercenaryObservation // Used only by the mercenary analysis worker.
 	pipeline := newGamePipeline(&controls, input, pipelineReaders{
-		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation,
+		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, ascension: readAscensionObservation,
+		mercenaries: func(ctx context.Context, frame gameFrame) (mercenaryObservation, error) {
+			o, err := readMercenaryObservationAfter(ctx, frame, mercenaryRoster)
+			if err == nil && o.readable && !frame.context.questDialog {
+				mercenaryRoster = o
+			}
+			return o, err
+		},
 		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: foregroundGameWindow,
 	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall,
 		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval})

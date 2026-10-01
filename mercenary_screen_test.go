@@ -6,6 +6,8 @@ import (
 	"image/color"
 	"image/draw"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -142,6 +144,63 @@ func TestMercenaryScreenRecognizers(t *testing.T) {
 				t.Fatal("timer position cannot confirm dispatch at the original row")
 			}
 		}
+	}
+}
+
+func TestMercenaryBatchOCRReusesOnlyUnchangedButtons(t *testing.T) {
+	if os.Getenv("REQUIRE_OCR_TESTS") == "" {
+		t.Skip("set REQUIRE_OCR_TESTS=1")
+	}
+	original := tesseractExecutable
+	real, err := exec.LookPath(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { tesseractExecutable = original })
+	dir := t.TempDir()
+	calls := filepath.Join(dir, "calls")
+	t.Setenv("CH_MERCENARY_OCR_CALLS", calls)
+	t.Setenv("CH_MERCENARY_OCR_REAL", real)
+	tesseractExecutable = filepath.Join(dir, "tesseract")
+	if err := os.WriteFile(tesseractExecutable, []byte("#!/bin/sh\necho call >> \"$CH_MERCENARY_OCR_CALLS\"\nexec \"$CH_MERCENARY_OCR_REAL\" \"$@\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	im := loadTestImage(t, "testdata/mercenary-collect.png")
+	frame := gameFrame{image: im, context: gameContext{known: true, mercenaries: true, bounds: im.Bounds()}}
+	before, err := readMercenaryObservation(ctx, frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := os.ReadFile(calls)
+	if err != nil || strings.Count(string(count), "call") != 1 {
+		t.Fatalf("four visible buttons needed more than one OCR process: %q err=%v", count, err)
+	}
+	// An unavailable OCR engine proves the next identical roster uses only pixels.
+	tesseractExecutable = filepath.Join(dir, "unavailable")
+	after, err := readMercenaryObservationAfter(ctx, frame, before)
+	if err != nil || !after.readable || len(after.collect) != len(before.collect) || len(after.running) != len(before.running) {
+		t.Fatalf("unchanged buttons were not reused: %+v err=%v", after, err)
+	}
+	frame.generation++
+	if _, err := readMercenaryObservationAfter(ctx, frame, before); err == nil {
+		t.Fatal("F8 generation reused old button labels")
+	}
+	frame.generation--
+	frame.image = loadTestImage(t, "testdata/mercenary-idle.png")
+	if _, err := readMercenaryObservationAfter(ctx, frame, before); err == nil {
+		t.Fatal("Collect becoming Start Quest reused an old label")
+	}
+	// Missing first-row text must not shift the later Collect labels upward.
+	tesseractExecutable = original
+	blank := image.NewRGBA(im.Bounds())
+	draw.Draw(blank, blank.Bounds(), im, im.Bounds().Min, draw.Src)
+	row := before.collect[0]
+	region := image.Rect(im.Bounds().Dx()*237/1000, row.Y-im.Bounds().Dy()*27/1000, im.Bounds().Dx()*371/1000, row.Y+im.Bounds().Dy()*27/1000)
+	draw.Draw(blank, region, image.NewUniform(color.Black), image.Point{}, draw.Src)
+	frame.image = blank
+	if o, err := readMercenaryObservation(ctx, frame); err == nil || o.readable {
+		t.Fatal("a blank first button was given another row's label")
 	}
 }
 
@@ -290,7 +349,7 @@ func TestMercenaryManuallyOpenedMixedRoster(t *testing.T) {
 		p := mercenaryPlanner{}
 		p.observe(o, now)
 		a, ok := p.action(now)
-		if !ok || a.mercenary.step != claimMercenaryReward || a.point != o.collect[0] || !p.returnHeroes {
+		if !ok || a.mercenary.step != claimAndOpenMercenaryQuest || a.point != o.collect[0] || !p.returnHeroes {
 			t.Fatal("manual visit did not collect the first reward before unrelated idle quests")
 		}
 	}

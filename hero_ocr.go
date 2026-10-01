@@ -26,6 +26,8 @@ var tesseractExecutable = "tesseract"
 var ocrTimeout = 3 * time.Second
 var errUnreadableGameNumber = errors.New("unreadable game number")
 
+const gameTextPadding = 10
+
 func parseGameNumber(raw string) (float64, bool) {
 	match := gameNumber.FindStringSubmatch(strings.TrimSpace(raw))
 	if match == nil {
@@ -98,7 +100,7 @@ func runTesseract(ctx context.Context, encoded []byte, args ...string) (string, 
 	return string(output), nil
 }
 
-func readGameText(ctx context.Context, screen image.Image, region image.Rectangle, scale, psm int, whiteThreshold int, characters string) (string, error) {
+func readGameText(ctx context.Context, screen image.Image, region image.Rectangle, scale, psm int, whiteThreshold int, characters string, formats ...string) (string, error) {
 	if screen == nil {
 		return "", fmt.Errorf("nil OCR screen")
 	}
@@ -170,7 +172,7 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 			}
 		}
 	}
-	padding := 10
+	padding := gameTextPadding
 	upscaled := image.NewGray(image.Rect(0, 0, source.Bounds().Dx()*scale+2*padding, source.Bounds().Dy()*scale+2*padding))
 	if !whiteOnly {
 		draw.Draw(upscaled, upscaled.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
@@ -182,15 +184,16 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 		xdraw.ApproxBiLinear.Scale(upscaled, dst, source, source.Bounds(), draw.Src, nil)
 	}
 
-	return readTextImage(ctx, upscaled, psm, characters)
+	return readTextImage(ctx, upscaled, psm, characters, formats...)
 }
 
-func readTextImage(ctx context.Context, input image.Image, psm int, characters string) (string, error) {
+func readTextImage(ctx context.Context, input image.Image, psm int, characters string, formats ...string) (string, error) {
 	var encoded bytes.Buffer
 	if err := png.Encode(&encoded, input); err != nil {
 		return "", err
 	}
-	output, err := runTesseract(ctx, encoded.Bytes(), "-l", "eng", "--psm", strconv.Itoa(psm), "-c", "tessedit_char_whitelist="+characters)
+	args := []string{"-l", "eng", "--psm", strconv.Itoa(psm), "-c", "tessedit_char_whitelist=" + characters}
+	output, err := runTesseract(ctx, encoded.Bytes(), append(args, formats...)...)
 	if err != nil {
 		return "", fmt.Errorf("tesseract: %w", err)
 	}
