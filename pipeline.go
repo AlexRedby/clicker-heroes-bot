@@ -17,6 +17,7 @@ const (
 	skillAnalysis
 	progressionAnalysis
 	heroAnalysis
+	mercenaryAnalysis
 	analysisCount
 )
 
@@ -27,6 +28,7 @@ const (
 	collectGilds
 	castSkill
 	enableProgression
+	handleMercenary
 	parkPointer
 	selectQuantity
 	scrollHeroes
@@ -35,10 +37,10 @@ const (
 )
 
 type gameContext struct {
-	known, heroes bool
-	modal         gildModal
-	window        string
-	bounds        image.Rectangle
+	known, heroes, mercenaries, questDialog bool
+	modal                                   gildModal
+	window                                  string
+	bounds                                  image.Rectangle
 }
 type gameFrame struct {
 	id, generation, layout uint64
@@ -61,17 +63,20 @@ type observation struct {
 	skills      [9]skillState
 	progression progressionState
 	hero        heroObservation
+	mercenary   mercenaryObservation
 	err         error
 }
 type gameAction struct {
-	kind          actionKind
-	frame         gameFrame
-	point, target image.Point
-	key           int
-	hero          heroObservation
-	skills        [9]skillState
-	progression   progressionState
-	queuedAt      time.Time
+	kind           actionKind
+	frame          gameFrame
+	point, target  image.Point
+	key            int
+	hero           heroObservation
+	skills         [9]skillState
+	progression    progressionState
+	mercenary      mercenaryCommand
+	mercenaryThumb image.Point
+	queuedAt       time.Time
 }
 type actionResult struct {
 	action  gameAction
@@ -85,13 +90,14 @@ type pipelineReaders struct {
 	fish        func(image.Image) (image.Point, bool, error)
 	skills      func(context.Context, image.Image) ([9]skillState, error)
 	progression func(context.Context, image.Image, [9]skillState, bool) (progressionState, error)
+	mercenaries func(context.Context, gameFrame) (mercenaryObservation, error)
 	heroes      heroReaders
 	window      func() string
 }
 type pipelineOptions struct {
-	heroes, skills, progression, monster, gilds bool
-	monsterPoint                                image.Point
-	fishInterval, clickInterval, gildInterval   time.Duration
+	heroes, skills, progression, mercenaries, monster, gilds bool
+	monsterPoint                                             image.Point
+	fishInterval, clickInterval, gildInterval                time.Duration
 }
 type pipelineMetrics struct {
 	captures                          uint64
@@ -113,6 +119,7 @@ type gamePipeline struct {
 	hero                                                heroRunner
 	skill                                               skillPlanner
 	progression                                         progressionPlanner
+	mercenary                                           mercenaryPlanner
 	fish                                                fishClickTracker
 	gild                                                gildCollector
 	metrics                                             pipelineMetrics
@@ -124,6 +131,8 @@ type gamePipeline struct {
 	progressionJobs                                     chan analysisJob
 	focusFallback                                       bool
 	heroJobFrame                                        uint64
+	mercenaryJobFrame                                   uint64
+	nextMercenary                                       time.Time
 }
 
 func newGamePipeline(controls *pauseControl, input heroInput, readers pipelineReaders, options pipelineOptions) *gamePipeline {
@@ -144,6 +153,11 @@ func recognizedGame(screen image.Image) (gameContext, error) {
 		return c, errors.New("capture returned no image")
 	}
 	c.bounds = screen.Bounds()
+	// The quest dialog dims the HUD, including the normal game-context anchor.
+	if mercenaryQuestDialog(screen) {
+		c.known, c.mercenaries, c.questDialog = true, true, true
+		return c, nil
+	}
 	modal, err := readGildModal(screen)
 	c.modal = modal
 	if err != nil || modal != noGildModal {
@@ -153,6 +167,7 @@ func recognizedGame(screen image.Image) (gameContext, error) {
 	known, _, err := progressionMode(screen)
 	c.known = known
 	c.heroes = known && heroTabSelected(screen)
+	c.mercenaries = known && mercenaryTabSelected(screen)
 	return c, err
 }
 
@@ -168,6 +183,8 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 		out.progression, out.err = p.readers.progression(ctx, job.frame.image, job.skills, job.modeOnly)
 	case heroAnalysis:
 		out.hero, out.err = readHeroObservation(ctx, job.frame, p.readers.heroes, job.heroBefore)
+	case mercenaryAnalysis:
+		out.mercenary, out.err = p.readers.mercenaries(ctx, job.frame)
 	}
 	out.elapsed = time.Since(start)
 	return out
@@ -202,6 +219,9 @@ func (p *gamePipeline) reset(generation uint64) {
 	p.skill.interrupt()
 	p.progression.pending = nil
 	p.progression.wantAction = false
+	p.mercenary.interrupt()
+	p.mercenaryJobFrame = 0
+	p.nextMercenary = time.Time{}
 	p.nextCapture, p.nextFish, p.nextProgression = time.Time{}, time.Time{}, time.Time{}
 	p.settleUntil = time.Time{}
 }
@@ -334,7 +354,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	if p.readers.window != nil {
 		c.window = p.readers.window()
 		if c.window == "!outside-game" {
-			c.known, c.heroes, c.modal = false, false, noGildModal
+			c.known, c.heroes, c.mercenaries, c.questDialog, c.modal = false, false, false, false, noGildModal
 		}
 		if c.window == "" && !p.focusFallback {
 			fmt.Println("foreground window identity unavailable; using visual context and F8")
@@ -343,7 +363,12 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	}
 	_, err = p.controls.runClick(ctx, p.generation, func() error {
 		old := p.frame.context
-		if c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.bounds != old.bounds || c.window != old.window {
+		if c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.bounds != old.bounds || c.window != old.window {
+			if c.bounds != old.bounds || c.window != old.window || !p.mercenary.expects(c) {
+				p.mercenary.interrupt()
+			}
+			p.mercenaryJobFrame = 0
+			p.nextMercenary = time.Time{}
 			p.layout++
 			for _, ch := range jobs {
 				select {
@@ -364,6 +389,18 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		// Slow capture must not consume its own interval and immediately repeat.
 		p.nextCapture = now.Add(time.Since(start) + min(250*time.Millisecond, p.options.fishInterval))
 		if !c.known || c.modal != noGildModal || p.gild.active {
+			return nil
+		}
+		if p.options.mercenaries && (c.heroes || c.mercenaries) && p.mercenaryJobFrame == 0 && !now.Before(p.mercenary.nextScan) && !now.Before(p.nextMercenary) {
+			p.mercenaryJobFrame = p.frame.id
+			replaceJob(jobs[mercenaryAnalysis], analysisJob{frame: p.frame})
+			p.nextMercenary = now.Add(2 * time.Second)
+			if c.mercenaries && p.mercenary.active {
+				p.nextMercenary = now.Add(200 * time.Millisecond)
+			}
+		}
+		// No clicks or hotkeys may reach controls hidden underneath a dialog.
+		if c.questDialog {
 			return nil
 		}
 		if !now.Before(p.nextFish) {
@@ -389,6 +426,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 }
 
 func (p *gamePipeline) accept(ctx context.Context, out observation, now time.Time) error {
+	if out.kind == mercenaryAnalysis && out.frame.id == p.mercenaryJobFrame {
+		p.mercenaryJobFrame = 0
+	}
 	if out.kind == heroAnalysis && out.frame.id == p.heroJobFrame {
 		p.heroJobFrame = 0
 	}
@@ -411,6 +451,9 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			return nil
 		}
 		switch out.kind {
+		case mercenaryAnalysis:
+			out.mercenary = mercenaryObservation{frame: out.frame, selected: -1}
+			fmt.Printf("mercenary panel unreadable: %v\n", out.err)
 		case heroAnalysis:
 			if p.hero.pending == nil {
 				p.hero.readFailed(out.err, now)
@@ -455,6 +498,9 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		if !p.progression.wantAction {
 			delete(p.queue, enableProgression)
 		}
+	case mercenaryAnalysis:
+		p.mercenary.observe(out.mercenary, now)
+		delete(p.queue, handleMercenary)
 	}
 	return nil
 }
@@ -480,6 +526,14 @@ func (p *gamePipeline) plan(now time.Time) {
 	if p.planGilds(now) || !p.frame.context.known {
 		return
 	}
+	if p.options.mercenaries {
+		if action, ok := p.mercenary.action(now); ok {
+			p.enqueue(action, now)
+		}
+	}
+	if p.frame.context.questDialog {
+		return
+	}
 	if p.options.skills {
 		if key := p.skill.nextKey(p.state[skillAnalysis].skills, p.state[skillAnalysis].frame.id, now); key > 0 {
 			p.enqueue(gameAction{kind: castSkill, frame: p.state[skillAnalysis].frame, key: key, skills: p.state[skillAnalysis].skills}, now)
@@ -488,7 +542,7 @@ func (p *gamePipeline) plan(now time.Time) {
 	if p.options.progression && p.progression.wantAction && p.progression.pending == nil && now.After(p.progression.nextAttempt) {
 		p.enqueue(gameAction{kind: enableProgression, frame: p.state[progressionAnalysis].frame, progression: p.state[progressionAnalysis].progression}, now)
 	}
-	if p.options.heroes && p.frame.context.heroes {
+	if p.options.heroes && p.frame.context.heroes && !p.mercenary.active && p.mercenary.pending == nil {
 		if action, ok := p.hero.action(now); ok {
 			p.enqueue(action, now)
 		}
@@ -500,6 +554,11 @@ func (p *gamePipeline) plan(now time.Time) {
 }
 
 func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
+	// A tab click can open a modal before capture observes it. Do not send a
+	// previously queued hotkey/fish/monster click during that transition.
+	if p.mercenary.pending != nil && p.frame.id <= p.mercenary.pending.action.frame.id {
+		return gameAction{}, false
+	}
 	for kind := collectFish; kind <= clickMonster; kind++ {
 		action, ok := p.queue[kind]
 		if !ok {
@@ -509,8 +568,16 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
+		if p.frame.context.questDialog && kind != handleMercenary {
+			delete(p.queue, kind)
+			continue
+		}
 		if now.Sub(action.frame.at) > max(3*time.Second, p.state[fishAnalysis].elapsed+p.options.fishInterval*2) {
 			delete(p.queue, kind)
+			if kind == handleMercenary {
+				p.mercenary.latest = mercenaryObservation{}
+				p.nextMercenary = time.Time{}
+			}
 			if kind == buyHero || kind == scrollHeroes || kind == selectQuantity || kind == parkPointer {
 				p.hero.latest = heroObservation{}
 				p.hero.nextScan = now
@@ -539,6 +606,18 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 		if kind == collectFish {
 			if p.state[fishAnalysis].frame.id != action.frame.id || !p.state[fishAnalysis].found || !p.fishFresh(now) {
 				delete(p.queue, kind)
+				continue
+			}
+		}
+		if kind == handleMercenary {
+			if p.mercenary.pending != nil || p.mercenary.latest.frame.id != action.frame.id || !mercenaryActionStable(action, p.frame) || (action.mercenary.step == openMercenaries && !mercenaryNotification(p.frame.image)) {
+				delete(p.queue, kind)
+				p.mercenary.latest = mercenaryObservation{}
+				p.mercenary.nextScan = now
+				p.nextMercenary = time.Time{}
+				continue
+			}
+			if !p.frame.context.questDialog && (!p.fishFresh(now) || p.state[fishAnalysis].found) {
 				continue
 			}
 		}
@@ -578,6 +657,14 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			return errInputContext
 		}
 		switch a.kind {
+		case handleMercenary:
+			if a.mercenary.step == scrollMercenariesTop || a.mercenary.step == scrollMercenariesBottom {
+				return p.input.drag(a.point, a.target)
+			}
+			if err := p.input.click(a.point); err != nil {
+				return err
+			}
+			return p.input.move(parkPoint(a.frame.context.bounds))
 		case clickMonster:
 			return p.input.monsterClick(a.point)
 		case collectFish, collectGilds:
@@ -636,10 +723,25 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.gild = gild
 		p.frame.context = gameContext{}
 		fmt.Printf("clicked gild gift control at (%d, %d)\n", a.point.X, a.point.Y)
+
+	case handleMercenary:
+		p.mercenary.sent(a, now)
+		p.nextMercenary = time.Time{}
+		invalidate(mercenaryAnalysis)
+		invalidate(fishAnalysis)
+		p.nextFish = time.Time{}
+		delete(p.queue, collectFish)
+		delete(p.queue, buyHero)
+		delete(p.queue, scrollHeroes)
 	case collectFish:
 		p.fish.recordClick(a.point)
 		invalidate(fishAnalysis)
 		invalidate(heroAnalysis)
+		invalidate(mercenaryAnalysis)
+		p.mercenary.latest = mercenaryObservation{}
+		p.mercenary.nextScan = now
+		p.nextMercenary = time.Time{}
+		delete(p.queue, handleMercenary)
 		p.hero.obstructed(now)
 		fmt.Printf("clicked fish at (%d, %d)\n", a.point.X, a.point.Y)
 	case castSkill:
@@ -673,7 +775,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		}
 	}
 	p.settleUntil = now.Add(150 * time.Millisecond)
-	if a.kind == buyHero || a.kind == scrollHeroes || a.kind == parkPointer {
+	if a.kind == buyHero || a.kind == scrollHeroes || a.kind == parkPointer || a.kind == handleMercenary {
 		p.settleUntil = now.Add(200 * time.Millisecond)
 	}
 	p.nextCapture = time.Time{}
@@ -681,7 +783,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 
 func (m pipelineMetrics) String() string {
 	parts := []string{fmt.Sprintf("captures=%d capture=%s actions=%d input=%s queue=%s stale=%d", m.captures, m.captureTime, m.actions, m.inputTime, m.queueTime, m.dropped)}
-	for i, name := range []string{"fish", "skills", "progression", "heroes"} {
+	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries"} {
 		parts = append(parts, fmt.Sprintf("%s=%d/%s", name, m.counts[i], m.elapsed[i]))
 	}
 	return strings.Join(parts, " ")
@@ -690,6 +792,17 @@ func (m pipelineMetrics) String() string {
 // Gift polling reuses the current shared image; modal steps never schedule background analyzers.
 func (p *gamePipeline) planGilds(now time.Time) bool {
 	modal := p.frame.context.modal
+	if p.frame.context.questDialog {
+		// A manually opened quest dialog supersedes an interrupted gift batch.
+		p.gild = gildCollector{}
+		delete(p.queue, collectGilds)
+		return false
+	}
+	// Finish a mercenary visit before opening another transaction's window.
+	if p.mercenary.active && modal == noGildModal && !p.gild.active {
+		delete(p.queue, collectGilds)
+		return false
+	}
 	if !p.options.gilds {
 		return modal != noGildModal
 	}

@@ -36,8 +36,8 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Mercenaries
 
-- Detect completed quests, claim their rewards, and send available mercenaries on new quests.
-- Choose quests by reward and duration; leave ruby spending and revivals for a separate decision.
+- Verify the live `-mercenaries` loop: notification, Collect, Start Quest, selection, Okay, countdown confirmation, scrolling to the fifth mercenary, returning to Heroes and F8 interruption/resume alongside fish and skills. The four supplied screenshots cover roster and selection OCR at 2560x1440 and 1280x720; native clicks and the scrolled roster still need a running game.
+- Capture real death and free-recruitment screens; verify that Revive/Bury remain untouched and recruitment quests are recognized before relying on automatic roster replenishment. Unsupported layouts must end the visit without ruby spending.
 
 ## Prestige and later upgrades
 
