@@ -193,7 +193,7 @@ func mercenaryRows(screen image.Image) []image.Point {
 	return points
 }
 
-var mercenaryDurationText = regexp.MustCompile(`(?i)\btime:\s*(5|15|30)\s+minutes?\s*$|\btime:\s*(1|2|4|8)\s+hours?\s*$|\btime:\s*(1|2)\s+days?\s*$`)
+var mercenaryDurationText = regexp.MustCompile(`(?i)\btime:\s*(5|15|30)\s+minutes?\s*$|\btime:\s*(1|2|4|8|24|48)\s+hours?\s*$|\btime:\s*(1|2)\s+days?\s*$`)
 var mercenaryRewardText = regexp.MustCompile(`(?i)^reward:\s*(.+)$`)
 var mercenaryTimer = regexp.MustCompile(`^[0-9]{1,2}:[0-5][0-9](?::[0-5][0-9])?$`)
 

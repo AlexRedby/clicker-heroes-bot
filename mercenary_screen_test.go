@@ -151,7 +151,7 @@ func TestMercenaryQuestOCR(t *testing.T) {
 	for _, tc := range []struct {
 		path     string
 		selected int
-	}{{"testdata/mercenary-quests.png", -1}, {"testdata/mercenary-selected.png", 0}} {
+	}{{"testdata/mercenary-quests.png", -1}, {"testdata/mercenary-selected.png", 0}, {"testdata/mercenary-quests-24-hours.png", -1}} {
 		for _, scale := range []int{1, 2} {
 			im := mercenaryScaled(t, tc.path, scale)
 			c, contextErr := recognizedGame(im)
@@ -171,12 +171,20 @@ func TestMercenaryQuestOCR(t *testing.T) {
 			}
 			if tc.selected < 0 {
 				want := []string{"gold", "gold", "relics", "skills"}
+				durations := []time.Duration{2 * time.Hour, 4 * time.Hour, 8 * time.Hour, 48 * time.Hour}
+				if tc.path == "testdata/mercenary-quests-24-hours.png" {
+					want = []string{"hero souls", "hero souls", "skills", "skills"}
+					durations = []time.Duration{30 * time.Minute, 2 * time.Hour, 24 * time.Hour, 48 * time.Hour}
+					if chooseMercenaryQuest(o.quests) != 0 {
+						t.Fatal("the real 24-hour offer blocked choosing the 30-minute Hero Souls quest")
+					}
+				}
 				for i, q := range o.quests {
 					if q.reward != want[i] {
 						t.Errorf("%s quest%d reward=%q", tc.path, i, q.reward)
 					}
 				}
-				for i, d := range []time.Duration{2 * time.Hour, 4 * time.Hour, 8 * time.Hour, 48 * time.Hour} {
+				for i, d := range durations {
 					if o.quests[i].duration != d {
 						t.Errorf("%s quest%d duration=%v", tc.path, i, o.quests[i].duration)
 					}
@@ -211,12 +219,12 @@ func TestMercenaryBottomRosterOCRAndDispatch(t *testing.T) {
 }
 
 func TestMercenaryParsingRejectsAmbiguity(t *testing.T) {
-	for _, raw := range []string{"Time: 5 minutes", "Time: 15 minutes", "Time: 30 minutes", "Time: 1 hour", "Time: 2 hours", "Time: 4 hours", "Time: 8 hours", "Time: 1 day", "Time: 2 days"} {
+	for _, raw := range []string{"Time: 5 minutes", "Time: 15 minutes", "Time: 30 minutes", "Time: 1 hour", "Time: 2 hours", "Time: 4 hours", "Time: 8 hours", "Time: 24 hours\r\n", "Time: 48 hours", "Time: 1 day", "Time: 2 days"} {
 		if _, ok := parseMercenaryDuration(raw); !ok {
 			t.Fatalf("rejected duration %q", raw)
 		}
 	}
-	for _, raw := range []string{"Time: 15 minutes extra", "Time: 45 minutes", "Reward: 5 minutes", "15 minutes"} {
+	for _, raw := range []string{"Time: 15 minutes extra", "Time: 45 minutes", "Reward: 5 minutes", "15 minutes", "Time: 12 hours", "Time: 240 hours"} {
 		if _, ok := parseMercenaryDuration(raw); ok {
 			t.Fatalf("accepted ambiguous duration %q", raw)
 		}
