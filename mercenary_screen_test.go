@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"image"
+	"image/color"
 	"image/draw"
 	"os"
 	"testing"
@@ -10,6 +11,61 @@ import (
 
 	xdraw "golang.org/x/image/draw"
 )
+
+func TestMercenaryAnimatedNotification(t *testing.T) {
+	// Actual crops: 160644.227 before/after, Oct 1 16:13:05/12:34:38,
+	// and Sep 30 14:59:27 from Downloads. They show bouncing and squashing
+	// on blue, black and cream backgrounds, with the tab artwork intact.
+	atlas := loadTestImage(t, "testdata/mercenary-alert-phases.png")
+	bounds := image.Rect(0, 0, 2560, 1440)
+	var before gameFrame
+	for _, divisor := range []int{1, 2} {
+		for phase := 0; phase < 5; phase++ {
+			screen := image.NewRGBA(bounds)
+			region := image.Rectangle{Min: mercenaryPoint(bounds, 367, 110), Max: mercenaryPoint(bounds, 420, 220)}
+			draw.Draw(screen, region, atlas, image.Pt(phase*region.Dx(), 0), draw.Src)
+			var im image.Image = screen
+			if divisor == 2 {
+				scaled := image.NewRGBA(image.Rect(0, 0, 1280, 720))
+				xdraw.CatmullRom.Scale(scaled, scaled.Bounds(), screen, bounds, draw.Src, nil)
+				im = scaled
+			}
+			if !mercenaryNotification(im) {
+				t.Errorf("missed real phase %d at scale 1/%d", phase, divisor)
+			}
+			if divisor == 1 {
+				frame := gameFrame{image: im, context: gameContext{known: true, heroes: true, bounds: bounds}}
+				if phase == 0 {
+					before = frame
+				}
+				a := gameAction{frame: before, point: mercenaryPoint(bounds, 383, 200), mercenary: mercenaryCommand{step: openMercenaries}}
+				if !mercenaryActionStable(a, frame) {
+					t.Errorf("animation invalidated opening the fixed tab, phase %d", phase)
+				}
+			}
+		}
+	}
+	for _, bg := range []color.Color{color.Black, color.White, color.RGBA{255, 220, 40, 255}} {
+		screen := image.NewRGBA(bounds)
+		draw.Draw(screen, bounds, image.NewUniform(bg), image.Point{}, draw.Src)
+		if mercenaryNotification(screen) {
+			t.Fatal("plain background accepted as a notification")
+		}
+	}
+	for _, path := range []string{"testdata/mercenary-collect.png", "testdata/mercenary-idle.png"} {
+		im := loadTestImage(t, path)
+		if mercenaryNotification(im) {
+			t.Fatalf("absent notification accepted in %s", path)
+		}
+	}
+	for _, path := range []string{"testdata/hero-economy-x1.png", "testdata/gild-hud.png", "testdata/hero-tsuchi-x1.png"} {
+		for _, divisor := range []int{1, 2} {
+			if !mercenaryNotification(mercenaryScaled(t, path, divisor)) {
+				t.Fatalf("missed actual notification in %s at scale 1/%d", path, divisor)
+			}
+		}
+	}
+}
 
 func mercenaryScaled(t *testing.T, path string, scale int) image.Image {
 	t.Helper()
@@ -29,7 +85,7 @@ func TestMercenaryScreenRecognizers(t *testing.T) {
 	if mercenaryTabSelected(loadTestImage(t, "testdata/hero-tsuchi-x1.png")) {
 		t.Fatal("Heroes tab accepted")
 	}
-	if mercenaryNotification(loadTestImage(t, "testdata/hero-economy-x1.png")) {
+	if mercenaryNotification(loadTestImage(t, "testdata/mercenary-idle.png")) {
 		t.Fatal("notification false positive")
 	}
 	if !mercenaryNotification(loadTestImage(t, "testdata/hero-tsuchi-x1.png")) {

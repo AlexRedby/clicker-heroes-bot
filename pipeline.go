@@ -610,7 +610,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			}
 		}
 		if kind == handleMercenary {
-			if p.mercenary.pending != nil || p.mercenary.latest.frame.id != action.frame.id || !mercenaryActionStable(action, p.frame) || (action.mercenary.step == openMercenaries && !mercenaryNotification(p.frame.image)) {
+			if p.mercenary.pending != nil || p.mercenary.latest.frame.id != action.frame.id || !mercenaryActionStable(action, p.frame) {
 				delete(p.queue, kind)
 				p.mercenary.latest = mercenaryObservation{}
 				p.mercenary.nextScan = now

@@ -81,11 +81,51 @@ func mercenaryQuestDialog(screen image.Image) bool {
 }
 
 func mercenaryNotification(screen image.Image) bool {
-	if screen == nil {
+	if screen == nil || screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 {
 		return false
 	}
 	b := screen.Bounds()
-	return mercenaryTemplate(screen, image.Rectangle{Min: mercenaryPoint(b, 378, 125), Max: mercenaryPoint(b, 410, 210)}, &mercenaryAlertImage, mercenaryAlertPNG, image.Pt(56, 77))
+	source, err := mercenaryAlertImage.get(mercenaryAlertPNG)
+	if err != nil {
+		return false
+	}
+	// Compare the yellow silhouette, excluding the scenery and white highlight.
+	// Search nearby positions and sizes because the notification bounces.
+	region := image.Rectangle{Min: mercenaryPoint(b, 367, 110), Max: mercenaryPoint(b, 420, 220)}
+	scene, err := mercenaryYellowMask(screen, region)
+	if err != nil {
+		return false
+	}
+	defer scene.Close()
+	icon, err := mercenaryYellowMask(source, source.Bounds())
+	if err != nil {
+		return false
+	}
+	defer icon.Close()
+	for _, width := range []int{90, 100, 110} {
+		for _, height := range []int{70, 80, 90, 100, 110} {
+			size := image.Pt(max(1, b.Dx()*56*width/256000), max(1, b.Dy()*77*height/144000))
+			score, err := templateScore(scene, icon, size)
+			if err == nil && score >= .85 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func mercenaryYellowMask(screen image.Image, region image.Rectangle) (gocv.Mat, error) {
+	region = region.Intersect(screen.Bounds())
+	mask := image.NewGray(image.Rect(0, 0, region.Dx(), region.Dy()))
+	for y := 0; y < region.Dy(); y++ {
+		for x := 0; x < region.Dx(); x++ {
+			r, g, blue := rgb(screen.At(region.Min.X+x, region.Min.Y+y))
+			if r >= 210 && g >= 150 && blue < 125 && r >= g-10 {
+				mask.Pix[y*mask.Stride+x] = 255
+			}
+		}
+	}
+	return gocv.NewMatFromBytes(region.Dy(), region.Dx(), gocv.MatTypeCV8UC1, mask.Pix)
 }
 
 func mercenaryScrollbar(screen image.Image) (point image.Point, found, top, bottom bool) {

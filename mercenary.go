@@ -302,6 +302,10 @@ func mercenaryActionStable(a gameAction, current gameFrame) bool {
 	if a.frame.image == nil || current.image == nil || a.frame.context != current.context {
 		return false
 	}
+	if a.mercenary.step == openMercenaries {
+		// The tab stays fixed while its notification moves between captures.
+		return mercenaryNotification(current.image)
+	}
 	b := current.context.bounds
 	region := image.Rect(a.point.X-b.Dx()/35, a.point.Y-b.Dy()/55, a.point.X+b.Dx()/35, a.point.Y+b.Dy()/55).Intersect(b)
 	textOnly := a.mercenary.step == selectMercenaryQuest || a.mercenary.step == confirmMercenaryQuest
