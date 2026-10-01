@@ -193,7 +193,7 @@ func mercenaryRows(screen image.Image) []image.Point {
 	return points
 }
 
-var mercenaryDurationText = regexp.MustCompile(`(?i)\btime:\s*(5|15|30)\s+minutes?\s*$|\btime:\s*(1|2|4|8|24|48)\s+hours?\s*$|\btime:\s*(1|2)\s+days?\s*$`)
+var mercenaryDurationText = regexp.MustCompile(`(?i)^time:\s*([0-9]{1,4})\s+(minute|hour|day)s?$`)
 var mercenaryRewardText = regexp.MustCompile(`(?i)^reward:\s*(.+)$`)
 var mercenaryTimer = regexp.MustCompile(`^[0-9]{1,2}:[0-5][0-9](?::[0-5][0-9])?$`)
 
@@ -203,11 +203,23 @@ func parseMercenaryDuration(raw string) (time.Duration, bool) {
 	if match == nil {
 		return 0, false
 	}
-	for i, unit := range []time.Duration{time.Minute, time.Hour, 24 * time.Hour} {
-		if match[i+1] != "" {
-			n, _ := strconv.Atoi(match[i+1])
-			return time.Duration(n) * unit, true
-		}
+	n, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 0, false
+	}
+	unit := time.Minute
+	switch strings.ToLower(match[2]) {
+	case "hour":
+		unit = time.Hour
+	case "day":
+		unit = 24 * time.Hour
+	}
+	duration := time.Duration(n) * unit
+	// Validate the normalized duration so 60 minutes and 1 hour are equivalent.
+	switch duration {
+	case 5 * time.Minute, 15 * time.Minute, 30 * time.Minute,
+		time.Hour, 2 * time.Hour, 4 * time.Hour, 8 * time.Hour, 24 * time.Hour, 48 * time.Hour:
+		return duration, true
 	}
 	return 0, false
 }

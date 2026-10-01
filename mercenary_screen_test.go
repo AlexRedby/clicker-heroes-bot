@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -231,7 +232,7 @@ func TestMercenaryParsingRejectsAmbiguity(t *testing.T) {
 			t.Fatalf("rejected duration %q", raw)
 		}
 	}
-	for _, raw := range []string{"Time: 15 minutes extra", "Time: 45 minutes", "Reward: 5 minutes", "15 minutes", "Time: 12 hours", "Time: 240 hours"} {
+	for _, raw := range []string{"Time: 15 minutes extra", "Time: 45 minutes", "Reward: 5 minutes", "15 minutes", "Time: 12 hours", "Time: 240 hours", "Time: 0 minutes", "Time: -60 minutes", "Time: 1.5 hours", "Time: 9999 days", "Time: 999999999999999999999999 hours"} {
 		if _, ok := parseMercenaryDuration(raw); ok {
 			t.Fatalf("accepted ambiguous duration %q", raw)
 		}
@@ -240,6 +241,34 @@ func TestMercenaryParsingRejectsAmbiguity(t *testing.T) {
 		if _, ok := parseMercenaryReward(raw); ok {
 			t.Fatalf("accepted unsafe reward %q", raw)
 		}
+	}
+}
+
+func TestMercenaryDurationUnitAliases(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		want time.Duration
+	}{
+		{"Time: 60 MINUTES\r\n", time.Hour},
+		{"Time: 120 minutes", 2 * time.Hour},
+		{"Time: 240 minutes", 4 * time.Hour},
+		{"Time: 480 minutes", 8 * time.Hour},
+		{"Time: 1440 minutes", 24 * time.Hour},
+		{"Time: 2880 minutes", 48 * time.Hour},
+		{"Time: 24 hours", 24 * time.Hour},
+		{"Time: 48 hours", 48 * time.Hour},
+	} {
+		got, ok := parseMercenaryDuration(tc.text)
+		if !ok || got != tc.want {
+			t.Fatalf("%q: got %v ok=%t want %v", tc.text, got, ok, tc.want)
+		}
+	}
+	// Exact multiline Windows OCR from the reported failed quest.
+	lines := strings.Split(strings.TrimSpace("Reward: +1 skill activations and 8% chance\r\nof another\r\nTime: 60 minutes\r\n"), "\n")
+	reward, rewardOK := parseMercenaryReward(strings.Join(lines[:2], " "))
+	duration, durationOK := parseMercenaryDuration(lines[2])
+	if !rewardOK || reward != "skills" || !durationOK || duration != time.Hour || mercenaryQuestRank(mercenaryQuest{reward: reward, duration: duration}) < 0 {
+		t.Fatalf("reported quest not recognized: reward=%q duration=%v", reward, duration)
 	}
 }
 
