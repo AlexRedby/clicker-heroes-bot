@@ -101,7 +101,8 @@ func gildActionPoint(frame gameFrame) (image.Point, bool, error) {
 	var region, reference image.Rectangle
 	switch frame.context.modal {
 	case noGildModal:
-		region, reference = image.Rect(1195, 555, 1270, 620), image.Rect(0, 0, 75, 65)
+		// Match and click the left gift body; the exclamation mark bounces vertically on the right.
+		region, reference = image.Rect(1195, 555, 1230, 620), image.Rect(0, 0, 35, 65)
 	case gildChestModal:
 		r := gildRect(frame.image, image.Rect(599, 304, 681, 394))
 		return r.Min.Add(r.Size().Div(2)), true, nil

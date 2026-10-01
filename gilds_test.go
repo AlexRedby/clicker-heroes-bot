@@ -32,7 +32,7 @@ func TestGildScreenshotWorkflow(t *testing.T) {
 		modal gildModal
 		point image.Point
 	}{
-		{"hud", noGildModal, image.Pt(1232, 587)},
+		{"hud", noGildModal, image.Pt(1212, 587)},
 		{"chest", gildChestModal, image.Pt(640, 349)},
 		{"reward", gildRewardModal, image.Pt(937, 556)},
 		{"roster", gildRosterModal, image.Pt(1149, 39)},
@@ -95,6 +95,46 @@ func TestGildScreenshotWorkflow(t *testing.T) {
 	point, found, err := gildActionPoint(gameFrame{image: single, context: gameContext{known: true, modal: gildRewardModal}})
 	if err != nil || !found || point != image.Pt(994, 128) {
 		t.Fatalf("single close=%v found=%v err=%v", point, found, err)
+	}
+}
+
+func TestGildGiftIgnoresAnimatedNotification(t *testing.T) {
+	hud := gildFixture(t, "hud")
+	for _, scale := range []int{1, 2} {
+		for _, state := range []string{"hidden", "changed", "lowered", "gift absent"} {
+			t.Run(state+string(rune('0'+scale)), func(t *testing.T) {
+				img := image.NewRGBA(hud.Bounds())
+				draw.Draw(img, img.Bounds(), hud, hud.Bounds().Min, draw.Src)
+				switch state {
+				case "hidden":
+					draw.Draw(img, image.Rect(1233, 530, 1275, 630), image.NewUniform(color.Black), image.Point{}, draw.Src)
+				case "changed":
+					draw.Draw(img, image.Rect(1233, 530, 1275, 630), image.NewUniform(color.RGBA{255, 220, 0, 255}), image.Point{}, draw.Src)
+				case "lowered":
+					// The notification bounces vertically into the lower gift body.
+					draw.Draw(img, image.Rect(1233, 560, 1263, 620), hud, image.Pt(1233, 530), draw.Src)
+				case "gift absent":
+					// A notification alone must not identify a gift.
+					draw.Draw(img, image.Rect(1190, 550, 1233, 630), image.NewUniform(color.Black), image.Point{}, draw.Src)
+				}
+				if scale == 2 {
+					enlarged := image.NewRGBA(image.Rect(0, 0, 2560, 1440))
+					xdraw.CatmullRom.Scale(enlarged, enlarged.Bounds(), img, img.Bounds(), draw.Src, nil)
+					img = enlarged
+				}
+				c, err := recognizedGame(img)
+				if err != nil || !c.known || c.modal != noGildModal {
+					t.Fatalf("context=%+v err=%v", c, err)
+				}
+				point, found, err := gildActionPoint(gameFrame{image: img, context: c})
+				if err != nil || found != (state != "gift absent") {
+					t.Fatalf("point=%v found=%v err=%v", point, found, err)
+				}
+				if found && (absDiff(point.X, 1212*scale) > 1 || absDiff(point.Y, 587*scale) > 1) {
+					t.Fatalf("click outside gift body: %v", point)
+				}
+			})
+		}
 	}
 }
 
