@@ -41,6 +41,19 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Prestige and later upgrades
 
-- Read expected Hero Souls and recommend Ascension when progress stalls; verify the full restart loop before enabling automatic Ascension.
-- Add Ancient spending after Ascension, then consider gilds and relics.
+### Automatic Ascension
+
+- Use a configurable stall window (initial default: 15 minutes) based on the highest observed zone, recognized boss fallback and existing progression/skill recovery. Pause, missing OCR, tab changes and manual zone navigation must not count as evidence of a stalled run. Do not reset solely because progression is switched off.
+- Verify the installed game's Ascension button, confirmation dialog and expected Hero Souls from real screenshots. Recognize the relic-junk blocker and report it without deleting or replacing relics automatically. Distinguish normal Ascension from Quick Ascension, Transcension and any ruby purchase. No confirmed Ascension hotkey has been found; prefer the recognized game control.
+- Require working hero leveling and progression management for the opt-in mode. Implement a shared-pipeline transaction: decide -> open -> read reward -> confirm -> observe restart. During modal transitions, invalidate stale actions and suspend unrelated clicks/hotkeys; F8 must interrupt cleanly. Require positive expected souls and a fresh, known game state before confirmation.
+- Complete restart support before enabling automatic resets: recognize the initial short hero list, buy the latest affordable hero, dismiss/unlock required controls, restore autoclicker targets if reset clears them, and enable progression. Obtain real immediate-post-reset screenshots for these steps.
+- Add real-frame positive/negative recognition and decision tests, including a temporary boss loss, unreadable reward, unrelated/blocked dialog, pause/resume, missed confirmation and reset completion. Run OCR regressions, shared-pipeline tests, race checks, build and vet.
+- Verify one complete live Ascension and restart loop before starting automatic Hero Souls spending.
+
+### Hero Souls spending
+
+- After the Ascension/restart loop works live, inspect the Ancients panel and existing Ancient levels. Choose a minimal active-clicker spending policy and verify required hotkeys before implementation; preserve a deliberate unspent soul reserve. Then consider gild transfers and relics.
+
+### Transcension
+
 - Read expected Ancient Souls and recommend Transcension; automate the reset and Outsider spending only after the earlier loops are reliable.
