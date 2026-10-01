@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -62,14 +63,11 @@ func TestMercenaryPolicyAndConfirmedCycle(t *testing.T) {
 	dialog := mercenaryObservation{frame: gameFrame{context: gameContext{known: true, mercenaries: true, questDialog: true, bounds: bounds}}, selected: -1, readable: true,
 		quests: []mercenaryQuest{{reward: "gold", duration: 2 * time.Hour, point: image.Pt(1000, 390)}, {reward: "gold", duration: 4 * time.Hour, point: image.Pt(1000, 600)}}}
 	step(claimAndOpenMercenaryQuest, dialog)
-	dialog.selected, dialog.okay = 0, image.Pt(1815, 720)
-	a := step(selectMercenaryQuest, dialog)
+	merc.collect, merc.start = nil, nil
+	a := step(selectMercenaryQuest, merc)
 	if a.mercenary.quest != 0 {
 		t.Fatalf("wrong quest: %+v", a)
 	}
-	merc.collect, merc.start = nil, nil
-	merc.running = []image.Point{row}
-	step(confirmMercenaryQuest, merc)
 	merc.top, merc.bottom = false, true
 	step(scrollMercenariesBottom, merc)
 	heroes := mercenaryObservation{frame: gameFrame{context: gameContext{known: true, heroes: true, bounds: bounds}}, selected: -1, readable: true}
@@ -108,20 +106,22 @@ func TestMercenaryInterruptedDialogAndPipelineGuards(t *testing.T) {
 		t.Fatalf("F8 did not invalidate mercenary action: acted=%t err=%v", acted, err)
 	}
 	p.mercenary.sent(a, now)
+	p.mercenary.roster = &mercenaryObservation{collect: []image.Point{image.Pt(700, 400)}}
 	p.reset(controls.snapshot())
-	if p.mercenary.pending != nil || p.mercenary.active {
+	if p.mercenary.pending != nil || p.mercenary.active || p.mercenary.roster != nil {
 		t.Fatal("F8 kept a pending mercenary decision")
 	}
 
-	// A manual change at the click target invalidates old OCR coordinates.
+	// Changed offer text invalidates the original selection decision.
+	a.mercenary.step = selectMercenaryQuest
 	changed := image.NewRGBA(screen.Bounds())
 	draw.Draw(changed, changed.Bounds(), screen, screen.Bounds().Min, draw.Src)
-	region := image.Rect(a.point.X-80, a.point.Y-40, a.point.X+80, a.point.Y+40).Intersect(changed.Bounds())
+	region := image.Rectangle{Min: mercenaryPoint(screen.Bounds(), 255, 209), Max: mercenaryPoint(screen.Bounds(), 595, 799)}
 	draw.Draw(changed, region, image.NewUniform(color.Black), image.Point{}, draw.Src)
 	current := frame
 	current.image = changed
 	if !mercenaryActionStable(a, frame) || mercenaryActionStable(a, current) {
-		t.Fatal("stale mercenary target accepted")
+		t.Fatal("stale mercenary offer accepted")
 	}
 }
 
@@ -299,17 +299,13 @@ func TestMercenaryTransientOCRDoesNotAbandonVisit(t *testing.T) {
 	if !ok || a.mercenary.step != selectMercenaryQuest || p.questRow != row {
 		t.Fatal("recovered frame did not select a quest for the fifth mercenary")
 	}
-	// Persistent unreadability has a bounded timeout and no guessed clicks.
-	p.sent(a, now.Add(600*time.Millisecond))
+	// Persistent offer unreadability has a bounded timeout, without selecting.
+	p = mercenaryPlanner{active: true, returnHeroes: true, topVisited: true, questRow: row}
 	o.frame.id++
-	o.selected, o.okay = 0, image.Pt(1815, 720)
-	p.observe(o, now.Add(650*time.Millisecond))
-	o.frame.id++
-	o.frame.context.questDialog = true
 	o.readable = false
 	p.observe(o, now.Add(700*time.Millisecond))
 	if _, ok := p.action(now.Add(800 * time.Millisecond)); ok {
-		t.Fatal("unreadable quest transition clicked")
+		t.Fatal("unreadable offers clicked")
 	}
 	o.frame.id++
 	p.observe(o, now.Add(2*time.Second))
@@ -365,12 +361,15 @@ func TestMercenaryFastClaimAndSingleSweep(t *testing.T) {
 		dialog.selected, dialog.okay = -1, image.Point{}
 		observe(dialog)
 		send(selectMercenaryQuest)
-		dialog.selected, dialog.okay = 0, image.Pt(1815, 720)
-		observe(dialog)
-		send(confirmMercenaryQuest)
 		roster.collect = roster.collect[1:]
-		roster.running = append(roster.running, row)
-		observe(roster)
+		id++
+		now = now.Add(300 * time.Millisecond)
+		frame := roster.frame
+		frame.id, frame.at = id, now
+		p.captured(frame, now) // No button, selected-card or timer observation.
+		if p.needsRead(frame.context) {
+			t.Fatal("completed quest requested another roster OCR")
+		}
 		if i == 3 {
 			send(scrollMercenariesBottom)
 			roster.top, roster.bottom = false, true
@@ -402,6 +401,61 @@ func TestMercenaryFastClaimAndSingleSweep(t *testing.T) {
 	now = now.Add(6 * time.Second)
 	observe(roster)
 	send(returnToHeroes)
+}
+
+func TestMercenarySelectionUsesDelayedFixedOkay(t *testing.T) {
+	for _, cancel := range []string{"", "F8", "window", "resize"} {
+		t.Run(cancel, func(t *testing.T) {
+			bounds := image.Rect(0, 0, 2560, 1440)
+			a := gameAction{kind: handleMercenary, point: image.Pt(1000, 390), mercenary: mercenaryCommand{step: selectMercenaryQuest},
+				frame: gameFrame{context: gameContext{known: true, mercenaries: true, questDialog: true, bounds: bounds, window: "game"}}}
+			var window atomic.Value
+			window.Store("game")
+			selected := make(chan struct{}, 1)
+			var clicks []image.Point
+			var selectedAt, okayAt time.Time
+			input := heroInput{click: func(point image.Point) error {
+				clicks = append(clicks, point)
+				if len(clicks) == 1 {
+					selectedAt = time.Now()
+					selected <- struct{}{}
+				} else {
+					okayAt = time.Now()
+				}
+				return nil
+			}, move: func(image.Point) error { return nil }}
+			p := newGamePipeline(&pauseControl{}, input, pipelineReaders{window: func() string { return window.Load().(string) }}, pipelineOptions{})
+			p.frame = a.frame
+			done := make(chan actionResult, 1)
+			go func() {
+				acted, err := p.execute(context.Background(), a)
+				done <- actionResult{acted: acted, err: err}
+			}()
+			<-selected
+			switch cancel {
+			case "F8":
+				p.controls.toggle()
+			case "window":
+				window.Store("elsewhere")
+			case "resize":
+				p.controls.runClick(context.Background(), a.frame.generation, func() error {
+					p.frame.context.bounds.Max.X--
+					return nil
+				})
+			}
+			result := <-done
+			if result.err != nil || result.acted != (cancel == "") {
+				t.Fatalf("acted=%t err=%v", result.acted, result.err)
+			}
+			if cancel != "" {
+				if len(clicks) != 1 {
+					t.Fatal("cancelled selection still clicked Okay")
+				}
+			} else if len(clicks) != 2 || clicks[1] != mercenaryPoint(bounds, 710, 500) || okayAt.Sub(selectedAt) < 300*time.Millisecond {
+				t.Fatalf("Okay clicked without fixed coordinates/delay: clicks=%v gap=%v", clicks, okayAt.Sub(selectedAt))
+			}
+		})
+	}
 }
 
 func TestMercenaryScrollContextFlickerDoesNotRestartVisit(t *testing.T) {
@@ -464,6 +518,7 @@ func TestMercenaryManualFailedQuestStillCollectsRemainingRewards(t *testing.T) {
 	now := time.Now()
 	bounds := image.Rect(0, 0, 2560, 1440)
 	roster := mercenaryObservation{frame: gameFrame{context: gameContext{known: true, mercenaries: true, bounds: bounds}}, readable: true, top: true, thumbFound: true, thumb: image.Pt(1172, 890), start: []image.Point{image.Pt(768, 1027)}}
+	roster.collect = []image.Point{image.Pt(768, 597), image.Pt(768, 810)}
 	p := mercenaryPlanner{}
 	id := uint64(0)
 	observe := func(o mercenaryObservation) {
@@ -483,7 +538,7 @@ func TestMercenaryManualFailedQuestStillCollectsRemainingRewards(t *testing.T) {
 		return a
 	}
 	observe(roster)
-	send(openMercenaryQuest)
+	send(claimAndOpenMercenaryQuest)
 	dialog := mercenaryObservation{frame: gameFrame{context: gameContext{known: true, mercenaries: true, questDialog: true, bounds: bounds}}, selected: -1}
 	observe(dialog)
 	if _, ok := p.action(now); ok {
@@ -492,7 +547,7 @@ func TestMercenaryManualFailedQuestStillCollectsRemainingRewards(t *testing.T) {
 	now = now.Add(6 * time.Second)
 	send(closeMercenaryQuest)
 	roster.start = nil
-	roster.collect = []image.Point{image.Pt(768, 597), image.Pt(768, 810)}
+	roster.collect = []image.Point{image.Pt(768, 810)}
 	observe(roster)
 	if !p.collectOnly || !p.returnHeroes {
 		t.Fatal("manual failed selection did not recover into reward collection")
@@ -524,15 +579,18 @@ func TestMercenaryManualFailedQuestStillCollectsRemainingRewards(t *testing.T) {
 	if p.active || p.pending != nil {
 		t.Fatal("manual error left the bot stuck in the roster")
 	}
-	// A missed reward click must stop recovery instead of retrying forever.
+	// The saved recovery plan consumes a Collect without reading its new label.
 	p = mercenaryPlanner{active: true, returnHeroes: true, topVisited: true, aborting: true, collectOnly: true}
 	roster.collect = []image.Point{image.Pt(768, 1245)}
 	observe(roster)
 	send(claimMercenaryReward)
-	now = now.Add(6 * time.Second)
-	observe(roster)
-	if p.collectOnly || !p.aborting {
-		t.Fatal("unconfirmed reward click kept recovery active")
+	id++
+	now = now.Add(300 * time.Millisecond)
+	frame := roster.frame
+	frame.id, frame.at = id, now
+	p.captured(frame, now)
+	if len(p.latest.collect) != 0 || p.needsRead(frame.context) {
+		t.Fatal("recovery re-read or repeated a consumed Collect")
 	}
 	send(returnToHeroes)
 }

@@ -36,7 +36,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Mercenaries
 
-- Verify the live `-mercenaries` loop: notification, fast paired Collect/Start Quest clicks, selection, Okay, countdown confirmation, faster scrolling to the fifth mercenary, returning to Heroes and F8 interruption/resume alongside fish and skills. Supplied screenshots and regression tests cover roster/selection OCR, a complete five-mercenary sweep, cached buttons, missed input and transient context recovery; native timing still needs a running game on the target device.
+- Verify the live `-mercenaries` loop: notification, saved visible-row plan, paired Collect/Start Quest clicks, offer selection, fixed Okay after 300 ms, faster scrolling to the fifth mercenary, returning to Heroes and F8 interruption/resume alongside fish and skills. Supplied screenshots and regression tests cover initial roster/offer OCR, four/five-mercenary sweeps without intermediate roster OCR, unreadable offers, interruptions and transient context recovery; native timing still needs a running game on the target device.
 - Capture real death and free-recruitment screens; verify that Revive/Bury remain untouched and recruitment quests are recognized before relying on automatic roster replenishment. Unsupported layouts must end the visit without ruby spending.
 
 ## Prestige and later upgrades

@@ -31,7 +31,6 @@ const (
 	claimMercenaryReward
 	openMercenaryQuest
 	selectMercenaryQuest
-	confirmMercenaryQuest
 	closeMercenaryQuest
 	scrollMercenariesTop
 	scrollMercenariesBottom
@@ -42,7 +41,6 @@ const (
 type mercenaryCommand struct {
 	step  mercenaryStep
 	quest int
-	offer mercenaryQuest
 }
 
 type mercenaryAttempt struct {
@@ -52,6 +50,7 @@ type mercenaryAttempt struct {
 
 type mercenaryPlanner struct {
 	latest                mercenaryObservation
+	roster                *mercenaryObservation
 	notificationConfirmed bool
 	pending               *mercenaryAttempt
 	nextScan              time.Time
@@ -64,9 +63,6 @@ type mercenaryPlanner struct {
 	aborting              bool
 	collectOnly           bool
 	questRow              image.Point
-	questThumb            image.Point
-	chosenQuest           int
-	chosenOffer           mercenaryQuest
 }
 
 func mercenaryQuestRank(q mercenaryQuest) int {
@@ -138,21 +134,12 @@ func (p *mercenaryPlanner) expects(c gameContext, now time.Time) bool {
 		return p.active && c.known && c.mercenaries && !c.questDialog
 	}
 	switch p.pending.action.mercenary.step {
-	case openMercenaries, claimMercenaryReward, confirmMercenaryQuest, closeMercenaryQuest, scrollMercenariesTop, scrollMercenariesBottom:
+	case openMercenaries, claimMercenaryReward, selectMercenaryQuest, closeMercenaryQuest, scrollMercenariesTop, scrollMercenariesBottom:
 		return c.known && c.mercenaries && !c.questDialog
-	case openMercenaryQuest, claimAndOpenMercenaryQuest, selectMercenaryQuest:
+	case openMercenaryQuest, claimAndOpenMercenaryQuest:
 		return c.known && c.questDialog
 	case returnToHeroes:
 		return c.known && c.heroes
-	}
-	return false
-}
-
-func hasMercenaryPoint(points []image.Point, point image.Point) bool {
-	for _, candidate := range points {
-		if absDiff(candidate.X, point.X) <= 4 && absDiff(candidate.Y, point.Y) <= 4 {
-			return true
-		}
 	}
 	return false
 }
@@ -171,13 +158,11 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 		case openMercenaries:
 			confirmed = o.frame.context.mercenaries && !o.frame.context.questDialog
 		case claimMercenaryReward:
-			confirmed = o.readable && hasMercenaryPoint(o.start, a.point) && !hasMercenaryPoint(o.collect, a.point)
+			confirmed = o.frame.context.mercenaries && !o.frame.context.questDialog
 		case openMercenaryQuest, claimAndOpenMercenaryQuest:
 			confirmed = o.frame.context.questDialog
 		case selectMercenaryQuest:
-			confirmed = o.readable && o.frame.context.questDialog && o.selected == a.mercenary.quest && o.okay != (image.Point{}) && mercenaryOfferMatches(o, a.mercenary.quest, a.mercenary.offer)
-		case confirmMercenaryQuest:
-			confirmed = o.readable && o.frame.context.mercenaries && !o.frame.context.questDialog && hasMercenaryPoint(o.running, p.questRow) && (p.questThumb == (image.Point{}) || (o.thumbFound && absDiff(o.thumb.Y, p.questThumb.Y) <= 4))
+			confirmed = o.frame.context.mercenaries && !o.frame.context.questDialog
 		case closeMercenaryQuest:
 			confirmed = o.frame.context.mercenaries && !o.frame.context.questDialog
 		case scrollMercenariesTop:
@@ -210,9 +195,8 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 				p.active = false
 				p.returnHeroes = false
 				p.questRow = image.Point{}
+				p.roster = nil
 				p.nextScan = now.Add(time.Minute)
-			case claimMercenaryReward:
-				p.questRow = a.point
 			case closeMercenaryQuest:
 				// Only a confirmed closed quest lets us resume safe reward collection.
 				p.collectOnly = p.aborting && p.questRow != (image.Point{})
@@ -221,8 +205,7 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 				if p.collectOnly {
 					fmt.Println("mercenary quest skipped; collecting remaining rewards before returning to Heroes")
 				}
-			case confirmMercenaryQuest:
-				fmt.Println("mercenary quest confirmed")
+			case selectMercenaryQuest:
 				p.questRow = image.Point{}
 			}
 		}
@@ -239,11 +222,42 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 		p.unreadableUntil = now.Add(5 * time.Second)
 	}
 	p.latest = o
+	if p.roster == nil && o.readable && o.frame.context.mercenaries && !o.frame.context.questDialog {
+		roster := o
+		roster.collect = append([]image.Point(nil), o.collect...)
+		roster.start = append([]image.Point(nil), o.start...)
+		p.roster = &roster
+	}
+}
+
+// Keep the known click plan current without reading buttons or timers again.
+func (p *mercenaryPlanner) captured(frame gameFrame, now time.Time) {
+	c := frame.context
+	if c.mercenaries && !c.questDialog && p.roster != nil {
+		o := *p.roster
+		o.frame = frame
+		p.observe(o, now)
+	} else if p.pending != nil && (p.pending.action.mercenary.step == selectMercenaryQuest || p.pending.action.mercenary.step == closeMercenaryQuest || p.pending.action.mercenary.step == returnToHeroes) {
+		p.observe(mercenaryObservation{frame: frame, selected: -1}, now)
+	}
+}
+
+func (p *mercenaryPlanner) needsRead(c gameContext) bool {
+	if c.questDialog {
+		if p.pending != nil && (p.pending.action.mercenary.step == selectMercenaryQuest || p.pending.action.mercenary.step == closeMercenaryQuest) {
+			return false
+		}
+		return p.latest.frame.id == 0 || !p.latest.readable || !p.latest.frame.context.questDialog
+	}
+	if c.mercenaries {
+		return p.roster == nil
+	}
+	return p.pending == nil
 }
 
 func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 	o := p.latest
-	a := gameAction{kind: handleMercenary, frame: o.frame, mercenaryThumb: o.thumb}
+	a := gameAction{kind: handleMercenary, frame: o.frame}
 	if p.pending != nil || o.frame.id == 0 || now.Before(p.nextScan) {
 		return a, false
 	}
@@ -271,14 +285,10 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 			a.point = mercenaryPoint(c.bounds, 811, 53)
 			p.aborting = true
 		} else if o.selected >= 0 {
-			// Confirm only the selection made by this planner.
-			if o.selected != p.chosenQuest || o.okay == (image.Point{}) || !mercenaryOfferMatches(o, o.selected, p.chosenOffer) {
-				p.aborting = true
-				return p.action(now)
-			}
-			a.mercenary.step, a.point = confirmMercenaryQuest, o.okay
+			p.aborting = true
+			return p.action(now)
 		} else if index := chooseMercenaryQuest(o.quests); index >= 0 {
-			a.mercenary = mercenaryCommand{step: selectMercenaryQuest, quest: index, offer: o.quests[index]}
+			a.mercenary = mercenaryCommand{step: selectMercenaryQuest, quest: index}
 			a.point = o.quests[index].point
 		} else {
 			p.aborting = true
@@ -301,11 +311,6 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 			return a, true
 		}
 		p.topVisited = true
-		// Pair a confirmed reward with dispatch for that same mercenary.
-		if !p.aborting && p.questRow != (image.Point{}) && hasMercenaryPoint(o.start, p.questRow) {
-			a.mercenary.step, a.point = openMercenaryQuest, p.questRow
-			return a, true
-		}
 		if len(o.collect) > 0 {
 			a.mercenary.step, a.point = claimMercenaryReward, o.collect[0]
 			if !p.aborting {
@@ -342,18 +347,32 @@ func (p *mercenaryPlanner) sent(a gameAction, now time.Time) {
 		p.active, p.returnHeroes, p.topVisited, p.aborting = true, true, false, false
 		p.bottomVisited = false
 		p.collectOnly = false
+		p.roster = nil
 	case openMercenaryQuest, claimAndOpenMercenaryQuest:
 		p.questRow = a.point
-		p.questThumb = a.mercenaryThumb
-		p.chosenQuest = -1
+		// Accepted clicks consume the plan; the game applies them without another row read.
+		p.consumeRow(a.point)
 	case selectMercenaryQuest:
-		p.chosenQuest = a.mercenary.quest
-		p.chosenOffer = a.mercenary.offer
+		fmt.Println("mercenary quest sent")
+	case claimMercenaryReward:
+		p.consumeRow(a.point)
+	case scrollMercenariesTop, scrollMercenariesBottom:
+		p.roster = nil
 	}
 }
 
-func mercenaryOfferMatches(o mercenaryObservation, index int, offer mercenaryQuest) bool {
-	return index >= 0 && index < len(o.quests) && o.quests[index].reward == offer.reward && o.quests[index].duration == offer.duration
+func (p *mercenaryPlanner) consumeRow(point image.Point) {
+	if p.roster == nil {
+		return
+	}
+	for _, points := range []*[]image.Point{&p.roster.collect, &p.roster.start} {
+		for i, row := range *points {
+			if absDiff(row.X, point.X) <= 4 && absDiff(row.Y, point.Y) <= 4 {
+				*points = append((*points)[:i], (*points)[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
 func mercenaryPoint(b image.Rectangle, x, y int) image.Point {
@@ -363,45 +382,36 @@ func mercenaryPoint(b image.Rectangle, x, y int) image.Point {
 // Recheck the clickable region against the latest frame. OCR may finish after
 // several captures; a user click or popup change must invalidate its decision.
 func mercenaryActionStable(a gameAction, current gameFrame) bool {
-	if a.frame.image == nil || current.image == nil || a.frame.context != current.context {
+	if a.frame.context != current.context {
 		return false
 	}
 	if a.mercenary.step == openMercenaries {
 		// The tab stays fixed while its notification moves between captures.
 		return mercenaryNotification(current.image)
 	}
-	b := current.context.bounds
-	region := image.Rect(a.point.X-b.Dx()/35, a.point.Y-b.Dy()/55, a.point.X+b.Dx()/35, a.point.Y+b.Dy()/55).Intersect(b)
-	textOnly := a.mercenary.step == selectMercenaryQuest || a.mercenary.step == confirmMercenaryQuest
-	if textOnly {
-		// Compare all offer text, not the empty center of a brown card. A reroll
-		// can change the offers while leaving every card's geometry identical.
-		region = image.Rectangle{Min: mercenaryPoint(b, 255, 209), Max: mercenaryPoint(b, 595, 799)}
+	if a.mercenary.step != selectMercenaryQuest {
+		return true
 	}
+	if a.frame.image == nil || current.image == nil {
+		return false
+	}
+	b := current.context.bounds
+	// Offer text must still match the decision before the first selection click.
+	region := image.Rectangle{Min: mercenaryPoint(b, 255, 209), Max: mercenaryPoint(b, 595, 799)}
 	changed, total := 0, 0
 	for y := region.Min.Y; y < region.Max.Y; y += max(1, b.Dy()/500) {
 		for x := region.Min.X; x < region.Max.X; x += max(1, b.Dx()/800) {
 			r, g, blue := rgb(a.frame.image.At(x, y))
 			cr, cg, cb := rgb(current.image.At(x, y))
-			if textOnly {
-				white := min(r, g, blue) > 170 && max(r, g, blue)-min(r, g, blue) < 55
-				currentWhite := min(cr, cg, cb) > 170 && max(cr, cg, cb)-min(cr, cg, cb) < 55
-				if white || currentWhite {
-					total++
-					if white != currentWhite {
-						changed++
-					}
+			white := min(r, g, blue) > 170 && max(r, g, blue)-min(r, g, blue) < 55
+			currentWhite := min(cr, cg, cb) > 170 && max(cr, cg, cb)-min(cr, cg, cb) < 55
+			if white || currentWhite {
+				total++
+				if white != currentWhite {
+					changed++
 				}
-				continue
 			}
-			if absDiff(r, cr)+absDiff(g, cg)+absDiff(blue, cb) > 100 {
-				changed++
-			}
-			total++
 		}
 	}
-	if textOnly {
-		return total > 0 && changed*100 < total
-	}
-	return total > 0 && changed*20 < total
+	return total > 0 && changed*100 < total
 }

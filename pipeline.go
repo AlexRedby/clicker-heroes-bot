@@ -70,17 +70,16 @@ type observation struct {
 	err         error
 }
 type gameAction struct {
-	kind           actionKind
-	frame          gameFrame
-	point, target  image.Point
-	key            int
-	hero           heroObservation
-	skills         [9]skillState
-	progression    progressionState
-	mercenary      mercenaryCommand
-	ascension      ascensionStep
-	mercenaryThumb image.Point
-	queuedAt       time.Time
+	kind          actionKind
+	frame         gameFrame
+	point, target image.Point
+	key           int
+	hero          heroObservation
+	skills        [9]skillState
+	progression   progressionState
+	mercenary     mercenaryCommand
+	ascension     ascensionStep
+	queuedAt      time.Time
 }
 type actionResult struct {
 	action  gameAction
@@ -405,6 +404,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.nextFish, p.nextProgression = time.Time{}, time.Time{}
 		}
 		p.frame = gameFrame{p.frame.id + 1, p.generation, p.layout, now, image, c}
+		p.mercenary.captured(p.frame, now)
 		// Slow capture must not consume its own interval and immediately repeat.
 		p.nextCapture = now.Add(time.Since(start) + min(250*time.Millisecond, p.options.fishInterval))
 		if p.ascension.active && (p.ascension.step == openAscension || p.ascension.step == waitAscensionReset || p.ascension.latest.frame.id == 0) && c.window != "!outside-game" && p.ascension.jobFrame == 0 && p.frame.id > p.ascension.lastInputFrame && !now.Before(p.ascension.nextRead) {
@@ -415,7 +415,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		if c.ascension || p.ascension.active || !c.known || c.modal != noGildModal || p.gild.active {
 			return nil
 		}
-		if p.options.mercenaries && (c.heroes || c.mercenaries) && p.mercenaryJobFrame == 0 && !now.Before(p.mercenary.nextScan) && !now.Before(p.nextMercenary) {
+		if p.options.mercenaries && (c.heroes || c.mercenaries) && p.mercenary.needsRead(c) && p.mercenaryJobFrame == 0 && !now.Before(p.mercenary.nextScan) && !now.Before(p.nextMercenary) {
 			p.mercenaryJobFrame = p.frame.id
 			replaceJob(jobs[mercenaryAnalysis], analysisJob{frame: p.frame})
 			p.nextMercenary = now.Add(2 * time.Second)
@@ -730,6 +730,9 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 					return err
 				}
 			}
+			if a.mercenary.step == selectMercenaryQuest {
+				return nil
+			}
 			return p.input.move(parkPoint(a.frame.context.bounds))
 		case clickMonster:
 			return p.input.monsterClick(a.point)
@@ -753,6 +756,28 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 		}
 		return fmt.Errorf("unknown game action %d", a.kind)
 	})
+	if acted && err == nil && a.kind == handleMercenary && a.mercenary.step == selectMercenaryQuest {
+		// Okay is fixed. Wait outside the input lock so F8 can cancel the second click.
+		timer := time.NewTimer(300 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return false, nil
+		case <-timer.C:
+		}
+		acted, err = p.controls.runClick(ctx, a.frame.generation, func() error {
+			if p.frame.context != a.frame.context {
+				return errInputContext
+			}
+			if p.readers.window != nil && p.readers.window() != a.frame.context.window {
+				return errInputContext
+			}
+			if err := p.input.click(mercenaryPoint(a.frame.context.bounds, 710, 500)); err != nil {
+				return err
+			}
+			return p.input.move(parkPoint(a.frame.context.bounds))
+		})
+	}
 	if errors.Is(err, errInputContext) {
 		return false, nil
 	}

@@ -147,7 +147,7 @@ func TestMercenaryScreenRecognizers(t *testing.T) {
 	}
 }
 
-func TestMercenaryBatchOCRReusesOnlyUnchangedButtons(t *testing.T) {
+func TestMercenaryBatchOCRKeepsLabelsAtTheirRows(t *testing.T) {
 	if os.Getenv("REQUIRE_OCR_TESTS") == "" {
 		t.Skip("set REQUIRE_OCR_TESTS=1")
 	}
@@ -175,21 +175,6 @@ func TestMercenaryBatchOCRReusesOnlyUnchangedButtons(t *testing.T) {
 	count, err := os.ReadFile(calls)
 	if err != nil || strings.Count(string(count), "call") != 1 {
 		t.Fatalf("four visible buttons needed more than one OCR process: %q err=%v", count, err)
-	}
-	// An unavailable OCR engine proves the next identical roster uses only pixels.
-	tesseractExecutable = filepath.Join(dir, "unavailable")
-	after, err := readMercenaryObservationAfter(ctx, frame, before)
-	if err != nil || !after.readable || len(after.collect) != len(before.collect) || len(after.running) != len(before.running) {
-		t.Fatalf("unchanged buttons were not reused: %+v err=%v", after, err)
-	}
-	frame.generation++
-	if _, err := readMercenaryObservationAfter(ctx, frame, before); err == nil {
-		t.Fatal("F8 generation reused old button labels")
-	}
-	frame.generation--
-	frame.image = loadTestImage(t, "testdata/mercenary-idle.png")
-	if _, err := readMercenaryObservationAfter(ctx, frame, before); err == nil {
-		t.Fatal("Collect becoming Start Quest reused an old label")
 	}
 	// Missing first-row text must not shift the later Collect labels upward.
 	tesseractExecutable = original

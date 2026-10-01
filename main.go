@@ -389,16 +389,8 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	}()
 
 	fmt.Println("paused; press F8 to start or pause, Ctrl+C to stop")
-	var mercenaryRoster mercenaryObservation // Used only by the mercenary analysis worker.
 	pipeline := newGamePipeline(&controls, input, pipelineReaders{
-		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, ascension: readAscensionObservation,
-		mercenaries: func(ctx context.Context, frame gameFrame) (mercenaryObservation, error) {
-			o, err := readMercenaryObservationAfter(ctx, frame, mercenaryRoster)
-			if err == nil && o.readable && !frame.context.questDialog {
-				mercenaryRoster = o
-			}
-			return o, err
-		},
+		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation,
 		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: foregroundGameWindow,
 	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall,
 		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval})
