@@ -24,6 +24,7 @@ type actionKind uint8
 
 const (
 	collectFish actionKind = iota
+	collectGilds
 	castSkill
 	enableProgression
 	parkPointer
@@ -35,6 +36,7 @@ const (
 
 type gameContext struct {
 	known, heroes bool
+	modal         gildModal
 	window        string
 	bounds        image.Rectangle
 }
@@ -87,9 +89,9 @@ type pipelineReaders struct {
 	window      func() string
 }
 type pipelineOptions struct {
-	heroes, skills, progression, monster bool
-	monsterPoint                         image.Point
-	fishInterval, clickInterval          time.Duration
+	heroes, skills, progression, monster, gilds bool
+	monsterPoint                                image.Point
+	fishInterval, clickInterval, gildInterval   time.Duration
 }
 type pipelineMetrics struct {
 	captures                          uint64
@@ -112,6 +114,7 @@ type gamePipeline struct {
 	skill                                               skillPlanner
 	progression                                         progressionPlanner
 	fish                                                fishClickTracker
+	gild                                                gildCollector
 	metrics                                             pipelineMetrics
 	generation, layout                                  uint64
 	nextCapture, nextFish, nextProgression, nextMonster time.Time
@@ -141,6 +144,12 @@ func recognizedGame(screen image.Image) (gameContext, error) {
 		return c, errors.New("capture returned no image")
 	}
 	c.bounds = screen.Bounds()
+	modal, err := readGildModal(screen)
+	c.modal = modal
+	if err != nil || modal != noGildModal {
+		c.known = modal != unknownGildModal
+		return c, err
+	}
 	known, _, err := progressionMode(screen)
 	c.known = known
 	c.heroes = known && heroTabSelected(screen)
@@ -188,6 +197,7 @@ func (p *gamePipeline) reset(generation uint64) {
 	p.state = [analysisCount]observation{}
 	p.barriers = [analysisCount]uint64{}
 	p.hero.interrupt()
+	p.gild.interrupt()
 	p.heroJobFrame = 0
 	p.skill.interrupt()
 	p.progression.pending = nil
@@ -324,7 +334,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	if p.readers.window != nil {
 		c.window = p.readers.window()
 		if c.window == "!outside-game" {
-			c.known, c.heroes = false, false
+			c.known, c.heroes, c.modal = false, false, noGildModal
 		}
 		if c.window == "" && !p.focusFallback {
 			fmt.Println("foreground window identity unavailable; using visual context and F8")
@@ -333,8 +343,14 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	}
 	_, err = p.controls.runClick(ctx, p.generation, func() error {
 		old := p.frame.context
-		if c.known != old.known || c.heroes != old.heroes || c.bounds != old.bounds || c.window != old.window {
+		if c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.bounds != old.bounds || c.window != old.window {
 			p.layout++
+			for _, ch := range jobs {
+				select {
+				case <-ch:
+				default:
+				}
+			}
 			p.queue = make(map[actionKind]gameAction)
 			p.state = [analysisCount]observation{}
 			p.hero.interrupt()
@@ -347,7 +363,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		p.frame = gameFrame{p.frame.id + 1, p.generation, p.layout, now, image, c}
 		// Slow capture must not consume its own interval and immediately repeat.
 		p.nextCapture = now.Add(time.Since(start) + min(250*time.Millisecond, p.options.fishInterval))
-		if !c.known {
+		if !c.known || c.modal != noGildModal || p.gild.active {
 			return nil
 		}
 		if !now.Before(p.nextFish) {
@@ -386,7 +402,7 @@ func (p *gamePipeline) accept(ctx context.Context, out observation, now time.Tim
 }
 
 func (p *gamePipeline) applyObservation(ctx context.Context, out observation, now time.Time) error {
-	if out.frame.layout != p.layout || out.frame.id < p.barriers[out.kind] || out.frame.id <= p.state[out.kind].frame.id {
+	if out.frame.layout != p.layout || p.frame.context.modal != noGildModal || p.gild.active || out.frame.id < p.barriers[out.kind] || out.frame.id <= p.state[out.kind].frame.id {
 		p.metrics.dropped++
 		return nil
 	}
@@ -458,7 +474,10 @@ func (p *gamePipeline) fishFresh(now time.Time) bool {
 	return fish.frame.id > 0 && now.Sub(fish.frame.at) <= max(3*time.Second, fish.elapsed+p.options.fishInterval*2)
 }
 func (p *gamePipeline) plan(now time.Time) {
-	if !p.frame.context.known || now.Before(p.settleUntil) {
+	if now.Before(p.settleUntil) {
+		return
+	}
+	if p.planGilds(now) || !p.frame.context.known {
 		return
 	}
 	if p.options.skills {
@@ -486,7 +505,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 		if !ok {
 			continue
 		}
-		if action.frame.layout != p.layout || action.frame.generation != p.generation || !p.frame.context.known {
+		if action.frame.layout != p.layout || action.frame.generation != p.generation || !p.frame.context.known || ((p.frame.context.modal != noGildModal || p.gild.active) && kind != collectGilds) {
 			delete(p.queue, kind)
 			continue
 		}
@@ -497,6 +516,13 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 				p.hero.nextScan = now
 			}
 			continue
+		}
+		if kind == collectGilds && action.frame.id != p.frame.id {
+			point, found, err := gildActionPoint(p.frame)
+			if err != nil || !found || point != action.point {
+				delete(p.queue, kind)
+				continue
+			}
 		}
 		if kind == enableProgression {
 			known, enabled, err := progressionMode(p.frame.image)
@@ -554,7 +580,7 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 		switch a.kind {
 		case clickMonster:
 			return p.input.monsterClick(a.point)
-		case collectFish:
+		case collectFish, collectGilds:
 			return p.input.click(a.point)
 		case castSkill:
 			return holdGameKey(ctx, p.input, fmt.Sprint(a.key))
@@ -592,6 +618,24 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 	}
 	invalidate := func(kind analysisKind) { p.barriers[kind] = p.frame.id + 1; p.state[kind] = observation{} }
 	switch a.kind {
+	case collectGilds:
+		p.gild.active = true
+		p.gild.opening = a.frame.context.modal == noGildModal
+		if a.point == p.gild.lastPoint {
+			p.gild.attempts++
+		} else {
+			p.gild.attempts = 1
+		}
+		p.gild.lastPoint = a.point
+		p.gild.nextAction = now.Add(time.Second)
+		if p.gild.deadline.IsZero() {
+			p.gild.deadline = now.Add(20 * time.Second)
+		}
+		gild := p.gild
+		p.reset(p.generation)
+		p.gild = gild
+		p.frame.context = gameContext{}
+		fmt.Printf("clicked gild gift control at (%d, %d)\n", a.point.X, a.point.Y)
 	case collectFish:
 		p.fish.recordClick(a.point)
 		invalidate(fishAnalysis)
@@ -641,4 +685,54 @@ func (m pipelineMetrics) String() string {
 		parts = append(parts, fmt.Sprintf("%s=%d/%s", name, m.counts[i], m.elapsed[i]))
 	}
 	return strings.Join(parts, " ")
+}
+
+// Gift polling reuses the current shared image; modal steps never schedule background analyzers.
+func (p *gamePipeline) planGilds(now time.Time) bool {
+	modal := p.frame.context.modal
+	if !p.options.gilds {
+		return modal != noGildModal
+	}
+	if p.gild.active && p.frame.context.known && modal == noGildModal && !p.gild.opening && !now.Before(p.gild.nextAction) {
+		p.gild.active = false
+		p.gild.deadline = time.Time{}
+		p.gild.nextCheck = now.Add(p.options.gildInterval)
+		p.gild.attempts = 0
+		p.hero.nextScan = now
+		fmt.Println("finished opening earned gild gifts")
+	}
+	exclusive := p.gild.active || modal != noGildModal
+	if !p.gild.active && modal != noGildModal && modal != gildChestModal && modal != gildRewardModal {
+		return true
+	}
+	if exclusive && p.gild.deadline.IsZero() {
+		p.gild.deadline = now.Add(20 * time.Second)
+	}
+	if exclusive && (now.After(p.gild.deadline) || p.gild.attempts >= 3) {
+		fmt.Println("gild gift window did not advance; paused, check it and press F8 to resume")
+		p.controls.pause()
+		return true
+	}
+	if !p.frame.context.known {
+		return exclusive
+	}
+	if now.Before(p.gild.nextAction) || (!exclusive && now.Before(p.gild.nextCheck)) {
+		return exclusive
+	}
+	if !exclusive {
+		p.gild.nextCheck = now.Add(p.options.gildInterval)
+	}
+	p.gild.nextAction = now.Add(250 * time.Millisecond)
+	point, found, err := gildActionPoint(p.frame)
+	if err != nil {
+		fmt.Printf("gild controls unreadable: %v\n", err)
+		return exclusive
+	}
+	if found {
+		p.enqueue(gameAction{kind: collectGilds, frame: p.frame, point: point}, now)
+	}
+	if modal != noGildModal {
+		p.gild.opening = false
+	}
+	return exclusive
 }
