@@ -282,3 +282,28 @@ func TestGoldTimeoutDoesNotRetryMask(t *testing.T) {
 		t.Fatalf("timeout retried another mask: %q %v", data, err)
 	}
 }
+
+func TestNonGildedSuccessorPurchaseDecision(t *testing.T) {
+	if _, err := exec.LookPath("tesseract"); err != nil {
+		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
+			t.Fatal(err)
+		}
+		t.Skip("Tesseract is not installed")
+	}
+	screen := loadTestImage(t, "testdata/hero-nongilded-successor.jpg")
+	now := time.Now()
+	frame := gameFrame{id: 1, layout: 1, at: now, image: screen, context: gameContext{known: true, heroes: true, bounds: screen.Bounds()}}
+	out, err := readHeroObservation(context.Background(), frame, heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.found || !out.owned || out.level != 99 || math.Abs(out.gold-(1016+math.Log10(9.485))) > 0.001 || math.Abs(out.nextPrice-(1999+math.Log10(2.039))) > 0.001 {
+		t.Fatalf("incorrect decision inputs: %+v", out)
+	}
+	p := heroRunner{enabled: true}
+	p.observe(out, observation{}, now)
+	a, ok := p.action(now)
+	if !ok || a.kind != buyHero || a.point != out.button {
+		t.Fatalf("Skogur purchase missing: %+v %t", a, ok)
+	}
+}

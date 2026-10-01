@@ -155,3 +155,31 @@ func TestHeroScrollbarFishRegression(t *testing.T) {
 		t.Fatal("unchanged Tsuchi row rejected")
 	}
 }
+
+func TestNonGildedHeroSuccessor(t *testing.T) {
+	screen := loadTestImage(t, "testdata/hero-nongilded-successor.jpg")
+	current, found := findHeroLevelButton(screen)
+	if !found || absDiff(current.Y, 446) > 3 || !heroRowHasLevel(screen, current.Y) {
+		t.Fatalf("owned Skogur: %v %t", current, found)
+	}
+	next, found := findNextHeroButton(screen, current)
+	if !found || absDiff(next.Y, 563) > 3 || !heroRowUnowned(screen, next.Y) || !heroCandidateKnown(screen, current) {
+		t.Fatalf("non-gilded Moeru rejected: %v %t", next, found)
+	}
+	b := screen.Bounds()
+	covered := image.NewRGBA(b)
+	draw.Draw(covered, b, screen, b.Min, draw.Src)
+	draw.Draw(covered, image.Rect(b.Dx()*26/100, next.Y-b.Dy()*3/100, b.Dx()*36/100, next.Y+b.Dy()*3/100), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	if heroCandidateKnown(covered, current) {
+		t.Fatal("obscured non-gilded successor accepted")
+	}
+	// The same cream card must work when its HIRE button becomes available.
+	available := image.NewRGBA(b)
+	draw.Draw(available, b, screen, b.Min, draw.Src)
+	buttonRegion := image.Rect(b.Dx()*4/100, current.Y-b.Dy()*45/1000, b.Dx()*145/1000, current.Y+b.Dy()*70/1000)
+	draw.Draw(available, buttonRegion.Add(image.Pt(0, next.Y-current.Y)), screen, buttonRegion.Min, draw.Src)
+	latest, found := findHeroLevelButton(available)
+	if !found || absDiff(latest.Y, next.Y) > 3 || !heroCandidateKnown(available, latest) {
+		t.Fatalf("available non-gilded candidate rejected: %v %t", latest, found)
+	}
+}

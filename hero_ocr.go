@@ -117,8 +117,12 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 				}
 			}
 		}
-		// Disabled prices keep the yellow hue but have much lower brightness.
-		yellowThreshold = max(60, yellowThreshold*2/3)
+		// Dim disabled text needs a lower threshold to preserve thin glyph strokes.
+		if yellowThreshold < 180 {
+			yellowThreshold = max(60, yellowThreshold/2)
+		} else {
+			yellowThreshold = yellowThreshold * 2 / 3
+		}
 	}
 	source := image.NewGray(image.Rect(0, 0, region.Dx(), region.Dy()))
 	for y := 0; y < source.Bounds().Dy(); y++ {
@@ -227,7 +231,7 @@ func readHeroPrice(ctx context.Context, screen image.Image, button image.Point) 
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
 	start, end, top, bottom := 52, 126, 18, 56
-	if w >= 2000 {
+	if w >= 1280 {
 		start, end = 74, 137
 	}
 	bluePixels, samples := 0, 0
@@ -239,8 +243,8 @@ func readHeroPrice(ctx context.Context, screen image.Image, button image.Point) 
 		samples++
 	}
 	if bluePixels*10 < samples*3 {
-		// Dark-button detection includes more of the border, so its center is lower.
-		top, bottom = 7, 50
+		// Stop above the gold border; it otherwise raises the disabled-text mask threshold.
+		top, bottom = 7, 35
 	}
 	region := image.Rect(b.Min.X+w*start/1000, button.Y+h*top/1000, b.Min.X+w*end/1000, button.Y+h*bottom/1000)
 	return readGameNumber(ctx, screen, region, max(3, 6144/w), 7, 0)

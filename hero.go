@@ -284,17 +284,18 @@ func heroRowUnowned(screen image.Image, y int) bool {
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
 	region := image.Rect(b.Min.X+w*28/100, y-h/100, b.Min.X+w*36/100, y+h/100).Intersect(b)
-	yellow, total := 0, 0
+	// Empty level areas are warm cream or gold, depending on gilding.
+	background, total := 0, 0
 	for row := region.Min.Y; row < region.Max.Y; row++ {
 		for x := region.Min.X; x < region.Max.X; x++ {
 			r, g, blue := rgb(screen.At(x, row))
-			if r > 200 && g > 160 && blue < 140 {
-				yellow++
+			if r > 200 && g > 160 && r-blue > 40 && g-blue > 20 {
+				background++
 			}
 			total++
 		}
 	}
-	return total > 0 && yellow*100 >= total*98
+	return total > 0 && background*100 >= total*98
 }
 
 func heroCandidateKnown(screen image.Image, button image.Point) bool {
