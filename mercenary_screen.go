@@ -272,7 +272,7 @@ func readMercenaryObservation(ctx context.Context, frame gameFrame) (mercenaryOb
 				out.running = append(out.running, point)
 			case strings.Contains(compact, "revive") || strings.Contains(compact, "bury"): // Never spend rubies or remove a mercenary.
 			default:
-				return out, fmt.Errorf("unreadable mercenary row button %q", label)
+				return out, fmt.Errorf("unreadable mercenary row button at (%d, %d): %q", point.X, point.Y, label)
 			}
 		}
 		out.readable = true

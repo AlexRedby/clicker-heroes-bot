@@ -186,6 +186,30 @@ func TestMercenaryQuestOCR(t *testing.T) {
 	}
 }
 
+func TestMercenaryBottomRosterOCRAndDispatch(t *testing.T) {
+	if os.Getenv("REQUIRE_OCR_TESTS") == "" {
+		t.Skip("set REQUIRE_OCR_TESTS=1")
+	}
+	for _, scale := range []int{1, 2} {
+		im := mercenaryScaled(t, "testdata/mercenary-bottom-idle.png", scale)
+		c, err := recognizedGame(im)
+		if err != nil || !c.known || !c.mercenaries || c.questDialog {
+			t.Fatalf("bottom roster context=%+v err=%v", c, err)
+		}
+		now := time.Now()
+		o, err := readMercenaryObservation(context.Background(), gameFrame{id: 1, at: now, image: im, context: c})
+		if err != nil || !o.readable || len(o.running) != 3 || len(o.start) != 1 || len(o.collect) != 0 || !o.bottom || o.top {
+			t.Fatalf("bottom roster at scale1/%d: observation=%+v err=%v", scale, o, err)
+		}
+		p := mercenaryPlanner{active: true, returnHeroes: true, topVisited: true}
+		p.observe(o, now)
+		a, ok := p.action(now)
+		if !ok || a.mercenary.step != openMercenaryQuest || a.point != o.start[0] || absDiff(a.point.Y, 1245/scale) > 2 {
+			t.Fatalf("fifth mercenary not dispatched: action=%+v ok=%t", a, ok)
+		}
+	}
+}
+
 func TestMercenaryParsingRejectsAmbiguity(t *testing.T) {
 	for _, raw := range []string{"Time: 5 minutes", "Time: 15 minutes", "Time: 30 minutes", "Time: 1 hour", "Time: 2 hours", "Time: 4 hours", "Time: 8 hours", "Time: 1 day", "Time: 2 days"} {
 		if _, ok := parseMercenaryDuration(raw); !ok {

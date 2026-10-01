@@ -54,6 +54,7 @@ type mercenaryPlanner struct {
 	notificationConfirmed bool
 	pending               *mercenaryAttempt
 	nextScan              time.Time
+	unreadableUntil       time.Time
 	active                bool
 	returnHeroes          bool
 	topVisited            bool
@@ -200,6 +201,11 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 	p.notificationConfirmed = o.frame.context.heroes && o.notify && previous.notify &&
 		o.frame.context == previous.frame.context && o.frame.layout == previous.frame.layout &&
 		o.frame.generation == previous.frame.generation && age >= 0 && age <= 5*time.Second
+	if o.readable {
+		p.unreadableUntil = time.Time{}
+	} else if (o.frame.context.mercenaries || o.frame.context.questDialog) && p.unreadableUntil.IsZero() {
+		p.unreadableUntil = now.Add(5 * time.Second)
+	}
 	p.latest = o
 }
 
@@ -221,6 +227,11 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 		}
 		// Also service a roster left open by the user or an interrupted run.
 		p.active, p.topVisited, p.aborting = true, false, false
+	}
+	// Buttons can be briefly unreadable while a reward or tab animates. Wait
+	// for a fresh readable frame before abandoning the visit; never click guesses.
+	if !o.readable && !p.aborting && now.Before(p.unreadableUntil) {
+		return a, false
 	}
 	if c.questDialog {
 		if !o.readable || p.aborting || p.questRow == (image.Point{}) {
@@ -257,12 +268,13 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 			return a, true
 		}
 		p.topVisited = true
-		if len(o.collect) > 0 {
-			a.mercenary.step, a.point = claimMercenaryReward, o.collect[0]
-			return a, true
-		}
+		// Dispatch newly idle mercenaries before collecting the next reward.
 		if len(o.start) > 0 {
 			a.mercenary.step, a.point = openMercenaryQuest, o.start[0]
+			return a, true
+		}
+		if len(o.collect) > 0 {
+			a.mercenary.step, a.point = claimMercenaryReward, o.collect[0]
 			return a, true
 		}
 		if o.thumbFound && !o.bottom {

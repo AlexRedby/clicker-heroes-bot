@@ -264,3 +264,56 @@ func TestMercenaryNotificationNeedsFreshConsistentFrames(t *testing.T) {
 	p.observe(o, now)
 	check(false)
 }
+
+func TestMercenaryTransientOCRDoesNotAbandonVisit(t *testing.T) {
+	now := time.Now()
+	c := gameContext{known: true, mercenaries: true, bounds: image.Rect(0, 0, 2560, 1440)}
+	row := image.Pt(768, 1245)
+	p := mercenaryPlanner{active: true, returnHeroes: true, topVisited: true}
+	o := mercenaryObservation{frame: gameFrame{id: 1, at: now, context: c}, readable: true, bottom: true, collect: []image.Point{row}}
+	p.observe(o, now)
+	a, ok := p.action(now)
+	if !ok || a.mercenary.step != claimMercenaryReward {
+		t.Fatal("reward was not collected")
+	}
+	p.sent(a, now)
+	o.frame.id++
+	o.collect, o.start = nil, []image.Point{row}
+	p.observe(o, now.Add(300*time.Millisecond))
+	if p.pending != nil {
+		t.Fatal("claim was not confirmed by Start Quest")
+	}
+	// A transient empty OCR result after the reward must not cause a return.
+	o.frame.id++
+	o.readable = false
+	p.observe(o, now.Add(400*time.Millisecond))
+	if _, ok := p.action(now.Add(500 * time.Millisecond)); ok || p.aborting {
+		t.Fatal("one unreadable frame abandoned the visit")
+	}
+	o.frame.id++
+	o.readable = true
+	o.collect = []image.Point{image.Pt(768, 810)}
+	p.observe(o, now.Add(600*time.Millisecond))
+	a, ok = p.action(now.Add(600 * time.Millisecond))
+	if !ok || a.mercenary.step != openMercenaryQuest || a.point != row {
+		t.Fatal("recovered frame did not dispatch the idle fifth mercenary first")
+	}
+	// Persistent unreadability has a bounded timeout and no guessed clicks.
+	p.sent(a, now.Add(600*time.Millisecond))
+	o.frame.id++
+	o.frame.context.questDialog = true
+	o.readable = false
+	p.observe(o, now.Add(700*time.Millisecond))
+	if _, ok := p.action(now.Add(800 * time.Millisecond)); ok {
+		t.Fatal("unreadable quest transition clicked")
+	}
+	o.frame.id++
+	p.observe(o, now.Add(2*time.Second))
+	if _, ok := p.action(now.Add(5 * time.Second)); ok {
+		t.Fatal("OCR retry deadline moved on another unreadable frame")
+	}
+	a, ok = p.action(now.Add(6 * time.Second))
+	if !ok || a.mercenary.step != closeMercenaryQuest || !p.aborting {
+		t.Fatal("persistent unreadability did not safely close the dialog")
+	}
+}
