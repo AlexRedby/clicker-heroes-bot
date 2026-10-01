@@ -2,3 +2,7 @@
 /artifacts/
 /clicker-heroes-bot
 /clicker-heroes-bot.exe
+
+/tools/ancients/node_modules/
+
+clickerHeroSave*.txt

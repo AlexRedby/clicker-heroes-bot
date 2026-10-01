@@ -9,7 +9,13 @@ Go bot for a running Clicker Heroes game. It can take a screenshot, make one cli
 
 Fish detection uses GoCV 0.43.0 with native OpenCV 4.13. Install OpenCV before building on every platform; see the [GoCV installation guides](https://gocv.io/getting-started/). On macOS or Linux, verify it with `pkg-config --modversion opencv4` (expect 4.13.x). Also check `go version` and `gcc --version`. If `shot` reports `Capture image not found` on macOS, enable Screen & System Audio Recording for Terminal (or the built app) and restart it. The `click` and `run` modes also require Accessibility permission.
 
-Hero leveling, automatic progression and Ascension additionally require the `tesseract` executable with English OCR data in `PATH`. Enable **Always use scientific notation** in the game's settings so gold, prices and damage use the same readable format.
+Hero leveling, automatic progression, Ascension and Ancient purchases additionally require the `tesseract` executable with English OCR data in `PATH`. Enable **Always use scientific notation** in the game's settings so gold, prices and damage use the same readable format.
+
+Ancient calculations additionally require Node.js 18+ and npm. From the project directory, install the pinned calculator dependencies once:
+
+```sh
+npm ci --prefix tools/ancients --ignore-scripts
+```
 
 ## Run
 
@@ -54,7 +60,27 @@ An observed progression-to-farm fallback before a boss records that wall. The bo
 
 With `-ascension`, the bot watches the existing progression observations and considers a World Ascension after an observed boss fallback and 15 minutes without reaching a higher zone (`-ascension-stall`). It requires `-hero-levels` and `-progression`. A disabled toggle by itself is insufficient; a running boss retry, pending hero/skill actions, unreadable economy data and stale observations defer the reset. Pause/resume, tab changes and long OCR gaps invalidate the stall baseline. Recent purchases and skill activations leave ten seconds for progression recovery before another reset decision.
 
-The bot clicks the recognized right-hand red spiral, reads the Hero Souls reward from the specific Ascension dialog, and confirms with its green `Yes` button only for a positive readable reward. A manually opened dialog is never automatically confirmed. All background actions are suspended during this transaction, and the reward must remain visible and unchanged before confirmation. It does not use `Buy Quick Ascension`, spend rubies, transcend, or delete relics. A blocked or missed transition pauses after twenty seconds. Following a confirmed return to zone 1, **the bot pauses** for Hero Souls spending and restart setup. Automatic Ancient spending and initial hero/autoclicker setup are subsequent tasks; press F8 only after preparing the next run. The supplied confirmation screenshot covers recognition; the actual reset and initial HUD still need live verification.
+The bot clicks the recognized right-hand red spiral, reads the Hero Souls reward from the specific Ascension dialog, and confirms with its green `Yes` button only for a positive readable reward. A manually opened dialog is never automatically confirmed. All background actions are suspended during this transaction, and the reward must remain visible and unchanged before confirmation. It does not use `Buy Quick Ascension`, spend rubies, transcend, or delete relics. A blocked or missed transition pauses after twenty seconds. Following a confirmed return to zone 1, **the bot pauses** for Hero Souls spending and restart setup. Export a fresh save for the Ancient purchase batch described below; initial hero/autoclicker setup remains manual. Press F8 only after preparing the next run. The supplied confirmation screenshot covers recognition; the actual reset and initial HUD still need live verification.
+
+### Ancient purchases
+
+Export a fresh save using the game settings. Preview an Active-build allocation without game input:
+
+```sh
+go run . -mode ancients-plan -save "path/to/clickerHeroSave.txt"
+```
+
+The bot runs the [MIT Ancient calculator](https://github.com/tomcur/ClickerHeroesCalculator) locally. It uses saved Ancient/Outsider levels and current Hero Souls, excludes pending Ascension rewards, and retains the calculator's soul bank plus a 1% reserve. `-ancient-reserve` accepts a percentage or an absolute scientific value; `-ancient-skill-rate` sets the skill-Ancient allocation from 0 to 1 (default 1). Set `-ancient-beyond8k` if your best hero is levelled beyond 8000, matching the calculator's Wepwawet setting. Large quantities stay decimal strings. The preview is saved to `artifacts/ancients-plan.json`; the exported save is read only.
+
+Run one purchase batch before ordinary automation:
+
+```sh
+go run . -mode run -ancients-save "path/to/clickerHeroSave.txt" -hero-levels -skills -progression
+```
+
+Start on Heroes or Ancients in the English full-screen layout, with Ancient cards expanded, and press F8. The bot checks the observed soul balance against the export, visits Ancients, scrolls through the list, holds `V` while clicking an owned Ancient, enters its calculated quantity, and confirms the level increase before the next purchase. Quantities are rounded down to at most 15 significant digits for the input field. Other automation waits during the visit. The bot returns to Heroes and pauses after the batch; F8 then resumes ordinary automation without repeating the batch.
+
+An unreadable or changed row, insufficient balance, unconfirmed input or F8 interruption pauses purchases. Close any quantity window, export a fresh save and restart for another batch. It never summons or respecs Ancients, imports/edits saves or spends rubies. Automatic fresh export after Ascension and initial hero/Auto Clicker setup remain pending; a continuous Ascension/spending/restart loop is not yet enabled. Screen recognition and transaction checks are tested against supplied frames; native purchases need a live game check.
 
 With `-gilds`, the bot checks the earned gift icon every five minutes (`-gild-interval`, for example `-gild-interval 10m`), starting with one check when the run first starts after F8. It clicks the gift, opens the central chest, selects the visible `Open All`, then closes the Gilded Heroes result panel. If a single reward has no `Open All`, it closes the reward using its visible X. Recognition uses small fixed screen regions and OpenCV templates, without OCR or extra captures. Fish, skill, progression, hero and monster actions are suspended while these windows are open; old observations and queued actions are discarded at each transition. Missing/unknown controls are skipped, and an unchanged transaction pauses after three repeated clicks or twenty seconds; inspect the window and press F8 to resume from a fresh frame. It only opens earned rewards and never uses `Get More`, ruby purchases or gild transfers. As with hero recognition, keep the game full-screen on the primary display.
 
@@ -69,6 +95,8 @@ The [game hotkey reference](docs/hotkeys.md) records keyboard actions, target ta
 ## Check the project
 
 ```sh
+npm ci --prefix tools/ancients --ignore-scripts
+node tools/ancients/plan.test.cjs
 go fmt ./...
 go test ./...
 go build .

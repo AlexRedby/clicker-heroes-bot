@@ -46,11 +46,12 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 - Verify one live opt-in `-ascension` reset: the observed boss wall and configured stall window, red spiral -> readable positive Hero Souls reward -> green Yes -> zone 1 -> automatic pause. Test a missed click, manual cancellation and F8 with the dialog open. Real-frame recognition, modal isolation, reward changes and decision cancellation are covered by regression tests.
 - Capture the immediate post-reset HUD to verify zone-1 OCR and initial controls in the installed game. The first implementation pauses after reset; complete initial short-list hero buying, Amenhotep's Ascension unlock and Auto Clicker target setup before enabling repeated unattended runs.
 - Capture the relic-junk blocking screen and recognize/report it specifically; keep automatic relic destruction/equipment outside this mode. Unknown or blocked transitions currently time out to a pause.
-- Verify the Ascension/restart stages live before enabling automatic Hero Souls spending.
+- Verify the Ascension/restart stages and fresh-export spending live before enabling their unattended integration.
 
 ### Hero Souls spending
 
-- After the Ascension/restart loop works live, inspect the Ancients panel and existing Ancient levels. Choose a minimal active-clicker spending policy and verify required hotkeys before implementation; preserve a deliberate unspent soul reserve. Then consider gild transfers and relics.
+- Verify one live `-ancients-save` batch with a fresh export, expanded Ancient cards, V custom quantity, actual text entry, visible level confirmation, scrolling through all planned rows and return to Heroes. Include F8 and a missed input; obtain real filled-quantity and post-purchase frames if OCR needs calibration. Supplied frames and regressions cover recognition, budget protection, transaction ownership, stale input and interruption.
+- Acquire a fresh exported state after each confirmed Ascension and integrate spending only after live validation. The current command runs one batch from a user export and then pauses; repeated unattended resets still require initial hero buying, Amenhotep unlock and Auto Clicker setup. Consider gild transfers and relics after that loop works.
 
 ### Transcension
 

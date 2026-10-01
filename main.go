@@ -23,8 +23,14 @@ import (
 
 func main() {
 	robotgo.Scale = false
-	mode := flag.String("mode", "help", "help, shot, click, or run")
+	mode := flag.String("mode", "help", "help, shot, click, run, or ancients-plan")
 	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot mode")
+	save := flag.String("save", "", "exported Clicker Heroes save for ancients-plan mode (read only)")
+	ancientReserve := flag.String("ancient-reserve", "1%", "Hero Souls to reserve beyond the calculator soul bank")
+	ancientSkillRate := flag.Float64("ancient-skill-rate", 1, "calculator allocation to skill Ancients, from 0 to 1")
+	ancientBeyond8k := flag.Bool("ancient-beyond8k", false, "best hero is levelled beyond 8000; changes calculator gold allocation")
+	ancientSave := flag.String("ancients-save", "", "exported save for one Ancient purchase batch before normal run actions")
+	ancientPlanOutput := flag.String("ancient-plan-out", "artifacts/ancients-plan.json", "Ancient purchase plan output")
 	x := flag.Int("x", 0, "screen X coordinate for click or optional monster clicks in run mode")
 	y := flag.Int("y", 0, "screen Y coordinate for click or optional monster clicks in run mode")
 	interval := flag.Duration("interval", 100*time.Millisecond, "time between optional monster clicks in run mode")
@@ -73,12 +79,36 @@ func main() {
 
 	var err error
 	switch *mode {
+	case "ancients-plan":
+		if *save == "" {
+			err = errors.New("ancients-plan requires -save")
+			break
+		}
+		var plan ancientPlan
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		plan, err = calculateAncients(ctx, *save, *ancientReserve, *ancientSkillRate, *ancientBeyond8k)
+		if err == nil {
+			err = writeAncientPlan(*ancientPlanOutput, plan)
+		}
 	case "shot":
 		err = saveScreenshot(*output)
 	case "click":
 		err = clickAt(context.Background(), *x, *y)
 	case "run":
-		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall)
+		var plan *ancientPlan
+		if *ancientSave != "" {
+			value, e := calculateAncients(context.Background(), *ancientSave, *ancientReserve, *ancientSkillRate, *ancientBeyond8k)
+			if e != nil {
+				err = e
+				break
+			}
+			plan = &value
+			if err = writeAncientPlan(*ancientPlanOutput, value); err != nil {
+				break
+			}
+		}
+		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall, plan)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -208,6 +238,7 @@ type heroInput struct {
 	click        func(image.Point) error
 	keyTap       func(string) error
 	keyToggle    func(string, string) error
+	typeText     func(string) error
 }
 
 type pauseControl struct {
@@ -297,7 +328,7 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.misses = 0
 }
 
-func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration) error {
+func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration, ancientPlan *ancientPlan) error {
 	if ascension && (!heroLevels || !progression || ascensionStall <= 0) {
 		return errors.New("-ascension requires -hero-levels, -progression and a positive -ascension-stall")
 	}
@@ -324,7 +355,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	if duration > 0 {
 		ctx, cancel = context.WithTimeout(interrupt, duration)
 	}
-	if heroLevels || progression || mercenaries {
+	if heroLevels || progression || mercenaries || ancientPlan != nil {
 		if err := checkHeroOCR(ctx); err != nil {
 			cancel()
 			return err
@@ -337,6 +368,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		click:        func(p image.Point) error { return clickGameAt(ctx, p) },
 		keyTap:       func(key string) error { return robotgo.KeyTap(key) },
 		keyToggle:    func(key, state string) error { return robotgo.KeyToggle(key, state) },
+		typeText:     func(text string) error { robotgo.TypeStr(text); return nil },
 		drag: func(from, to image.Point) error {
 			if err := moveAt(from); err != nil {
 				return err
@@ -390,9 +422,9 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 
 	fmt.Println("paused; press F8 to start or pause, Ctrl+C to stop")
 	pipeline := newGamePipeline(&controls, input, pipelineReaders{
-		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation,
+		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation, ancients: readAncientObservation,
 		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: foregroundGameWindow,
-	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall,
+	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall, ancientPlan: ancientPlan,
 		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval})
 	err = pipeline.run(ctx)
 	fmt.Printf("stopped after %d actions\n", pipeline.metrics.actions)

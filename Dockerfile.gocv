@@ -3,7 +3,7 @@ FROM golang:1.27.1-bookworm AS go
 FROM gocv/opencv:4.13.0
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-xcb-dev libxtst-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev xvfb xauth \
-    tesseract-ocr tesseract-ocr-eng \
+    tesseract-ocr tesseract-ocr-eng nodejs \
     && rm -rf /var/lib/apt/lists/*
 RUN rm -rf /usr/local/go
 COPY --from=go /usr/local/go /usr/local/go

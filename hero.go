@@ -163,10 +163,17 @@ func heroScrollbarThumb(screen image.Image) (image.Point, int, bool) {
 	if screen == nil || !heroTabSelected(screen) {
 		return image.Point{}, 0, false
 	}
+	return listScrollbarThumb(screen, 320)
+}
+
+func listScrollbarThumb(screen image.Image, top int) (image.Point, int, bool) {
+	if screen == nil {
+		return image.Point{}, 0, false
+	}
 	bounds := screen.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	xStart, xEnd := bounds.Min.X+w*445/1000, bounds.Min.X+w*495/1000
-	yStart, yEnd := bounds.Min.Y+h*32/100, bounds.Min.Y+h*965/1000
+	yStart, yEnd := bounds.Min.Y+h*top/1000, bounds.Min.Y+h*965/1000
 	bestScore, bestY, bestHeight, bestX := 0, 0, 0, 0
 	span := func(x, y int) (int, int) {
 		left, right := x, x
