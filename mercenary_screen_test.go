@@ -19,14 +19,14 @@ func TestMercenaryAnimatedNotification(t *testing.T) {
 	atlas := loadTestImage(t, "testdata/mercenary-alert-phases.png")
 	bounds := image.Rect(0, 0, 2560, 1440)
 	var before gameFrame
-	for _, divisor := range []int{1, 2} {
+	for _, divisor := range []int{1, 2, 4} {
 		for phase := 0; phase < 5; phase++ {
 			screen := image.NewRGBA(bounds)
-			region := image.Rectangle{Min: mercenaryPoint(bounds, 367, 110), Max: mercenaryPoint(bounds, 420, 220)}
+			region := image.Rect(936, 158, 1076, 320)
 			draw.Draw(screen, region, atlas, image.Pt(phase*region.Dx(), 0), draw.Src)
 			var im image.Image = screen
-			if divisor == 2 {
-				scaled := image.NewRGBA(image.Rect(0, 0, 1280, 720))
+			if divisor != 1 {
+				scaled := image.NewRGBA(image.Rect(0, 0, 2560/divisor, 1440/divisor))
 				xdraw.CatmullRom.Scale(scaled, scaled.Bounds(), screen, bounds, draw.Src, nil)
 				im = scaled
 			}
@@ -45,6 +45,27 @@ func TestMercenaryAnimatedNotification(t *testing.T) {
 			}
 		}
 	}
+	// Two actual unselected tabs without a notification. Change all scenery
+	// outside the opaque patch to ensure it cannot influence the result.
+	normal := loadTestImage(t, "testdata/mercenary-normal-tabs.png")
+	for phase := 0; phase < 2; phase++ {
+		for _, divisor := range []int{1, 2, 4} {
+			for _, bg := range []color.Color{color.Black, color.White, color.RGBA{50, 180, 240, 255}} {
+				screen := image.NewRGBA(bounds)
+				draw.Draw(screen, bounds, image.NewUniform(bg), image.Point{}, draw.Src)
+				draw.Draw(screen, image.Rect(936, 272, 1024, 320), normal, image.Pt(phase*140, 114), draw.Src)
+				var im image.Image = screen
+				if divisor != 1 {
+					scaled := image.NewRGBA(image.Rect(0, 0, 2560/divisor, 1440/divisor))
+					xdraw.CatmullRom.Scale(scaled, scaled.Bounds(), screen, bounds, draw.Src, nil)
+					im = scaled
+				}
+				if mercenaryNotification(im) {
+					t.Fatalf("normal tab accepted on changed scenery: phase=%d scale=1/%d", phase, divisor)
+				}
+			}
+		}
+	}
 	for _, bg := range []color.Color{color.Black, color.White, color.RGBA{255, 220, 40, 255}} {
 		screen := image.NewRGBA(bounds)
 		draw.Draw(screen, bounds, image.NewUniform(bg), image.Point{}, draw.Src)
@@ -59,8 +80,12 @@ func TestMercenaryAnimatedNotification(t *testing.T) {
 		}
 	}
 	for _, path := range []string{"testdata/hero-economy-x1.png", "testdata/gild-hud.png", "testdata/hero-tsuchi-x1.png"} {
-		for _, divisor := range []int{1, 2} {
-			if !mercenaryNotification(mercenaryScaled(t, path, divisor)) {
+		for _, divisor := range []int{1, 2, 4} {
+			im := mercenaryScaled(t, path, divisor)
+			if im.Bounds().Dx() < 640 {
+				continue
+			}
+			if !mercenaryNotification(im) {
 				t.Fatalf("missed actual notification in %s at scale 1/%d", path, divisor)
 			}
 		}

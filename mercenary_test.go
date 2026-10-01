@@ -33,6 +33,9 @@ func TestMercenaryPolicyAndConfirmedCycle(t *testing.T) {
 	o := mercenaryObservation{frame: gameFrame{id: 1, at: now, context: gameContext{known: true, heroes: true, bounds: bounds}}, notify: true, selected: -1, readable: true}
 	p := mercenaryPlanner{}
 	p.observe(o, now)
+	o.frame.id++
+	o.frame.at = now.Add(200 * time.Millisecond)
+	p.observe(o, o.frame.at)
 	step := func(want mercenaryStep, after mercenaryObservation) gameAction {
 		t.Helper()
 		a, ok := p.action(now)
@@ -175,6 +178,18 @@ func TestMercenaryCaptureSchedulesActionAndPreservesExpectedTabChange(t *testing
 	if err := p.accept(ctx, out, now.Add(10*time.Millisecond)); err != nil {
 		t.Fatal(err)
 	}
+	p.plan(now.Add(10 * time.Millisecond))
+	if _, ok := p.mercenary.action(now.Add(10 * time.Millisecond)); ok {
+		t.Fatal("one notification observation opened the tab")
+	}
+	now = now.Add(2 * time.Second)
+	if err := p.capture(ctx, now, jobs); err != nil {
+		t.Fatal(err)
+	}
+	out = p.analyze(ctx, mercenaryAnalysis, <-jobs[mercenaryAnalysis])
+	if err := p.accept(ctx, out, now.Add(10*time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
 	p.state[fishAnalysis] = observation{frame: p.frame}
 	p.plan(now.Add(10 * time.Millisecond))
 	a, ok := p.nextAction(now.Add(10 * time.Millisecond))
@@ -206,4 +221,46 @@ func TestMercenaryCaptureSchedulesActionAndPreservesExpectedTabChange(t *testing
 	if a, ok := p.nextAction(now.Add(310 * time.Millisecond)); !ok || a.mercenary.step != claimMercenaryReward {
 		t.Fatal("confirmed roster did not lead to reward collection")
 	}
+}
+
+func TestMercenaryNotificationNeedsFreshConsistentFrames(t *testing.T) {
+	now := time.Now()
+	o := mercenaryObservation{notify: true, frame: gameFrame{id: 1, at: now, context: gameContext{known: true, heroes: true}}}
+	p := mercenaryPlanner{}
+	check := func(want bool) {
+		t.Helper()
+		if _, got := p.action(now); got != want {
+			t.Fatalf("notification action=%t want=%t", got, want)
+		}
+	}
+	p.observe(o, now)
+	check(false)
+	p.observe(o, now) // Duplicate work is not another frame.
+	check(false)
+	o.frame.id++
+	o.notify = false
+	p.observe(o, now)
+	check(false)
+	o.frame.id++
+	o.notify = true
+	p.observe(o, now)
+	check(false)
+	o.frame.id++
+	o.frame.layout++
+	p.observe(o, now)
+	check(false)
+	o.frame.id++
+	p.observe(o, now)
+	check(true)
+	p.interrupt()
+	p.observe(o, now)
+	check(false)
+	o.frame.id++
+	o.frame.at = now.Add(6 * time.Second)
+	p.observe(o, o.frame.at)
+	check(false)
+	o.frame.id++
+	o.frame.at = now
+	p.observe(o, now)
+	check(false)
 }

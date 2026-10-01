@@ -50,17 +50,18 @@ type mercenaryAttempt struct {
 }
 
 type mercenaryPlanner struct {
-	latest       mercenaryObservation
-	pending      *mercenaryAttempt
-	nextScan     time.Time
-	active       bool
-	returnHeroes bool
-	topVisited   bool
-	aborting     bool
-	questRow     image.Point
-	questThumb   image.Point
-	chosenQuest  int
-	chosenOffer  mercenaryQuest
+	latest                mercenaryObservation
+	notificationConfirmed bool
+	pending               *mercenaryAttempt
+	nextScan              time.Time
+	active                bool
+	returnHeroes          bool
+	topVisited            bool
+	aborting              bool
+	questRow              image.Point
+	questThumb            image.Point
+	chosenQuest           int
+	chosenOffer           mercenaryQuest
 }
 
 func mercenaryQuestRank(q mercenaryQuest) int {
@@ -138,6 +139,9 @@ func hasMercenaryPoint(points []image.Point, point image.Point) bool {
 }
 
 func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
+	if o.frame.id <= p.latest.frame.id {
+		return
+	}
 	if p.pending != nil {
 		a := p.pending.action
 		if o.frame.id <= a.frame.id {
@@ -190,6 +194,12 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 			}
 		}
 	}
+	// Two fresh observations in the same layout reject a transient obstruction.
+	previous := p.latest
+	age := o.frame.at.Sub(previous.frame.at)
+	p.notificationConfirmed = o.frame.context.heroes && o.notify && previous.notify &&
+		o.frame.context == previous.frame.context && o.frame.layout == previous.frame.layout &&
+		o.frame.generation == previous.frame.generation && age >= 0 && age <= 5*time.Second
 	p.latest = o
 }
 
@@ -201,7 +211,7 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 	}
 	c := o.frame.context
 	if !p.active {
-		if c.heroes && o.notify {
+		if c.heroes && o.notify && p.notificationConfirmed {
 			a.mercenary.step = openMercenaries
 			a.point = mercenaryPoint(c.bounds, 383, 200)
 			return a, true

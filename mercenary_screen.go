@@ -9,9 +9,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gocv.io/x/gocv"
+	xdraw "golang.org/x/image/draw"
 )
 
 // References come from the user's full-screen game frames.
@@ -19,9 +21,14 @@ import (
 //go:embed assets/mercenary-title.png
 var mercenaryTitlePNG []byte
 
-//go:embed assets/mercenary-alert.png
-var mercenaryAlertPNG []byte
-var mercenaryTitleImage, mercenaryAlertImage decodedPNG
+//go:embed assets/mercenary-tab.png
+var mercenaryTabPNG []byte
+var mercenaryTitleImage, mercenaryTabImage decodedPNG
+var mercenaryTabScale struct {
+	sync.Mutex
+	size  image.Point
+	image image.Image
+}
 
 func mercenaryTemplate(screen image.Image, region image.Rectangle, reference *decodedPNG, data []byte, originalSize image.Point) bool {
 	if screen == nil || screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 {
@@ -85,47 +92,46 @@ func mercenaryNotification(screen image.Image) bool {
 		return false
 	}
 	b := screen.Bounds()
-	source, err := mercenaryAlertImage.get(mercenaryAlertPNG)
+	source, err := mercenaryTabImage.get(mercenaryTabPNG)
 	if err != nil {
 		return false
 	}
-	// Compare the yellow silhouette, excluding the scenery and white highlight.
-	// Search nearby positions and sizes because the notification bounces.
-	region := image.Rectangle{Min: mercenaryPoint(b, 367, 110), Max: mercenaryPoint(b, 420, 220)}
-	scene, err := mercenaryYellowMask(screen, region)
-	if err != nil {
-		return false
+	// Fixed opaque skull patch: scenery never enters the comparison. The left
+	// strip must still match the unselected plate; a changed skull prompts a
+	// roster check, whose Collect/Start Quest buttons decide what to do.
+	region := image.Rect(b.Min.X+b.Dx()*936/2560, b.Min.Y+b.Dy()*272/1440,
+		b.Min.X+b.Dx()*1024/2560, b.Min.Y+b.Dy()*320/1440)
+	var reference image.Image = source
+	if region.Size() != source.Bounds().Size() {
+		mercenaryTabScale.Lock()
+		if mercenaryTabScale.size != region.Size() {
+			scaled := image.NewRGBA(image.Rect(0, 0, region.Dx(), region.Dy()))
+			xdraw.CatmullRom.Scale(scaled, scaled.Bounds(), source, source.Bounds(), draw.Src, nil)
+			mercenaryTabScale.size, mercenaryTabScale.image = region.Size(), scaled
+		}
+		reference = mercenaryTabScale.image
+		mercenaryTabScale.Unlock()
 	}
-	defer scene.Close()
-	icon, err := mercenaryYellowMask(source, source.Bounds())
-	if err != nil {
-		return false
-	}
-	defer icon.Close()
-	for _, width := range []int{90, 100, 110} {
-		for _, height := range []int{70, 80, 90, 100, 110} {
-			size := image.Pt(max(1, b.Dx()*56*width/256000), max(1, b.Dy()*77*height/144000))
-			score, err := templateScore(scene, icon, size)
-			if err == nil && score >= .85 {
-				return true
+	anchorChanged, anchors, changed, total := 0, 0, 0, 0
+	for y := 3 * region.Dy() / 48; y < 44*region.Dy()/48; y++ {
+		for x := 3 * region.Dx() / 88; x < 84*region.Dx()/88; x++ {
+			r, g, blue := rgb(reference.At(x, y))
+			cr, cg, cb := rgb(screen.At(region.Min.X+x, region.Min.Y+y))
+			diff := absDiff(r, cr)+absDiff(g, cg)+absDiff(blue, cb) > 100
+			if x < 19*region.Dx()/88 {
+				anchors++
+				if diff {
+					anchorChanged++
+				}
+			} else {
+				total++
+				if diff {
+					changed++
+				}
 			}
 		}
 	}
-	return false
-}
-
-func mercenaryYellowMask(screen image.Image, region image.Rectangle) (gocv.Mat, error) {
-	region = region.Intersect(screen.Bounds())
-	mask := image.NewGray(image.Rect(0, 0, region.Dx(), region.Dy()))
-	for y := 0; y < region.Dy(); y++ {
-		for x := 0; x < region.Dx(); x++ {
-			r, g, blue := rgb(screen.At(region.Min.X+x, region.Min.Y+y))
-			if r >= 210 && g >= 150 && blue < 125 && r >= g-10 {
-				mask.Pix[y*mask.Stride+x] = 255
-			}
-		}
-	}
-	return gocv.NewMatFromBytes(region.Dy(), region.Dx(), gocv.MatTypeCV8UC1, mask.Pix)
+	return anchorChanged*5 <= anchors && changed*100 >= total*12
 }
 
 func mercenaryScrollbar(screen image.Image) (point image.Point, found, top, bottom bool) {
