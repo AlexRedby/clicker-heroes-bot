@@ -1,5 +1,12 @@
 # TODO
 
+## R1 implementation in this worktree
+
+- Connect bootstrapPlanner to verified hero/upgrade readers and the shared action queue: targeted support visits, bounded clickHeroLevels purchases with existing heroRunner confirmation, ordinary upgrade clicks and F8/handoff callbacks. Integration remains owned by the main chat.
+- Obtain real initial short-list/long-thumb and first-hire frames before enabling new hero geometry; obtain a final Ace Scout Dorothy frame before enabling terminal-roster recognition.
+- Implement and confirm existing purchased Auto Clicker placement after native pool/target evidence is available; preserve the user's upgrades assignment and recognize existing hero/skill ownership. Do not buy clickers, reclaim all targets or use bulk upgrades without verified ASCENSION exclusion.
+- Verify post-reset progression and Auto Clicker target/count behavior, and bulk-upgrade exclusion of ASCENSION, before wiring bootstrap into main.go/pipeline.go and removing restart pauses. Shared-file integration remains owned by the main chat.
+
 ## Remaining feature roadmap
 
 Goal: complete the unattended active-play loop using the existing shared capture, bounded analyzers and serialized input queue. Each feature first gets an actionable plan in its own chat; implementation follows a separate user request. Keep working strategies simple: the latest hero, saving for the next hero, native hotkeys/input where available, and no ruby spending.
