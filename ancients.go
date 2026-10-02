@@ -198,7 +198,8 @@ type ancientPlanner struct {
 	plan                               *ancientPlan
 	active, started, finished, blocked bool
 	budgetChecked, topChecked          bool
-	quantityEntered                    bool
+	quantityEntered, recovering        bool
+	bottomChecked                      bool
 	done                               map[int]bool
 	latest                             ancientObservation
 	pending                            *gameAction
@@ -207,6 +208,14 @@ type ancientPlanner struct {
 	failure, waiting                   string
 	deadline, nextRead, nextAction     time.Time
 	jobFrame                           uint64
+}
+
+// The native track excludes its arrow buttons; its thumb has a minimum height.
+// A fraction of thumb height is not the same fraction of a page of cards.
+func ancientScrollLimits(out ancientObservation) (int, int) {
+	b := out.frame.context.bounds
+	return b.Min.Y + b.Dy()*416/1000 + out.thumbHeight/2,
+		b.Min.Y + b.Dy()*965/1000 - out.thumbHeight/2
 }
 
 func (p *ancientPlanner) interrupt() {
@@ -286,8 +295,19 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 		if !out.frame.context.ancients || !out.hasThumb {
 			return
 		}
-		if absDiff(out.thumb.Y, a.point.Y) < max(2, out.frame.context.bounds.Dy()/1000) {
+		top, bottom := ancientScrollLimits(out)
+		tolerance := max(2, out.frame.context.bounds.Dy()/1000)
+		endPad := max(2, out.frame.context.bounds.Dy()*4/1000)
+		move := out.thumb.Y - a.point.Y
+		if a.target.Y < a.point.Y {
+			if move > 0 || (absDiff(move, 0) < tolerance && !(a.target.Y <= top+tolerance && out.thumb.Y <= top+tolerance)) {
+				return
+			}
+		} else if move < 0 || (move < tolerance && !(a.target.Y >= bottom-endPad && out.thumb.Y >= bottom-endPad)) {
 			return
+		}
+		if a.target.Y >= bottom+endPad && out.thumb.Y >= bottom-endPad {
+			p.bottomChecked = true
 		}
 	case openAncientQuantity:
 		if !out.frame.context.ancientDialog {
@@ -387,10 +407,34 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 		}
 		p.budgetChecked = true
 	}
-	if !p.topChecked {
-		if p.latest.hasThumb && p.latest.thumb.Y-p.latest.thumbHeight/2 > frame.context.bounds.Min.Y+frame.context.bounds.Dy()*425/1000 {
+	if !p.topChecked && !p.latest.hasThumb {
+		// Short lists need no sweep when every remaining planned row is readable.
+		visible := 0
+		for i, buy := range p.plan.Rows {
+			if p.done[i] {
+				continue
+			}
+			for _, row := range p.latest.rows {
+				if row.name == buy.Name {
+					visible++
+					break
+				}
+			}
+		}
+		if visible != len(p.plan.Rows)-len(p.done) {
+			if p.deadline.IsZero() {
+				p.deadline = now.Add(20 * time.Second)
+			}
+			p.nextAction = now.Add(300 * time.Millisecond)
+			return gameAction{}, false
+		}
+		p.topChecked = true
+	}
+	if !p.topChecked && p.latest.hasThumb {
+		top, _ := ancientScrollLimits(p.latest)
+		if p.latest.thumb.Y > top+max(2, frame.context.bounds.Dy()/1000) {
 			a, _ := makeAction(scrollAncients, p.latest.thumb)
-			a.target = image.Pt(a.point.X, frame.context.bounds.Min.Y+frame.context.bounds.Dy()*40/100)
+			a.target = image.Pt(a.point.X, top)
 			return a, true
 		}
 		p.topChecked = true
@@ -435,14 +479,31 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 		p.nextAction = now.Add(300 * time.Millisecond)
 		return gameAction{}, false
 	}
-	if p.latest.thumb.Y+p.latest.thumbHeight/2 >= frame.context.bounds.Min.Y+frame.context.bounds.Dy()*96/100 {
-		p.fail("not all planned Ancients were found in the expanded list")
+	top, bottom := ancientScrollLimits(p.latest)
+	tolerance := max(2, frame.context.bounds.Dy()/1000)
+	var missing []string
+	for i, row := range p.plan.Rows {
+		if !p.done[i] {
+			missing = append(missing, row.Name)
+		}
+	}
+	if p.recovering && p.latest.thumb.Y <= top+tolerance {
+		p.fail("planned Ancients still missing after recovery sweep: " + strings.Join(missing, ", "))
 		return gameAction{}, false
 	}
+	if !p.recovering && p.bottomChecked {
+		p.recovering = true
+		fmt.Printf("Ancient list recovery for remaining rows: %s\n", strings.Join(missing, ", "))
+	}
 	a, _ := makeAction(scrollAncients, p.latest.thumb)
-	a.target = image.Pt(a.point.X, a.point.Y+max(20, p.latest.thumbHeight*3/4))
-	if a.target.Y+p.latest.thumbHeight/2 >= frame.context.bounds.Min.Y+frame.context.bounds.Dy()*94/100 {
-		a.target.Y = frame.context.bounds.Max.Y - 1
+	// Quarter-thumb steps overlap expanded cards even with the native minimum thumb size.
+	// Gold-run height can omit border pixels (4px in the native bottom fixture).
+	// Request the endpoint with a small pad, then require a newer clamped frame.
+	endPad := max(2, frame.context.bounds.Dy()*4/1000)
+	a.target = image.Pt(a.point.X, min(bottom+endPad, a.point.Y+max(2, p.latest.thumbHeight/4)))
+	if p.recovering {
+		// One reverse sweep samples closer views; submitted rows stay excluded.
+		a.target.Y = max(top, a.point.Y-max(2, p.latest.thumbHeight/8))
 	}
 	return a, true
 }

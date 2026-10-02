@@ -828,3 +828,234 @@ func TestAncientNextPurchaseGuards(t *testing.T) {
 		})
 	}
 }
+
+func TestAncientListCoverage(t *testing.T) {
+	for _, width := range []int{640, 1280, 2560} {
+		for _, fault := range []string{"none", "unreadable", "missing"} {
+			t.Run(fmt.Sprintf("%d/%s", width, fault), func(t *testing.T) {
+				// Native geometry at 1280x720: 30 expanded 147px cards, 422px viewport,
+				// 334px thumb travel. The minimum-size thumb maps ~12 content px per px.
+				// Only centers in 345..659 have both complete labels and purchase buttons.
+				b := image.Rect(23, 17, 23+width, 17+width*9/16)
+				screen := image.NewRGBA(b)
+				scale := func(y int) int { return b.Min.Y + y*b.Dy()/720 }
+				top, bottom, thumbHeight := scale(330), scale(664), 61*b.Dy()/720
+				position := scale(340) // Near the top, but enough to clip the first card.
+				plan := ancientPlan{Plan: ancientcalc.Plan{Souls: "1000", Reserve: "5"}}
+				for i := range 30 {
+					plan.Rows = append(plan.Rows, ancientcalc.Purchase{Name: fmt.Sprintf("Ancient-%02d", i), Current: "1", Quantity: "1", Cost: "1"})
+				}
+				if fault == "missing" {
+					plan.Rows = append(plan.Rows, ancientcalc.Purchase{Name: "Missing Ancient", Current: "1", Quantity: "1", Cost: "1"})
+				}
+				p := ancientPlanner{plan: &plan, active: true, started: true, selected: -1, done: map[int]bool{}}
+				now := time.Now()
+				frame := gameFrame{image: screen, context: gameContext{known: true, ancients: true, bounds: b, window: "game"}}
+				purchases := make([]int, len(plan.Rows))
+				scrolls, clipped, missed := 0, 0, false
+				returned := false
+				for tick := range 300 {
+					now = now.Add(time.Second)
+					frame.id++
+					out := ancientObservation{frame: frame, souls: "1000", hasThumb: true, thumb: image.Pt(b.Min.X+width*458/1000, position), thumbHeight: thumbHeight}
+					offset := (position - top) * (30*147 - 422) / (bottom - top)
+					for i := range 30 {
+						center := 355 + i*147 - offset
+						if center < 345 || center > 659 {
+							if center >= 273 && center <= 695 {
+								clipped++
+							}
+							continue
+						}
+						if fault == "unreadable" && i == 5 && !p.recovering {
+							missed = true
+							continue
+						}
+						out.rows = append(out.rows, ancientScreenRow{name: plan.Rows[i].Name, level: "1", point: image.Pt(b.Min.X+width*95/1000, scale(center))})
+					}
+					// One transient full-read error must retain the pending scroll.
+					if fault == "unreadable" && tick == 7 {
+						p.observe(out, errors.New("transient read failure"), now)
+						if _, ok := p.action(frame, now); ok {
+							t.Fatal("unreadable frame authorized input")
+						}
+						continue
+					}
+					p.observe(out, nil, now)
+					a, ok := p.action(frame, now)
+					if p.blocked {
+						break
+					}
+					if !ok {
+						t.Fatal("list traversal stalled", tick, p.confirmationStatus())
+					}
+					switch a.ancient.step {
+					case scrollAncients:
+						if !p.topChecked && a.target.Y > top+2 {
+							t.Fatal("did not return to the true top before purchases", a.target)
+						}
+						if p.topChecked && !p.recovering && a.target.Y-a.point.Y > thumbHeight/4 {
+							t.Fatal("forward step lost overlap", a)
+						}
+						if p.recovering && a.target.Y >= a.point.Y {
+							t.Fatal("recovery did not move toward top", a)
+						}
+						p.sent(a, now)
+						position = max(top, min(bottom, a.target.Y))
+						scrolls++
+					case openAncientQuantity:
+						if !p.topChecked {
+							t.Fatal("purchase preceded top verification")
+						}
+						index := p.selected
+						purchases[index]++
+						if purchases[index] != 1 {
+							t.Fatal("submitted item replayed", plan.Rows[index].Name)
+						}
+						// Dialog/input ownership is covered by TestAncientTransaction.
+						// Here exercise the real one-shot retirement between list views.
+						owner := frame
+						owner.context.ancients, owner.context.ancientDialog = false, true
+						p.sent(gameAction{frame: owner, ancient: ancientCommand{step: confirmAncientQuantity, quantity: p.quantity}}, now)
+						frame.id++
+						p.observe(ancientObservation{frame: frame}, nil, now)
+					case returnAncientHeroes:
+						returned = true
+					default:
+						t.Fatal("unexpected list action", a.ancient.step)
+					}
+					if returned {
+						break
+					}
+				}
+				if clipped == 0 || scrolls == 0 || scrolls > 100 {
+					t.Fatal("coverage/bounded sweep not exercised", clipped, scrolls)
+				}
+				for i := range 30 {
+					if purchases[i] != 1 {
+						t.Fatal("expanded card was skipped", i, purchases[i], p.failure)
+					}
+				}
+				if fault == "missing" {
+					if returned || !p.blocked || !p.recovering || !strings.Contains(p.failure, "Missing Ancient") || strings.Contains(p.failure, "Ancient-00") {
+						t.Fatal("missing-row sweep did not stop with remaining names only", p.failure)
+					}
+					if _, ok := p.action(frame, now.Add(time.Minute)); ok {
+						t.Fatal("blocked missing list replayed")
+					}
+				} else if !returned || p.blocked || (fault == "none" && p.recovering) || (fault == "unreadable" && (!missed || !p.recovering)) {
+					t.Fatal("overlapping traversal/recovery did not finish", returned, p.failure)
+				}
+			})
+		}
+	}
+}
+
+func TestAncientScrollEndpointAcknowledgement(t *testing.T) {
+	frame := gameFrame{id: 1, context: gameContext{known: true, ancients: true, bounds: image.Rect(0, 0, 1280, 720)}}
+	out := ancientObservation{frame: frame, hasThumb: true, thumbHeight: 61}
+	top, bottom := ancientScrollLimits(out)
+	for _, tc := range []struct {
+		from, target, read int
+		accepted           bool
+	}{
+		{top, top - 10, top, true}, {bottom - 1, bottom, bottom, true},
+		{top + 10, top, top + 10, false}, {bottom - 10, bottom, bottom - 10, false},
+		{top + 10, top + 20, top + 5, false}, {bottom - 10, bottom - 20, bottom - 5, false},
+	} {
+		p := ancientPlanner{active: true}
+		p.sent(gameAction{frame: frame, point: image.Pt(586, tc.from), target: image.Pt(586, tc.target), ancient: ancientCommand{step: scrollAncients}}, time.Now())
+		out.frame.id++
+		out.thumb = image.Pt(586, tc.read)
+		p.observe(out, nil, time.Now())
+		if (p.pending == nil) != tc.accepted {
+			t.Fatal("scroll endpoint/direction acknowledgement", tc, p.pending)
+		}
+	}
+}
+
+func TestAncientNativeScrollEndpoints(t *testing.T) {
+	for _, file := range []string{"testdata/ascension-ancients.png", "testdata/hero-scrollbar-before.png", "testdata/fish-over-scrollbar.png"} {
+		original := loadTestImage(t, file)
+		for _, width := range []int{1280, 2560} {
+			t.Run(fmt.Sprintf("%s/%d", file, width), func(t *testing.T) {
+				screen := image.NewRGBA(image.Rect(0, 0, width, width*9/16))
+				xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
+				thumb, height, found := listScrollbarThumb(screen, 416)
+				if !found {
+					t.Fatal("native endpoint thumb missing")
+				}
+				out := ancientObservation{frame: gameFrame{image: screen, context: gameContext{bounds: screen.Bounds()}}, thumb: thumb, thumbHeight: height, hasThumb: true}
+				top, bottom := ancientScrollLimits(out)
+				endpoint := bottom
+				if file == "testdata/ascension-ancients.png" {
+					endpoint = top
+				}
+				t.Logf("native thumb=%v height=%d track center limits=%d..%d", thumb, height, top, bottom)
+				tolerance := max(2, screen.Bounds().Dy()/1000)
+				if file != "testdata/ascension-ancients.png" {
+					tolerance = max(2, screen.Bounds().Dy()*4/1000)
+				}
+				if absDiff(thumb.Y, endpoint) > tolerance {
+					t.Fatal("native clamp differs from assumed track endpoint", thumb, height, endpoint)
+				}
+				if file != "testdata/ascension-ancients.png" {
+					out.frame.id = 1
+					out.frame.context.known, out.frame.context.ancients = true, true
+					plan := ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Missing Ancient"}}}}
+					p := ancientPlanner{plan: &plan, active: true, started: true, budgetChecked: true, topChecked: true, selected: -1, done: map[int]bool{}}
+					now := time.Now()
+					p.observe(out, nil, now)
+					a, ok := p.action(out.frame, now)
+					if !ok || a.ancient.step != scrollAncients || p.recovering || a.target.Y < bottom+tolerance {
+						t.Fatal("recovered before requesting native endpoint", a, p)
+					}
+					p.sent(a, now)
+					p.observe(out, nil, now)
+					if p.bottomChecked || p.pending == nil {
+						t.Fatal("stale native endpoint acknowledged")
+					}
+					out.frame.id++ // Native clamp leaves this bottom image unchanged.
+					p.observe(out, nil, now)
+					if !p.bottomChecked || p.pending != nil {
+						t.Fatal("unchanged native clamp timed out", p)
+					}
+					a, ok = p.action(out.frame, now.Add(time.Second))
+					if !ok || a.ancient.step != scrollAncients || !p.recovering || a.target.Y >= thumb.Y {
+						t.Fatal("confirmed bottom did not start reverse sweep", a, p)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestAncientInitialViewWithoutThumb(t *testing.T) {
+	for _, complete := range []bool{true, false} {
+		plan := ancientPlan{Plan: ancientcalc.Plan{Souls: "10", Reserve: "1", Rows: []ancientcalc.Purchase{{Name: "Dora", Current: "1", Quantity: "1", Cost: "1"}}}}
+		out := ancientObservation{frame: testPipelineFrame(), souls: "10", rows: []ancientScreenRow{{name: "Dora", level: "1"}}}
+		out.frame.context.heroes, out.frame.context.ancients = false, true
+		if !complete {
+			plan.Rows = append(plan.Rows, ancientcalc.Purchase{Name: "Dogcog", Current: "1", Quantity: "1", Cost: "1"})
+		}
+		p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{ancientPlan: &plan})
+		p.ancient.active, p.ancient.started = true, true
+		p.ancient.done = map[int]bool{}
+		now := time.Now()
+		p.ancient.observe(out, nil, now)
+		a, ok := p.ancient.action(out.frame, now)
+		if complete {
+			if !ok || a.ancient.step != openAncientQuantity {
+				t.Fatal("fully readable short list was blocked")
+			}
+		} else {
+			if ok || p.ancient.topChecked {
+				t.Fatal("arbitrary initial viewport authorized a partial plan")
+			}
+			p.planAncients(now.Add(21 * time.Second))
+			if !p.ancient.blocked {
+				t.Fatal("missing initial scrollbar did not time out")
+			}
+		}
+	}
+}

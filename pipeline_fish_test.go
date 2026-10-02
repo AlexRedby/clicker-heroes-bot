@@ -119,7 +119,7 @@ func TestAncientRecognitionRetryDoesNotWaitForFish(t *testing.T) {
 	frame.context.ancients = true
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
 	p.frame, p.layout = frame, frame.layout
-	pending := &gameAction{ancient: ancientCommand{step: scrollAncients}, point: image.Pt(50, 10)}
+	pending := &gameAction{ancient: ancientCommand{step: scrollAncients}, point: image.Pt(50, 10), target: image.Pt(50, 70)}
 	p.ancient = ancientPlanner{active: true, pending: pending, deadline: now.Add(20 * time.Second)}
 	failure := observation{kind: ancientAnalysis, frame: frame, err: errors.New("scrollbar obscured")}
 	if err := p.accept(context.Background(), failure, now); err != nil {
