@@ -62,6 +62,9 @@ func TestAncientRealScreen(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if out.souls != "1.755e58" {
+				t.Fatal("current wallet confused with pending Ascension souls", out.souls)
+			}
 			t.Logf("souls=%s rows=%+v thumb=%v/%d", out.souls, out.rows, out.thumb, out.thumbHeight)
 			if len(out.rows) != 3 || out.rows[0].name != "Argaiv" || out.rows[0].level != "1.000e28" || out.rows[1].name != "Atman" || out.rows[1].level != "164" {
 				t.Fatal("Ancient row recognition", out.rows)
@@ -289,7 +292,7 @@ func TestAncientHalfSizeScreen(t *testing.T) {
 				if !c.ancientDialog || !out.okay {
 					t.Fatal("quantity dialog", c, out)
 				}
-			} else if !c.ancients || len(out.rows) != 3 || out.rows[0].name != "Argaiv" || out.rows[1].name != "Atman" {
+			} else if !c.ancients || out.souls != "1.755e58" || len(out.rows) != 3 || out.rows[0].name != "Argaiv" || out.rows[1].name != "Atman" {
 				t.Fatal("Ancient rows", c, out.rows)
 			}
 		})
@@ -381,5 +384,56 @@ func TestAncientBlockedResumeExplainsFailure(t *testing.T) {
 		if !controls.toggle() || controls.message() != message || controls.snapshot() != generation {
 			t.Fatal("blocked F8 announced a resume or lost reason")
 		}
+	}
+}
+
+func TestAncientDisplayPrecision(t *testing.T) {
+	for _, tc := range []struct {
+		display, exact string
+		matches        bool
+	}{
+		{"6.556e65", "6.55659294544822e65", true}, // Reported plan total, truncated HUD.
+		{"6.557e65", "6.55659294544822e65", true}, // Rounded HUD remains supported.
+		{"6.556e65", "6.556999e65", true},
+		{"6.556e65", "6.557e65", false},
+		{"6.556e65", "6.5554e65", false},
+		{"6.556e65", "6.55659294544822e64", false},
+		{"6.556e65", "6.558e65", false},
+		{"1.755e58", "6.55659294544822e65", false}, // Bank must not match pending souls.
+		{"1.00E+03", "1009", true},
+		{"1.00e00003", "1009", true},
+		{"1.00E+03", "1010", false},
+		{"1.25", "1.259", true},
+		{"184", "184", true},
+		{"184", "185", false},
+		{"ee", "184", false},
+		{"184", "invalid", false},
+	} {
+		if got := ancientDisplayMatches(tc.display, tc.exact); got != tc.matches {
+			t.Errorf("display=%q exact=%q: match=%t, want %t", tc.display, tc.exact, got, tc.matches)
+		}
+	}
+	if ancientQuantityMatches("6.556e65", "6.55659294544822e65") {
+		t.Fatal("typed purchase quantity must remain exact")
+	}
+}
+
+func TestAncientWalletGateUsesDisplayedPrecision(t *testing.T) {
+	frame := testPipelineFrame()
+	frame.context.heroes, frame.context.ancients = false, true
+	plan := ancientPlan{Plan: ancientcalc.Plan{Souls: "6.55659294544822e65", Reserve: "6.55659294544822e63", Rows: []ancientcalc.Purchase{{ID: 1, Name: "Argaiv", Current: "1e28", Target: "2e28", Quantity: "1e28", Cost: "1e56"}}}}
+	for _, read := range []string{"6.556e65", "1.755e58"} {
+		t.Run(read, func(t *testing.T) {
+			p := ancientPlanner{plan: &plan, active: true, started: true, selected: -1, done: map[int]bool{}}
+			p.observe(ancientObservation{frame: frame, souls: read, rows: []ancientScreenRow{{"Argaiv", "1.000e28", image.Pt(204, 500)}}}, nil, time.Now())
+			a, ok := p.action(frame, time.Now())
+			if read == "6.556e65" {
+				if !ok || a.ancient.step != openAncientQuantity || p.blocked {
+					t.Fatalf("fresh truncated wallet blocked: %s", p.failure)
+				}
+			} else if ok || !p.blocked || !strings.Contains(p.failure, plan.Souls) || !strings.Contains(p.failure, read) {
+				t.Fatalf("stale wallet allowed or missing diagnostics: action=%t failure=%s", ok, p.failure)
+			}
+		})
 	}
 }

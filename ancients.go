@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -102,7 +103,7 @@ func writeAncientPlan(path string, plan ancientPlan) error {
 	return nil
 }
 
-// A scientific UI value denotes a rounding interval, not an exact saved level.
+// A decimal UI value may be rounded or truncated at its last displayed digit.
 func ancientDisplayMatches(display, exact string) bool {
 	shown, err := ancientcalc.Value(display)
 	if err != nil {
@@ -118,7 +119,8 @@ func ancientDisplayMatches(display, exact string) bool {
 	parts := strings.Split(strings.ToLower(display), "e")
 	exponent := 0
 	if len(parts) == 2 {
-		if _, err := fmt.Sscan(parts[1], &exponent); err != nil {
+		exponent, err = strconv.Atoi(parts[1])
+		if err != nil {
 			return false
 		}
 	}
@@ -126,13 +128,15 @@ func ancientDisplayMatches(display, exact string) bool {
 	if i := strings.IndexByte(parts[0], '.'); i >= 0 {
 		decimals = len(parts[0]) - i - 1
 	}
-	tolerance, err := ancientcalc.Value(fmt.Sprintf("5e%d", exponent-decimals-1))
+	unit, err := ancientcalc.Value(fmt.Sprintf("1e%d", exponent-decimals))
 	if err != nil {
 		return false
 	}
-	diff := new(big.Float).SetPrec(256).Sub(shown, wanted)
-	diff.Abs(diff)
-	return diff.Cmp(tolerance) <= 0
+	diff := new(big.Float).SetPrec(256).Sub(wanted, shown)
+	lower := new(big.Float).SetPrec(256).Quo(unit, big.NewFloat(2))
+	lower.Neg(lower)
+	// Rounding can raise the display by half a unit; truncation loses less than one.
+	return diff.Cmp(lower) >= 0 && diff.Cmp(unit) < 0
 }
 
 type ancientStep uint8
@@ -317,7 +321,7 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 	}
 	if !p.budgetChecked {
 		if !ancientDisplayMatches(p.latest.souls, p.plan.Souls) {
-			p.fail("exported Hero Souls do not match the current game")
+			p.fail(fmt.Sprintf("exported Hero Souls do not match the current game: saved=%q, read=%q", p.plan.Souls, p.latest.souls))
 			return gameAction{}, false
 		}
 		p.budgetChecked = true
