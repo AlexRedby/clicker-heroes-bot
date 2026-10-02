@@ -426,13 +426,18 @@ func TestFishBeforeHeroDrag(t *testing.T) {
 	p := newGamePipeline(&controls, heroInput{}, pipelineReaders{}, pipelineOptions{fishInterval: time.Second})
 	p.layout = 1
 	p.frame = gameFrame{id: 1, at: now, layout: 1, image: screen, context: gameContext{known: true, heroes: true, bounds: screen.Bounds()}}
-	p.state[fishAnalysis] = observation{kind: fishAnalysis, frame: p.frame, found: true}
+	point := image.Pt(1211, 575)
+	p.fishTarget = &point
 	p.enqueue(gameAction{kind: scrollHeroes, frame: p.frame, point: image.Pt(1172, 1331)}, now)
-	if a, ok := p.nextAction(now); ok {
-		t.Fatalf("dragged through visible fish: %+v", a)
+	a, ok := p.nextAction(now)
+	if !ok || a.kind != collectFish {
+		t.Fatal("fish did not take priority over scrolling")
 	}
-	p.state[fishAnalysis] = observation{}
-	if _, ok := p.nextAction(now); ok {
-		t.Fatal("in-flight fish analysis treated as no fish")
+	p.actionCompleted(actionResult{action: a, acted: true}, now)
+	p.frame.id++
+	p.frame.at = now.Add(time.Second)
+	p.enqueue(gameAction{kind: scrollHeroes, frame: p.frame, point: image.Pt(1172, 1331)}, p.frame.at)
+	if a, ok := p.nextAction(p.frame.at); !ok || a.kind != scrollHeroes {
+		t.Fatal("scroll waited for a post-click fish scan")
 	}
 }

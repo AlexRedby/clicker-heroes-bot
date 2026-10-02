@@ -196,7 +196,7 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 }
 func (p *heroRunner) finishFailure(fish observation, now time.Time) {
 	pending := p.pending
-	if pending == nil || pending.action.kind != buyHero || pending.attempts < 5 || fish.frame.id < pending.last.frame.id || fish.frame.generation != pending.action.frame.generation || fish.frame.layout != pending.action.frame.layout {
+	if pending == nil || pending.action.kind != buyHero || pending.attempts < 5 {
 		return
 	}
 	if fish.found {

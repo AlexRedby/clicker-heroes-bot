@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"clicker-heroes-bot/internal/ancientcalc"
 	"context"
 	"errors"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/png"
 	"sync/atomic"
@@ -111,56 +113,36 @@ func TestFishInEveryTransaction(t *testing.T) {
 	}
 }
 
-func TestFishDefersObscuredAncientFailureAndKeepsDeadline(t *testing.T) {
+func TestAncientRecognitionRetryDoesNotWaitForFish(t *testing.T) {
 	now := time.Now()
 	frame := testPipelineFrame()
 	frame.context.ancients = true
-	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{fish: func(image.Image) (image.Point, bool, error) { return image.Point{}, false, nil }}, pipelineOptions{fishInterval: time.Second})
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
 	p.frame, p.layout = frame, frame.layout
-	p.ancient = ancientPlanner{active: true, pending: &gameAction{frame: gameFrame{}}, deadline: now.Add(20 * time.Second)}
+	pending := &gameAction{ancient: ancientCommand{step: scrollAncients}, point: image.Pt(50, 10)}
+	p.ancient = ancientPlanner{active: true, pending: pending, deadline: now.Add(20 * time.Second)}
 	failure := observation{kind: ancientAnalysis, frame: frame, err: errors.New("scrollbar obscured")}
 	if err := p.accept(context.Background(), failure, now); err != nil {
 		t.Fatal(err)
 	}
-	if p.ancient.blocked || p.deferred[ancientAnalysis].frame.id == 0 {
-		t.Fatal("unchecked OCR stopped purchases")
+	if p.ancient.blocked || !p.ancient.nextRead.Equal(now.Add(time.Second)) {
+		t.Fatal("transient OCR failure stopped the transaction")
 	}
-	if err := p.accept(context.Background(), observation{kind: fishAnalysis, frame: frame, found: true, point: image.Pt(20, 20)}, now); err != nil {
-		t.Fatal(err)
-	}
-	a, ok := p.nextAction(now)
-	if !ok || a.kind != collectFish {
-		t.Fatal("pending purchase blocked fish")
-	}
-	p.actionCompleted(actionResult{action: a, acted: true}, now)
-	p.plan(now.Add(25 * time.Second))
-	if p.ancient.blocked || p.controls.isPaused() {
-		t.Fatal("fish wait expired purchase confirmation")
-	}
-	p.frame.id++
-	p.frame.at = now.Add(25 * time.Second)
-	if err := p.accept(context.Background(), observation{kind: fishAnalysis, frame: p.frame}, p.frame.at); err != nil {
-		t.Fatal(err)
-	}
-	if p.ancient.blocked || !p.ancient.deadline.Equal(now.Add(45*time.Second)) || p.deferred[ancientAnalysis].frame.id != 0 {
-		t.Fatal("obstructed result replayed or deadline lost")
-	}
-	p.ancient.pending.ancient.step = scrollAncients
-	p.ancient.pending.point = image.Pt(50, 10)
-	confirmed := ancientObservation{frame: p.frame, hasThumb: true, thumb: image.Pt(50, 70)}
-	if err := p.accept(context.Background(), observation{kind: ancientAnalysis, frame: p.frame, ancient: confirmed}, p.frame.at); err != nil {
+	// A later shared frame confirms scrolling without any completed fish scan.
+	frame.id++
+	confirmed := ancientObservation{frame: frame, hasThumb: true, thumb: image.Pt(50, 70)}
+	if err := p.accept(context.Background(), observation{kind: ancientAnalysis, frame: frame, ancient: confirmed}, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if p.ancient.pending != nil {
-		t.Fatal("fresh scroll confirmation did not resume after fish")
+		t.Fatal("scroll confirmation waited for fish")
 	}
-	// Genuine non-fish errors still stop purchases after a checked frame.
-	failure.frame = p.frame
-	if err := p.accept(context.Background(), failure, p.frame.at); err != nil {
-		t.Fatal(err)
-	}
+	p.ancient.plan = &ancientPlan{}
+	p.ancient.pending = pending
+	p.ancient.deadline = now.Add(20 * time.Second)
+	p.plan(now.Add(21 * time.Second))
 	if !p.ancient.blocked || !p.controls.isPaused() {
-		t.Fatal("genuine purchase error was hidden")
+		t.Fatal("persistent recognition failure bypassed the deadline")
 	}
 }
 
@@ -233,25 +215,59 @@ func TestSIFTFishOverAncientScrollbar(t *testing.T) {
 	}
 }
 
-func TestFishBeforeQuantityOrSettingsOpenCannotClick(t *testing.T) {
-	for _, kind := range []actionKind{handleAncient, handleExport} {
-		t.Run(map[actionKind]string{handleAncient: "quantity", handleExport: "settings"}[kind], func(t *testing.T) {
+func TestFishWaitsAcrossCoveringModals(t *testing.T) {
+	for _, modal := range []string{"quantity", "settings", "Ascension", "gilds", "quest"} {
+		t.Run(modal, func(t *testing.T) {
 			now := time.Now()
 			frame := testPipelineFrame()
-			frame.context.ancients = true
 			p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
 			p.frame, p.layout = frame, frame.layout
-			action := gameAction{kind: kind, frame: frame, ancient: ancientCommand{step: openAncientQuantity}, export: &exportCommand{step: exportOpenMenu}}
-			p.actionCompleted(actionResult{action: action, acted: true}, now)
-			// The popup has not been captured yet; the old main-screen SIFT result must be discarded.
-			if err := p.accept(context.Background(), observation{kind: fishAnalysis, frame: frame, found: true, point: image.Pt(20, 20)}, now); err != nil {
+			// A scan starts on the main game and finishes after a modal opens.
+			source := frame
+			p.frame.id++
+			p.layout++
+			p.frame.layout = p.layout
+			switch modal {
+			case "quantity":
+				p.frame.context.ancientDialog = true
+			case "settings":
+				p.frame.context.saveMenu = true
+			case "Ascension":
+				p.frame.context.ascension = true
+			case "gilds":
+				p.frame.context.modal = gildChestModal
+			case "quest":
+				p.frame.context.questDialog = true
+			}
+			point := image.Pt(20, 20)
+			if err := p.accept(context.Background(), observation{kind: fishAnalysis, frame: source, found: true, point: point}, now); err != nil {
 				t.Fatal(err)
 			}
-			if p.state[fishAnalysis].found {
-				t.Fatal("pre-popup fish survived its input barrier")
+			if p.fishTarget == nil || *p.fishTarget != point {
+				t.Fatal("modal discarded the known fish position")
 			}
 			if a, ok := p.nextAction(now); ok && a.kind == collectFish {
-				t.Fatal("old fish clicked the new popup")
+				t.Fatal("covered fish clicked")
+			}
+			// Tab changes and elapsed time do not invalidate that position.
+			p.frame.context = source.context
+			p.frame.context.ancients = true
+			p.frame.id++
+			p.frame.at = now.Add(time.Minute)
+			a, ok := p.nextAction(p.frame.at)
+			if !ok || a.kind != collectFish || a.point != point || a.frame.id != p.frame.id {
+				t.Fatal("cached fish did not resume on the current tab", a, ok)
+			}
+			p.actionCompleted(actionResult{action: a, acted: true}, p.frame.at)
+			if p.fishTarget != nil {
+				t.Fatal("clicked fish position was not cleared")
+			}
+			// An already-running pre-click scan must not restore the collected fish.
+			if err := p.accept(context.Background(), observation{kind: fishAnalysis, frame: source, found: true, point: point}, p.frame.at); err != nil {
+				t.Fatal(err)
+			}
+			if p.fishTarget != nil {
+				t.Fatal("pre-click scan resurrected the fish")
 			}
 		})
 	}
@@ -280,7 +296,8 @@ func TestFishRetryAndModalTransition(t *testing.T) {
 	if _, ok := p.nextAction(now); ok {
 		t.Fatal("fish double clicked without retry delay")
 	}
-	p.fish.lastClickAt = now.Add(-6 * time.Second)
+	now = now.Add(time.Second)
+	p.fish.lastClickAt = time.Now().Add(-6 * time.Second)
 	p.frame.id++
 	out.frame = p.frame
 	if err := p.accept(context.Background(), out, now); err != nil {
@@ -312,15 +329,14 @@ func TestFishRetryAndModalTransition(t *testing.T) {
 	if err := p.capture(context.Background(), now.Add(time.Second), jobs); err != nil {
 		t.Fatal(err)
 	}
-	if !p.fishObstructedAt.IsZero() || len(jobs[fishAnalysis]) != 1 {
-		t.Fatal("fish worker did not resume after modal closed")
+	if p.fishTarget == nil || len(jobs[fishAnalysis]) != 0 {
+		t.Fatal("known fish was lost or scanned again after modal closed")
 	}
-	p.deferred[ancientAnalysis] = observation{frame: p.frame, err: errors.New("old purchase error")}
 	p.controls.toggle()
 	p.controls.toggle()
 	p.reset(p.controls.snapshot())
-	if p.deferred[ancientAnalysis].frame.id != 0 {
-		t.Fatal("F8 retained unchecked purchase result")
+	if acted, err := p.execute(context.Background(), a); acted || err != nil {
+		t.Fatal("F8 replayed the previous fish action")
 	}
 }
 
@@ -352,5 +368,131 @@ func TestFishCollectionWhileWaitingForSaveFile(t *testing.T) {
 	}
 	if p.ancient.plan != nil {
 		t.Fatal("missing export installed a spending plan")
+	}
+}
+
+func TestAncientScrollsContinueDuringSlowFishScan(t *testing.T) {
+	original := loadTestImage(t, "testdata/ascension-ancients.png")
+	thumb, height, found := listScrollbarThumb(original, 416)
+	if !found {
+		t.Fatal("fixture scrollbar missing")
+	}
+	region := image.Rect(thumb.X-30, thumb.Y-height/2-3, thumb.X+31, thumb.Y+height/2+4)
+	var screens [3]image.Image
+	for i := range screens {
+		screen := image.NewRGBA(original.Bounds())
+		draw.Draw(screen, screen.Bounds(), original, original.Bounds().Min, draw.Src)
+		draw.Draw(screen, region, image.NewUniform(color.RGBA{R: 30, G: 25, B: 10, A: 255}), image.Point{}, draw.Src)
+		moved := region.Add(image.Pt(0, original.Bounds().Dy()*(50+i*10)/100-thumb.Y))
+		draw.Draw(screen, moved, original, region.Min, draw.Src)
+		screens[i] = screen
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started, scrolled := make(chan struct{}), make(chan struct{}, 2)
+	var position atomic.Int32
+	frame := testPipelineFrame()
+	frame.image = screens[0]
+	frame.context = gameContext{known: true, ancients: true, bounds: frame.image.Bounds()}
+	p := newGamePipeline(&pauseControl{}, heroInput{
+		capture: func() (image.Image, error) { return screens[min(2, int(position.Load()))], nil },
+		drag: func(from, to image.Point) error {
+			position.Add(1)
+			scrolled <- struct{}{}
+			return nil
+		},
+	}, pipelineReaders{
+		context: func(image.Image) (gameContext, error) { return frame.context, nil },
+		fish: func(image.Image) (image.Point, bool, error) {
+			close(started)
+			<-ctx.Done()
+			return image.Point{}, false, ctx.Err()
+		},
+		ancients: func(ctx context.Context, f gameFrame) (ancientObservation, error) {
+			point, h, ok := listScrollbarThumb(f.image, 416)
+			return ancientObservation{frame: f, thumb: point, thumbHeight: h, hasThumb: ok}, nil
+		},
+	}, pipelineOptions{fishInterval: time.Second})
+	p.frame, p.layout = frame, frame.layout
+	p.ancient = ancientPlanner{active: true, budgetChecked: true, topChecked: true, selected: -1,
+		plan: &ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Absent Ancient"}}}}, done: map[int]bool{}}
+	// A previous negative observation has expired, and the new scan cannot finish.
+	old := frame
+	old.at = time.Now().Add(-time.Minute)
+	p.state[fishAnalysis] = observation{frame: old}
+	done := make(chan error, 1)
+	go func() { done <- p.run(ctx) }()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("fish worker never started")
+	}
+	for range 2 {
+		select {
+		case <-scrolled:
+		case <-time.After(2 * time.Second):
+			cancel()
+			<-done
+			t.Fatal("successful Ancient scroll waited for SIFT")
+		}
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if p.state[fishAnalysis].frame.id != old.id {
+		t.Fatal("ordinary scrolling invalidated the fish observation")
+	}
+}
+
+func TestFishCacheSurvivesCaptureTransitions(t *testing.T) {
+	frame := testPipelineFrame()
+	frame.context.window = "game"
+	current := frame.context
+	point := image.Pt(20, 20)
+	p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return frame.image, nil }}, pipelineReaders{
+		context: func(image.Image) (gameContext, error) { return current, nil },
+		window:  func() string { return current.window },
+	}, pipelineOptions{fishInterval: time.Millisecond})
+	p.frame, p.layout, p.fishTarget = frame, frame.layout, &point
+	jobs := make([]chan analysisJob, analysisCount)
+	for i := range jobs {
+		jobs[i] = make(chan analysisJob, 1)
+	}
+	for _, tab := range []string{"Ancients", "quantity", "settings", "Mercenaries", "Heroes"} {
+		current = frame.context
+		switch tab {
+		case "Ancients":
+			current.ancients = true
+		case "quantity":
+			current.ancientDialog = true
+		case "settings":
+			current.saveMenu = true
+		case "Mercenaries":
+			current.mercenaries = true
+		case "Heroes":
+			current.heroes = true
+		}
+		if err := p.capture(context.Background(), time.Now(), jobs); err != nil {
+			t.Fatal(err)
+		}
+		if p.fishTarget == nil || *p.fishTarget != point || len(jobs[fishAnalysis]) != 0 {
+			t.Fatalf("%s lost the cached fish or scheduled redundant SIFT", tab)
+		}
+	}
+	current.window = "different game window"
+	if err := p.capture(context.Background(), time.Now(), jobs); err != nil {
+		t.Fatal(err)
+	}
+	if p.fishTarget != nil {
+		t.Fatal("cached coordinates crossed game windows")
+	}
+	if err := p.accept(context.Background(), observation{kind: fishAnalysis, frame: frame, found: true, point: point}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if p.fishTarget != nil {
+		t.Fatal("late scan restored coordinates from another window")
 	}
 }

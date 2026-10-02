@@ -205,8 +205,8 @@ func TestPipelineGildBatchIsolationAndPause(t *testing.T) {
 			if err := p.accept(ctx, observation{kind: fishAnalysis, frame: stale, found: true, point: image.Pt(10, 10)}, now); err != nil {
 				t.Fatal(err)
 			}
-			if p.state[fishAnalysis].found {
-				t.Fatal("old background result accepted in modal")
+			if p.fishTarget == nil {
+				t.Fatal("modal discarded the independently found fish")
 			}
 		}
 		p.plan(now)

@@ -250,7 +250,12 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 		return
 	}
 	if err != nil {
-		p.fail(err.Error())
+		p.latest = ancientObservation{}
+		p.nextRead = now.Add(time.Second)
+		if p.deadline.IsZero() {
+			p.deadline = now.Add(20 * time.Second)
+		}
+		fmt.Printf("Ancient panel unreadable: %v; retrying in 1s\n", err)
 		return
 	}
 	if p.pending != nil && out.frame.id <= p.pending.frame.id {
@@ -258,6 +263,9 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 	}
 	p.latest = out
 	if p.pending == nil {
+		if out.hasThumb || out.frame.context.ancientDialog {
+			p.deadline = time.Time{}
+		}
 		return
 	}
 	a := p.pending
@@ -433,7 +441,14 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 	if len(p.done) == len(p.plan.Rows) {
 		return makeAction(returnAncientHeroes, ancientTabPoint(frame.image, true))
 	}
-	if !p.latest.hasThumb || p.latest.thumb.Y+p.latest.thumbHeight/2 >= frame.context.bounds.Min.Y+frame.context.bounds.Dy()*96/100 {
+	if !p.latest.hasThumb {
+		if p.deadline.IsZero() {
+			p.deadline = now.Add(20 * time.Second)
+		}
+		p.nextAction = now.Add(300 * time.Millisecond)
+		return gameAction{}, false
+	}
+	if p.latest.thumb.Y+p.latest.thumbHeight/2 >= frame.context.bounds.Min.Y+frame.context.bounds.Dy()*96/100 {
 		p.fail("not all planned Ancients were found in the expanded list")
 		return gameAction{}, false
 	}

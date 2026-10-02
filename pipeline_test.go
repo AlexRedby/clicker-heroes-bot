@@ -183,12 +183,15 @@ func TestPipelineQueueAndInputGuards(t *testing.T) {
 	p.enqueue(gameAction{kind: castSkill, frame: frame, key: 1}, now)
 	p.state[skillAnalysis] = observation{frame: frame, skills: skillsReady(1)}
 	p.enqueue(gameAction{kind: collectFish, frame: frame, point: image.Pt(20, 20)}, now)
-	p.state[fishAnalysis] = observation{frame: frame, found: true, point: image.Pt(20, 20)}
+	point := image.Pt(20, 20)
+	p.fishTarget = &point
+	p.state[fishAnalysis] = observation{frame: frame, found: true, point: point}
 	a, ok := p.nextAction(now)
 	if !ok || a.kind != collectFish {
 		t.Fatal("fish not prioritized")
 	}
-	a, ok = p.nextAction(now)
+	p.fishTarget = nil
+	a, ok = p.nextAction(now.Add(time.Second))
 	if !ok || a.kind != castSkill {
 		t.Fatal("independent skill did not follow fish")
 	}
@@ -197,7 +200,7 @@ func TestPipelineQueueAndInputGuards(t *testing.T) {
 		f.id = i
 		p.enqueue(gameAction{kind: castSkill, frame: f, key: 1}, now)
 	}
-	if len(p.queue) != 2 || p.queue[castSkill].frame.id != 99 {
+	if len(p.queue) != 1 || p.queue[castSkill].frame.id != 99 {
 		t.Fatal("queue not bounded/coalesced")
 	}
 	events := []string{}
@@ -290,7 +293,7 @@ func TestPipelineUnreadableConfirmationIsBounded(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if p.hero.pending == nil || p.hero.pending.attempts != 5 || p.hero.due(frame.at.Add(time.Minute)) {
+	if p.hero.pending != nil || p.hero.failures != 1 {
 		t.Fatal("unreadable confirmation was not bounded")
 	}
 	f := frame
@@ -299,7 +302,7 @@ func TestPipelineUnreadableConfirmationIsBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	if p.hero.pending != nil || p.hero.failures != 1 {
-		t.Fatal("fresh fish result did not finalize failure")
+		t.Fatal("fish result changed an already finalized failure")
 	}
 }
 
@@ -327,12 +330,13 @@ func TestPipelineObservationFreshness(t *testing.T) {
 	if a, ok := p.nextAction(now); !ok || a.kind != collectFish {
 		t.Fatal("new captures discarded an otherwise fresh SIFT result")
 	}
-	p.barriers[fishAnalysis] = 21
+	a, _ := p.nextAction(now)
+	p.actionCompleted(actionResult{action: a, acted: true}, now)
 	out.frame.id = 19
 	if err := p.accept(context.Background(), out, now); err != nil {
 		t.Fatal(err)
 	}
-	if p.state[fishAnalysis].frame.id != 1 || len(p.queue) != 0 {
+	if p.fishTarget != nil || len(p.queue) != 0 {
 		t.Fatal("pre-action observation passed invalidation barrier")
 	}
 	p.enqueue(gameAction{kind: collectFish, frame: frame}, now)
@@ -370,7 +374,7 @@ func TestSlowCapturePreservesInterval(t *testing.T) {
 	}
 }
 
-func TestPipelineScrollWaitsForFishAndConfirmsBottom(t *testing.T) {
+func TestPipelineScrollDoesNotWaitForFishAndConfirmsBottom(t *testing.T) {
 	bottom := loadTestImage(t, "testdata/hero-panel-max.png")
 	thumb, height, found := heroScrollbarThumb(bottom)
 	if !found {
@@ -394,8 +398,8 @@ func TestPipelineScrollWaitsForFishAndConfirmsBottom(t *testing.T) {
 	}
 	p.hero.observe(out, observation{}, frame.at)
 	p.plan(frame.at)
-	if _, ok := p.nextAction(frame.at); ok {
-		t.Fatal("scroll ran before fish analysis")
+	if a, ok := p.nextAction(frame.at); !ok || a.kind != scrollHeroes {
+		t.Fatal("scroll waited for fish analysis")
 	}
 	now := frame.at.Add(4 * time.Second)
 	// Slow first SIFT expires the original intent; fresh geometry must recreate it.

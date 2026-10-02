@@ -107,7 +107,7 @@ func TestHeroRunnerRetry(t *testing.T) {
 		}
 		fish := observation{frame: gameFrame{id: 7, layout: 1, at: now.Add(6 * time.Second)}}
 		p.finishFailure(fish, fish.frame.at)
-		if p.failures != failure || p.enabled != (failure < 3) || !p.nextScan.Equal(fish.frame.at.Add(30*time.Second)) {
+		if p.failures != failure || p.enabled != (failure < 3) || !p.nextScan.Equal(now.Add(35*time.Second)) {
 			t.Fatalf("retry %d: %+v", failure, p)
 		}
 		now = now.Add(time.Minute)
