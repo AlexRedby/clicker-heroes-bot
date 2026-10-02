@@ -29,6 +29,7 @@ type ancientSave struct {
 	Transcendent               *bool                `json:"transcendent"`
 	Ancients                   ancientSaveAncients  `json:"ancients"`
 	Outsiders                  ancientSaveOutsiders `json:"outsiders"`
+	Items                      json.RawMessage      `json:"items"`
 	AncientSouls               json.Number          `json:"ancientSouls"`
 	PrimalSouls                json.Number          `json:"primalSouls"`
 	TotalHeroLevels            json.Number          `json:"totalHeroLevels"`

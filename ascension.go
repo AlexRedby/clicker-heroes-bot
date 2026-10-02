@@ -175,6 +175,7 @@ type ascensionPlanner struct {
 	nextCheck                      time.Time
 	active                         bool
 	fullCombatFailed               bool
+	relicsChecked                  bool // Advisory save check, not permission to move or salvage items.
 	minimumReward                  float64
 	step                           ascensionStep
 	lastInputFrame, jobFrame       uint64
@@ -185,6 +186,7 @@ type ascensionPlanner struct {
 func (p *ascensionPlanner) interrupt() { *p = ascensionPlanner{} }
 
 func (p *ascensionPlanner) invalidate() {
+	p.relicsChecked = false
 	p.lastObservation = time.Time{}
 	p.latest = ascensionObservation{}
 	p.jobFrame = 0
@@ -193,6 +195,9 @@ func (p *ascensionPlanner) invalidate() {
 func (p *ascensionPlanner) observeProgress(s progressionState, wall int, now time.Time, fullCombatFailed bool) {
 	if p.active || !s.Known || s.Zone <= 0 {
 		return
+	}
+	if s.Enabled || s.Zone > p.highestZone || wall != p.wallZone {
+		p.relicsChecked = false
 	}
 	if !s.observedAt.IsZero() {
 		now = s.observedAt

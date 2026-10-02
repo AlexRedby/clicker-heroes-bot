@@ -76,7 +76,7 @@ type observation struct {
 	mercenary   mercenaryObservation
 	ascension   ascensionObservation
 	ancient     ancientObservation
-	exportPlan  *ancientPlan
+	export      exportResult
 	err         error
 }
 type gameAction struct {
@@ -145,6 +145,7 @@ type gamePipeline struct {
 	ascension                                           ascensionPlanner
 	ancient                                             ancientPlanner
 	export                                              saveExporter
+	relicMessage                                        string
 	mercenary                                           mercenaryPlanner
 	fish                                                fishClickTracker
 	gild                                                gildCollector
@@ -239,7 +240,7 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 	case ancientAnalysis:
 		out.ancient, out.err = p.readers.ancients(ctx, job.frame)
 	case exportAnalysis:
-		out.exportPlan, out.err = readExportPlan(*job.export)
+		out.export, out.err = readExport(*job.export)
 	}
 	out.elapsed = time.Since(start)
 	return out
@@ -477,9 +478,16 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			if geometryChanged || !p.mercenary.expects(c, now) {
 				p.mercenary.interrupt()
 			}
+			// Save owns the temporary Explorer focus handoff. Keep the historical
+			// boss wall, but discard current reward/combat observations as usual.
+			exportFocus := p.export.active && c.bounds == old.bounds && c.geometry == old.geometry &&
+				((p.export.step == exportRestoreGame && old.window == p.export.window && c.window == "!outside-game") ||
+					(p.export.step == exportCloseMenu && old.window == "!outside-game" && c.window == p.export.window))
 			if geometryChanged {
-				p.ascension.interrupt()
 				p.skill.reset()
+			}
+			if geometryChanged && !exportFocus {
+				p.ascension.interrupt()
 			} else if !p.ascension.active {
 				p.ascension.invalidate()
 			}
@@ -512,7 +520,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			if p.export.active && p.export.step == exportReadFile && p.export.jobFrame == 0 && c.window == p.export.window && c.known && !c.saveMenu {
 				jobCtx, cancel := context.WithDeadline(ctx, p.export.deadline)
 				p.export.cancel, p.export.jobFrame = cancel, p.frame.id
-				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before}})
+				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before, relicsOnly: p.export.relicsOnly}})
 			}
 			return nil
 		}
@@ -603,27 +611,48 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			return nil
 		}
 		p.export.jobFrame = 0
-		if out.err != nil || p.frame.context.window != p.export.window || !p.frame.context.known || p.frame.context.saveMenu {
+		if p.export.relicsOnly && out.err == nil && (out.export.relics == nil || out.export.relicErr != nil || out.export.plan != nil) {
+			out.err = errors.New("read-only export returned no valid relic preview")
+		}
+		if out.err != nil || out.frame.layout != p.layout || out.frame.context != p.frame.context || p.frame.context.window != p.export.window || !p.frame.context.known || p.frame.context.saveMenu {
 			reason := out.err
 			if reason == nil {
 				reason = errors.New("game context changed while reading export")
 			}
 			// applyObservation owns the pause mutex.
+			if p.export.relicsOnly {
+				p.reportRelics(nil, reason)
+			}
 			p.export.interrupt()
 			p.controls.pauseLocked(fmt.Sprintf("save export failed: %v; focus the game and press F8 to retry", reason), false)
 			return nil
 		}
-		if err := writeAncientPlan(p.options.export.planOutput, *out.exportPlan); err != nil {
+		p.reportRelics(out.export.relics, out.export.relicErr)
+		if p.export.relicsOnly {
+			p.export.interrupt()
+			p.export.requested = false
+			p.queue = make(map[actionKind]gameAction)
+			p.state = [analysisCount]observation{}
+			p.ascension.invalidate()
+			// This records an advisory check, never live relic readiness.
+			p.ascension.relicsChecked = true
+			p.ascension.nextRead, p.nextFish, p.nextProgression = time.Time{}, time.Time{}, time.Time{}
+			return nil
+		}
+		if out.export.plan == nil {
+			return errors.New("save export returned no Ancient plan")
+		}
+		if err := writeAncientPlan(p.options.export.planOutput, *out.export.plan); err != nil {
 			p.export.interrupt()
 			p.controls.pauseLocked("save export plan output failed: "+err.Error(), false)
 			return nil
 		}
-		capital, err := ascensionSoulCapital(out.exportPlan)
+		capital, err := ascensionSoulCapital(out.export.plan)
 		if err != nil {
 			return err
 		}
 		p.options.ascensionCapital = capital
-		p.ancient = ancientPlanner{plan: out.exportPlan}
+		p.ancient = ancientPlanner{plan: out.export.plan}
 		p.export.interrupt()
 		p.export.requested = false
 		p.queue = make(map[actionKind]gameAction)
@@ -665,6 +694,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			if p.options.export != nil {
 				p.ancient = ancientPlanner{}
 				p.export.requested = true
+				p.export.relicsOnly = false
 				p.queue = make(map[actionKind]gameAction)
 				fmt.Println("Ascension confirmed at zone 1; requesting fresh save export")
 			} else {
@@ -1233,6 +1263,10 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 				return true
 			}
 			return false
+		}
+		if p.options.export != nil && !p.ascension.relicsChecked {
+			p.export.requested, p.export.relicsOnly = true, true
+			return p.planExport(now)
 		}
 		point, found, err := ascensionControl(p.frame.image, ascensionSpiral)
 		if found && err == nil {

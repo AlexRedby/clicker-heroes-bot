@@ -2,15 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"clicker-heroes-bot/internal/ancientcalc"
 
 	xdraw "golang.org/x/image/draw"
 )
@@ -107,6 +112,9 @@ func TestSaveMenuRecognitionAndExclusiveExport(t *testing.T) {
 		if err := p.capture(context.Background(), now, jobs); err != nil {
 			t.Fatal(err)
 		}
+		if i == 0 {
+			p.ascension = ascensionPlanner{highestZone: 110, wallZone: 110, fullCombatFailed: true, lastObservation: now, lastProgress: now}
+		}
 		// No background analyzer should run during this transaction.
 		for kind, ch := range jobs {
 			if analysisKind(kind) != exportAnalysis && len(ch) > 0 {
@@ -134,7 +142,7 @@ func TestSaveMenuRecognitionAndExclusiveExport(t *testing.T) {
 		default:
 		}
 	}
-	if p.export.requested || p.export.active || p.ancient.plan == nil || p.ancient.plan.savePath != filepath.Join(dir, "clickerHeroSave-new.txt") {
+	if p.export.requested || p.export.active || p.ancient.plan == nil || p.ancient.plan.savePath != filepath.Join(dir, "clickerHeroSave-new.txt") || p.relicMessage == "" {
 		t.Fatal("fresh plan not installed")
 	}
 	if p.ancient.plan.Gilds == nil || p.ancient.plan.GildError != "" || p.ancient.plan.Gilds.Cost != "160" || p.ancient.plan.Gilds.Reserve != "1.6" || p.ancient.plan.Gilds.SaveHash != p.ancient.plan.SaveHash {
@@ -142,6 +150,9 @@ func TestSaveMenuRecognitionAndExclusiveExport(t *testing.T) {
 	}
 	if len(steps) != 3 || steps[0] != exportOpenMenu || steps[1] != exportSave || steps[2] != exportCloseMenu {
 		t.Fatalf("click sequence %v", steps)
+	}
+	if p.ascension.highestZone != 110 || p.ascension.wallZone != 110 || p.ascension.latest.frame.id != 0 {
+		t.Fatal("owned Explorer handoff lost boss history or retained current reward")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "plan.json")); err != nil {
 		t.Fatal(err)
@@ -164,7 +175,7 @@ func TestExportF8CancelsInputAndFileRead(t *testing.T) {
 	// Old observations cannot install a plan after a new generation starts.
 	controls.toggle()
 	p.reset(controls.snapshot())
-	p.accept(context.Background(), observation{kind: exportAnalysis, frame: a.frame, exportPlan: &ancientPlan{}}, time.Now())
+	p.accept(context.Background(), observation{kind: exportAnalysis, frame: a.frame, export: exportResult{plan: &ancientPlan{}}}, time.Now())
 	if p.ancient.plan != nil {
 		t.Fatal("stale export installed")
 	}
@@ -191,18 +202,19 @@ func TestExportReadWaitsForCompleteSave(t *testing.T) {
 	go func() { time.Sleep(450 * time.Millisecond); done <- os.WriteFile(path, data, 0600) }()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	plan, err := readExportPlan(exportJob{ctx: ctx, options: saveExportOptions{dir: dir, reserve: "1%", skillRate: 1}})
+	result, err := readExport(exportJob{ctx: ctx, options: saveExportOptions{dir: dir, reserve: "1%", skillRate: 1}})
 	if writeErr := <-done; writeErr != nil {
 		t.Fatal(writeErr)
 	}
-	if err != nil || plan == nil || plan.savePath != path {
-		t.Fatalf("partial export: %v %v", plan, err)
+	if err != nil || result.plan == nil || result.plan.savePath != path {
+		t.Fatalf("partial export: %v %v", result.plan, err)
 	}
 }
 
 func TestExportStartsAfterConfirmedAscension(t *testing.T) {
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{export: &saveExportOptions{dir: t.TempDir()}})
 	p.export.requested = false
+	p.export.relicsOnly = true
 	p.ancient = ancientPlanner{plan: &ancientPlan{}, finished: true}
 	p.frame = testPipelineFrame()
 	p.frame.id = 4
@@ -210,8 +222,128 @@ func TestExportStartsAfterConfirmedAscension(t *testing.T) {
 	p.frame.context.heroes = true
 	p.ascension = ascensionPlanner{active: true, step: waitAscensionReset, lastInputFrame: 3}
 	err := p.accept(context.Background(), observation{kind: ascensionAnalysis, frame: p.frame, ascension: ascensionObservation{frame: p.frame, zone: 1}}, time.Now())
-	if err != nil || p.controls.isPaused() || !p.export.requested || p.ancient.plan != nil || p.ascension.active {
+	if err != nil || p.controls.isPaused() || !p.export.requested || p.export.relicsOnly || p.ancient.plan != nil || p.ascension.active {
 		t.Fatalf("post-reset export: %v", err)
+	}
+}
+
+func TestReadOnlyRelicExportWaitsForCompleteSaveAndSkipsAncients(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "clickerHeroSave-relics.txt")
+	if err := os.WriteFile(path, []byte("partial"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Sanitized schema projection; not a player save. Ancient allocation cannot
+	// succeed with this roster/reserve, and must never run for this purpose.
+	text := `{"heroSouls":1,"heroSoulsSacrificed":0,"highestFinishedZonePersist":1,"ancientSoulsTotal":0,"numWorldResets":3.0,"transcendent":false,"ancients":{"ancients":{}},"outsiders":{"outsiders":{}},"items":{"equipmentSlots":4,"items":{},"slots":{}}}`
+	data := []byte(base64.StdEncoding.EncodeToString([]byte(text)))
+	done := make(chan error, 1)
+	go func() { time.Sleep(450 * time.Millisecond); done <- os.WriteFile(path, data, 0600) }()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, err := readExport(exportJob{ctx: ctx, relicsOnly: true, options: saveExportOptions{dir: dir, reserve: "invalid"}})
+	if writeErr := <-done; writeErr != nil {
+		t.Fatal(writeErr)
+	}
+	if err != nil || result.plan != nil || result.relics == nil || result.relicErr != nil || result.relics.Readiness != "unknown" || result.relics.Snapshot.Ascensions != 3 {
+		t.Fatalf("read-only result: %+v %v", result, err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || string(after) != string(data) {
+		t.Fatal("preview changed the save")
+	}
+}
+
+func TestRelicCheckPrecedesAscensionAndRequiresFreshReward(t *testing.T) {
+	now := time.Now()
+	screen := loadTestImage(t, "testdata/hero-skogur-hire.png")
+	c, err := recognizedGame(screen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.window = "game"
+	frame := gameFrame{id: 2, at: now, image: screen, context: c}
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{ascension: true, ascensionStall: 3 * time.Minute, ascensionMinGain: .25, ascensionCapital: 62, fishInterval: time.Second, export: &saveExportOptions{dir: t.TempDir()}})
+	p.frame, p.layout = frame, frame.layout
+	p.export.requested = false
+	oldPlan := &ancientPlan{}
+	p.ancient = ancientPlanner{plan: oldPlan, finished: true}
+	p.ascension = ascensionPlanner{highestZone: 110, wallZone: 110, fullCombatFailed: true, lastObservation: now, lastProgress: now}
+	p.ascension.latest = ascensionObservation{frame: frame, economy: true, bank: 60, souls: 65}
+	p.state[fishAnalysis] = observation{frame: frame}
+	p.state[progressionAnalysis] = observation{frame: frame}
+	p.plan(now)
+	if !p.export.requested || !p.export.relicsOnly || !p.export.active || len(p.queue) != 1 || p.queue[handleExport].export == nil {
+		t.Fatalf("Ascension did not request read-only Save: %+v", p.export)
+	}
+	if _, found := p.queue[handleAscension]; found {
+		t.Fatal("Ascension opened before relic check")
+	}
+	p.frame.id++
+	p.export.step, p.export.jobFrame = exportReadFile, p.frame.id
+	preview := &ancientcalc.RelicPreview{Readiness: "unknown", Reason: "snapshot only"}
+	if err := p.accept(context.Background(), observation{kind: exportAnalysis, frame: p.frame, export: exportResult{relics: preview}}, now); err != nil {
+		t.Fatal(err)
+	}
+	if p.controls.isPaused() || p.export.requested || !p.ascension.relicsChecked || p.ancient.plan != oldPlan || !p.ancient.finished || p.options.ascensionCapital != 62 {
+		t.Fatal("read-only export changed Ancient spending or failed to finish")
+	}
+	if p.ascension.latest.frame.id != 0 || p.state[progressionAnalysis].frame.id != 0 || len(p.queue) != 0 || p.ascensionReady(now) {
+		t.Fatal("pre-export combat/reward evidence survived")
+	}
+	// Fresh combat/fish/reward observations allow the original reset policy,
+	// without re-exporting the same inventory on every planning iteration.
+	p.ascension.observeProgress(progressionState{Known: true, Zone: 109}, 110, now, true)
+	p.ascension.latest = ascensionObservation{frame: p.frame, economy: true, bank: 60, souls: 65}
+	p.state[fishAnalysis] = observation{frame: p.frame}
+	p.state[progressionAnalysis] = observation{frame: p.frame}
+	p.plan(now)
+	if p.export.requested || p.queue[handleAscension].kind != handleAscension {
+		t.Fatal("fresh reward did not resume Ascension without a second export")
+	}
+	p.controls.toggle()
+	p.reset(p.controls.snapshot())
+	if p.ascension.relicsChecked {
+		t.Fatal("F8 retained the relic check")
+	}
+	// A previous generation cannot install even an advisory result.
+	p.export = saveExporter{requested: true, active: true, relicsOnly: true, step: exportReadFile, jobFrame: frame.id, window: c.window}
+	if err := p.accept(context.Background(), observation{kind: exportAnalysis, frame: frame, export: exportResult{relics: preview}}, now); err != nil || p.ascension.relicsChecked {
+		t.Fatal("stale preview accepted after F8")
+	}
+}
+
+func TestRelicExportRejectsChangedLayout(t *testing.T) {
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{export: &saveExportOptions{}})
+	p.frame = testPipelineFrame()
+	p.layout = p.frame.layout + 1
+	p.export = saveExporter{requested: true, active: true, relicsOnly: true, step: exportReadFile, jobFrame: p.frame.id, window: p.frame.context.window}
+	err := p.accept(context.Background(), observation{kind: exportAnalysis, frame: p.frame, export: exportResult{relics: &ancientcalc.RelicPreview{Readiness: "unknown"}}}, time.Now())
+	if err != nil || !p.controls.isPaused() || p.ascension.relicsChecked || p.ancient.plan != nil {
+		t.Fatal("layout change accepted the preview")
+	}
+}
+
+func TestRuntimeRelicReportOnlyChanges(t *testing.T) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	stdout := os.Stdout
+	os.Stdout = writer
+	defer func() { os.Stdout = stdout; writer.Close() }()
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
+	preview := &ancientcalc.RelicPreview{Readiness: "unknown", Reason: "snapshot only"}
+	p.reportRelics(preview, nil)
+	p.reportRelics(preview, nil)
+	p.reset(1)
+	p.reportRelics(preview, nil)
+	p.reportRelics(nil, errors.New("missing inventory"))
+	writer.Close()
+	data, err := io.ReadAll(reader)
+	if err != nil || strings.Count(string(data), "relics:") != 2 || strings.Contains(string(data), "ready") {
+		t.Fatalf("repeated advisory output: %q %v", data, err)
 	}
 }
 func TestInitialHeroesHUDWithoutProgressionControl(t *testing.T) {

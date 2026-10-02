@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"image"
 	"time"
+
+	"clicker-heroes-bot/internal/ancientcalc"
 )
 
 func saveControl(screen image.Image, which int) (image.Point, bool, error) {
@@ -56,12 +58,28 @@ type exportCommand struct {
 	before exportSnapshot
 }
 type exportJob struct {
-	ctx     context.Context
-	options saveExportOptions
-	before  exportSnapshot
+	ctx        context.Context
+	options    saveExportOptions
+	before     exportSnapshot
+	relicsOnly bool
 }
+type exportResult struct {
+	plan     *ancientPlan
+	relics   *ancientcalc.RelicPreview
+	relicErr error
+}
+
+func (p *gamePipeline) reportRelics(preview *ancientcalc.RelicPreview, err error) {
+	message := relicReport(preview, err)
+	if message != p.relicMessage {
+		fmt.Println(message)
+		p.relicMessage = message
+	}
+}
+
 type saveExporter struct {
 	requested, active, waiting bool
+	relicsOnly                 bool
 	step                       exportStep
 	window                     string
 	status                     string
@@ -116,7 +134,11 @@ func (p *gamePipeline) planExport(now time.Time) bool {
 		e.active, e.step, e.window = true, exportOpenMenu, p.frame.context.window
 		e.deadline = now.Add(20 * time.Second)
 		p.queue = make(map[actionKind]gameAction)
-		fmt.Println("save export: started")
+		if e.relicsOnly {
+			fmt.Println("save export: checking relics before Ascension (read only)")
+		} else {
+			fmt.Println("save export: started")
+		}
 	}
 	e.status = fmt.Sprintf("expected window=%q, observed window=%q, recognized=%t, menu=%t", e.window, p.frame.context.window, p.frame.context.known, p.frame.context.saveMenu)
 	if now.After(e.deadline) {
@@ -188,22 +210,35 @@ func (e *saveExporter) sent(a gameAction, now time.Time) {
 		e.step, e.waiting = exportCloseMenu, false
 	}
 }
-func readExportPlan(job exportJob) (*ancientPlan, error) {
+func readExport(job exportJob) (exportResult, error) {
 	var last error
 	for {
 		data, path, err := readFreshExport(job.ctx, job.options.dir, job.before)
 		if err != nil {
 			if last != nil {
-				return nil, fmt.Errorf("fresh export could not be decoded: %v (%w)", last, err)
+				return exportResult{}, fmt.Errorf("fresh export could not be decoded: %v (%w)", last, err)
 			}
-			return nil, fmt.Errorf("waiting for new or changed clickerHeroSave*.txt in %q: %w", job.options.dir, err)
+			return exportResult{}, fmt.Errorf("waiting for new or changed clickerHeroSave*.txt in %q: %w", job.options.dir, err)
 		}
-		value, err := calculateAncientData(job.ctx, data, path, job.options.reserve, job.options.skillRate, job.options.beyond8k)
+		var result exportResult
+		if !job.relicsOnly {
+			value, err := calculateAncientData(job.ctx, data, path, job.options.reserve, job.options.skillRate, job.options.beyond8k)
+			if err != nil {
+				last = err
+				continue
+			}
+			result.plan = &value
+		}
+		preview, err := ancientcalc.PreviewRelics(job.ctx, data)
 		if err == nil {
-			return &value, nil
+			result.relics = &preview
+		} else if job.relicsOnly {
+			// The writer can pause between chunks longer than the stability window.
+			// A read-only check also waits for a complete, supported inventory.
+			last = err
+			continue
 		}
-		// A writer can pause between chunks longer than the file stability window.
-		// Only a fully decoded save is eligible for purchases.
-		last = err
+		result.relicErr = err
+		return result, nil
 	}
 }

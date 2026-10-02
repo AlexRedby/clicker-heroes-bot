@@ -27,14 +27,14 @@ import (
 
 func main() {
 	robotgo.Scale = false
-	mode := flag.String("mode", "help", "help, shot, click, run, or ancients-plan")
+	mode := flag.String("mode", "help", "help, shot, click, run, ancients-plan, or relics-plan")
 	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot mode")
-	save := flag.String("save", "", "exported save for ancients-plan or Ascension invested-soul baseline (read only)")
+	save := flag.String("save", "", "exported save for ancients-plan, relics-plan, or Ascension invested-soul baseline (read only)")
 	ancientReserve := flag.String("ancient-reserve", "1%", "Hero Souls to reserve beyond the calculator soul bank")
 	ancientSkillRate := flag.Float64("ancient-skill-rate", 1, "calculator allocation to skill Ancients, from 0 to 1")
 	ancientBeyond8k := flag.Bool("ancient-beyond8k", false, "best hero is levelled beyond 8000; changes calculator gold allocation")
 	ancientSave := flag.String("ancients-save", "", "exported save for one Ancient purchase batch before normal run actions")
-	exportDir := flag.String("export-dir", "", "folder where Save creates clickerHeroSave*.txt; export and buy Ancients at startup and after Ascension")
+	exportDir := flag.String("export-dir", "", "Save folder; suggest relics, buy Ancients at startup/after Ascension, and inspect relics before Ascension")
 	ancientPlanOutput := flag.String("ancient-plan-out", "artifacts/ancients-plan.json", "Ancient purchase plan and gild redistribution preview output")
 	x := flag.Int("x", 0, "screen X coordinate for click or optional monster clicks in run mode")
 	y := flag.Int("y", 0, "screen Y coordinate for click or optional monster clicks in run mode")
@@ -106,6 +106,10 @@ func main() {
 		if err == nil {
 			err = writeAncientPlan(*ancientPlanOutput, plan)
 		}
+	case "relics-plan":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		err = previewRelics(ctx, *save, os.Stdout)
 	case "shot":
 		if *windowed {
 			var capture windowCapture
