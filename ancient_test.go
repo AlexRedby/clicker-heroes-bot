@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"clicker-heroes-bot/internal/ancientcalc"
+	"compress/zlib"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/go-vgo/robotgo"
@@ -17,6 +22,41 @@ import (
 	"testing"
 	"time"
 )
+
+func testIntegratedGildSave(t *testing.T, includeGild bool) []byte {
+	t.Helper()
+	payload := map[string]any{
+		"heroSouls": "160", "heroSoulsSacrificed": 0, "highestFinishedZonePersist": "42",
+		"ancientSoulsTotal": 1, "numWorldResets": 3, "transcendent": true,
+		"ancients":  map[string]any{"ancients": map[string]any{"19": map[string]any{"level": "1", "spentHeroSouls": "1"}}},
+		"outsiders": map[string]any{"outsiders": map[string]any{"1": map[string]any{"level": "0"}}},
+	}
+	if includeGild {
+		heroes := make(map[string]any, 54)
+		for id := 1; id <= 54; id++ {
+			heroes[fmt.Sprint(id)] = map[string]any{"id": id, "uid": id, "level": 0, "epicLevel": 0, "locked": false}
+		}
+		heroes["42"] = map[string]any{"id": 42, "uid": 42, "level": 1000, "epicLevel": 0, "locked": false}
+		heroes["43"] = map[string]any{"id": 43, "uid": 43, "level": 0, "epicLevel": 2, "locked": true}
+		payload["numberOfTranscensions"] = 1
+		payload["transcensionTimestamp"] = 100
+		payload["heroCollection"] = map[string]any{"heroes": heroes}
+		payload["upgrades"] = map[string]bool{"200": true}
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var compressed bytes.Buffer
+	writer := zlib.NewWriter(&compressed)
+	if _, err := writer.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return []byte("7a990d405d2c6fb93aa8fbb0ec1a3b23" + base64.StdEncoding.EncodeToString(compressed.Bytes()))
+}
 
 func requireAncientOCR(t *testing.T) {
 	t.Helper()
@@ -94,6 +134,62 @@ func TestAncientPlanExport(t *testing.T) {
 		if err != nil || len(quantity) > 24 {
 			t.Fatalf("unusable quantity %q: %v", quantity, err)
 		}
+	}
+}
+
+func TestAncientPlanIncludesReadOnlyGildPreview(t *testing.T) {
+	save := testIntegratedGildSave(t, true)
+	path := filepath.Join(t.TempDir(), "clickerHeroSave.txt")
+	plan, err := calculateAncientData(context.Background(), save, path, "10%", 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Gilds == nil || plan.GildError != "" || plan.Gilds.Cost != "160" || plan.Gilds.Reserve != "16" || !plan.Gilds.PreviewOnly || plan.Gilds.Eligible {
+		t.Fatalf("gild preview: %+v error=%q", plan.Gilds, plan.GildError)
+	}
+	base, err := ancientcalc.Calculate(context.Background(), save, "10%", 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Souls != base.Souls || plan.Spent != base.Spent || plan.Remaining != base.Remaining {
+		t.Fatalf("gild preview changed Ancient budget: plan=%+v base=%+v", plan.Plan, base)
+	}
+	wantHash := sha256.Sum256(save)
+	if plan.SaveHash != fmt.Sprintf("%x", wantHash) || plan.Gilds.SaveHash != plan.SaveHash {
+		t.Fatalf("save hash=%q", plan.SaveHash)
+	}
+	out := filepath.Join(t.TempDir(), "plan.json")
+	if err := writeAncientPlan(out, plan); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := persisted["gilds"]; !ok {
+		t.Fatal("persisted plan omitted gild preview")
+	}
+}
+
+func TestAncientPlanSurvivesMissingGildMetadata(t *testing.T) {
+	plan, err := calculateAncientData(context.Background(), testIntegratedGildSave(t, false), "synthetic-save", "0", 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Gilds != nil || plan.GildError == "" || plan.Souls == "" {
+		t.Fatalf("missing gild metadata: gilds=%+v error=%q souls=%q", plan.Gilds, plan.GildError, plan.Souls)
+	}
+}
+
+func TestAncientPlanGildPreviewHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := calculateAncientData(ctx, testIntegratedGildSave(t, true), "synthetic-save", "0", 1, false); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation error=%v", err)
 	}
 }
 

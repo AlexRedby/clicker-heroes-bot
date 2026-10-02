@@ -23,8 +23,10 @@ import (
 
 type ancientPlan struct {
 	ancientcalc.Plan
-	SaveHash  string    `json:"saveHash"`
-	CreatedAt time.Time `json:"createdAt"`
+	SaveHash  string                `json:"saveHash"`
+	CreatedAt time.Time             `json:"createdAt"`
+	Gilds     *ancientcalc.GildPlan `json:"gilds,omitempty"`
+	GildError string                `json:"gildError,omitempty"`
 	savePath  string
 }
 
@@ -64,6 +66,17 @@ func calculateAncientData(ctx context.Context, save []byte, savePath, reserve st
 	if err != nil {
 		return plan, fmt.Errorf("Ancient calculator: %w", err)
 	}
+	// Redistribution remains preview-only, so it does not reduce the purchase budget.
+	gilds, err := ancientcalc.CalculateGilds(ctx, save, reserve, nil)
+	if ctx.Err() != nil {
+		return plan, ctx.Err()
+	}
+	if err != nil {
+		// Ancient-only exports can still be planned; report unavailable gild metadata.
+		plan.GildError = err.Error()
+	} else {
+		plan.Gilds = &gilds
+	}
 	sum := sha256.Sum256(save)
 	plan.SaveHash = hex.EncodeToString(sum[:])
 	plan.CreatedAt = time.Now().UTC()
@@ -97,6 +110,15 @@ func writeAncientPlan(path string, plan ancientPlan) error {
 	fmt.Printf("Ancient plan: %d purchases, %s Hero Souls spent, %s remaining\n", len(plan.Rows), plan.Spent, plan.Remaining)
 	for _, a := range plan.Rows {
 		fmt.Printf("%s: %s -> %s (+%s), cost %s Hero Souls\n", a.Name, a.Current, a.Target, a.Quantity, a.Cost)
+	}
+	if plan.Gilds != nil {
+		g := plan.Gilds
+		fmt.Printf("Gild redistribution preview: %d gilds to %s, cost %s Hero Souls\n", g.MoveGilds, g.Target.Name, g.Cost)
+		if len(g.Reasons) > 0 {
+			fmt.Println("Gild redistribution blocked:", strings.Join(g.Reasons, "; "))
+		}
+	} else if plan.GildError != "" {
+		fmt.Println("Gild redistribution preview unavailable:", plan.GildError)
 	}
 	fmt.Println("saved", path)
 	return nil
