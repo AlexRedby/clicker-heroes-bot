@@ -51,6 +51,7 @@ func main() {
 	mercenaries := flag.Bool("mercenaries", false, "collect mercenary rewards and send new quests without spending rubies")
 	duration := flag.Duration("duration", 0, "maximum run time (0 means unlimited)")
 	stats := flag.Bool("stats", false, "print pipeline timing and analysis counters when run stops")
+	windowed := flag.Bool("windowed", false, "detect a visible game viewport on Windows/macOS; -x/-y use viewport screenshot pixels")
 	delay := flag.Duration("delay", 5*time.Second, "time to focus the game before shot or click (run waits for F8)")
 	flag.DurationVar(&ocrTimeout, "ocr-timeout", ocrTimeout, "maximum time per Tesseract execution (excluding queue wait)")
 	flag.Parse()
@@ -58,6 +59,14 @@ func main() {
 	if *mode == "help" {
 		flag.Usage()
 		return
+	}
+	if *windowed {
+		if *mode != "shot" && *mode != "click" && *mode != "run" {
+			log.Fatal("-windowed requires shot, click or run mode")
+		}
+		if err := windowedPreflight(); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	var hasX, hasY bool
@@ -98,9 +107,39 @@ func main() {
 			err = writeAncientPlan(*ancientPlanOutput, plan)
 		}
 	case "shot":
-		err = saveScreenshot(*output)
+		if *windowed {
+			var capture windowCapture
+			var img image.Image
+			img, err = capture.capture()
+			if err == nil {
+				if shot := img.(*viewportImage); shot.reason != "" {
+					err = errors.New(shot.reason)
+				} else {
+					err = saveImage(*output, shot.Image)
+					if err == nil {
+						fmt.Println("saved viewport pixels", *output)
+					}
+				}
+			}
+		} else {
+			err = saveScreenshot(*output)
+		}
 	case "click":
-		err = clickAt(context.Background(), *x, *y)
+		if *windowed {
+			var capture windowCapture
+			var img image.Image
+			img, err = capture.capture()
+			if err == nil {
+				shot := img.(*viewportImage)
+				if shot.reason != "" {
+					err = errors.New(shot.reason)
+				} else {
+					err = bindViewportInput(context.Background(), heroInput{}, shot.geometry).click(image.Pt(*x, *y))
+				}
+			}
+		} else {
+			err = clickAt(context.Background(), *x, *y)
+		}
 	case "run":
 		var export *saveExportOptions
 		if *exportDir != "" {
@@ -149,7 +188,7 @@ func main() {
 			break
 		}
 
-		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall, *ascensionMinGain, capital, plan, export)
+		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall, *ascensionMinGain, capital, plan, export, *windowed)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -189,13 +228,6 @@ func writeScreenshot(path string, data []byte) error {
 		return fmt.Errorf("write screenshot: %w", err)
 	}
 	return nil
-}
-
-func desktopPoint(point image.Point, pixels, desktop image.Rectangle) (image.Point, error) {
-	if !point.In(pixels) || pixels.Empty() || desktop.Empty() {
-		return image.Point{}, fmt.Errorf("click coordinate %v is outside captured display %v", point, pixels)
-	}
-	return image.Pt(desktop.Min.X+(point.X-pixels.Min.X)*desktop.Dx()/pixels.Dx(), desktop.Min.Y+(point.Y-pixels.Min.Y)*desktop.Dy()/pixels.Dy()), nil
 }
 
 func mousePoint(point image.Point) (image.Point, error) {
@@ -272,6 +304,7 @@ func clickLeft(ctx context.Context, toggle func(...interface{}) error) (err erro
 }
 
 type heroInput struct {
+	bind         func(viewportGeometry) heroInput
 	capture      func() (image.Image, error)
 	monsterClick func(image.Point) error
 	move         func(image.Point) error
@@ -403,7 +436,7 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.misses = 0
 }
 
-func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration, ascensionMinGain, ascensionCapital float64, ancientPlan *ancientPlan, export *saveExportOptions) error {
+func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration, ascensionMinGain, ascensionCapital float64, ancientPlan *ancientPlan, export *saveExportOptions, windowed bool) error {
 	if ascension && (!progression || ascensionStall <= 0 || ascensionMinGain <= 0 || math.IsNaN(ascensionMinGain) || math.IsInf(ascensionMinGain, 0)) {
 		return errors.New("-ascension requires -progression, positive -ascension-stall and finite positive -ascension-min-gain")
 	}
@@ -465,6 +498,25 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		},
 	}
 	controls := pauseControl{paused: true}
+	windowReader := foregroundGameWindow
+	if windowed {
+		if err := windowedHookPreflight(); err != nil {
+			cancel()
+			return err
+		}
+		capture := &windowCapture{}
+		input.capture = capture.capture
+		input.focus = focusNativeWindow
+		base := input
+		input.bind = func(g viewportGeometry) heroInput { return bindViewportInput(ctx, base, g) }
+		windowReader = func() string {
+			scene, err := readNativeScene()
+			if err != nil {
+				return "!outside-game"
+			}
+			return scene.Window
+		}
+	}
 	// GoHook's End crashes on macOS when Accessibility is denied; this CLI releases the hook on exit.
 	events := hook.Start()
 	hookDone := make(chan struct{})
@@ -496,9 +548,9 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	fmt.Println("paused; press F8 to start or pause, Ctrl+C to stop")
 	pipeline := newGamePipeline(&controls, input, pipelineReaders{
 		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation, ascensionEconomy: readAscensionEconomy, ancients: readAncientObservation,
-		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: foregroundGameWindow,
+		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: windowReader,
 	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall, ascensionMinGain: ascensionMinGain, ascensionCapital: ascensionCapital, ancientPlan: ancientPlan, export: export,
-		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval})
+		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval, windowed: windowed})
 	err = pipeline.run(ctx)
 	fmt.Printf("stopped after %d actions\n", pipeline.metrics.actions)
 	if stats {
