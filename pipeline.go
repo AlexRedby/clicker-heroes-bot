@@ -48,6 +48,7 @@ type gameContext struct {
 	modal                                                                                 gildModal
 	window                                                                                string
 	bounds                                                                                image.Rectangle
+	geometry                                                                              viewportGeometry
 }
 type gameFrame struct {
 	id, generation, layout uint64
@@ -112,6 +113,7 @@ type pipelineReaders struct {
 	window           func() string
 }
 type pipelineOptions struct {
+	windowed                                                            bool
 	heroes, skills, progression, mercenaries, monster, gilds, ascension bool
 	ascensionStall                                                      time.Duration
 	ascensionMinGain, ascensionCapital                                  float64
@@ -157,6 +159,7 @@ type gamePipeline struct {
 	heroJobFrame                                        uint64
 	mercenaryJobFrame                                   uint64
 	nextMercenary                                       time.Time
+	monsterSize                                         image.Point
 }
 
 func newGamePipeline(controls *pauseControl, input heroInput, readers pipelineReaders, options pipelineOptions) *gamePipeline {
@@ -360,6 +363,16 @@ func (p *gamePipeline) run(ctx context.Context) error {
 					p.exportFailed(done.err)
 					continue
 				}
+				if p.options.windowed && errors.Is(done.err, errInputContext) {
+					if done.action.kind == handleAncient {
+						p.ancient.fail("native window context changed during input")
+						p.ancient.interrupt()
+						p.controls.block(p.ancient.pauseReason())
+					} else {
+						p.controls.pause("native window context changed; focus the game and press F8")
+					}
+					continue
+				}
 				return done.err
 			}
 			if done.acted {
@@ -415,6 +428,14 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	if !p.controls.valid(ctx, p.generation) {
 		return nil
 	}
+	var geometry viewportGeometry
+	if shot, ok := image.(*viewportImage); ok {
+		image, geometry = shot.Image, shot.geometry
+		if shot.reason != "" && !(p.export.active && (p.export.step == exportRestoreGame || p.export.step == exportCloseMenu)) {
+			p.controls.pause(shot.reason + "; focus an unobscured game HUD and press F8")
+			return nil
+		}
+	}
 	c, err := p.readers.context(image)
 	if err != nil {
 		return err
@@ -430,18 +451,33 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.focusFallback = true
 		}
 	}
+	c.geometry = geometry
+	if p.options.windowed && c.window != geometry.Scene.Window {
+		p.controls.pause("native window changed after capture; focus the game and press F8")
+		return nil
+	}
+	if p.options.windowed && p.options.monster && c.known {
+		if p.monsterSize.X == 0 {
+			p.monsterSize = c.bounds.Size()
+		}
+		if c.bounds.Size() != p.monsterSize || !p.options.monsterPoint.In(c.bounds) {
+			p.controls.pause("windowed monster coordinates need a new viewport screenshot and restart")
+			return nil
+		}
+	}
 	_, err = p.controls.runClick(ctx, p.generation, func() error {
 		old := p.frame.context
-		if (c.bounds != old.bounds || c.window != old.window) && p.ancient.active {
+		geometryChanged := c.bounds != old.bounds || c.window != old.window || c.geometry != old.geometry
+		if geometryChanged && p.ancient.active {
 			p.ancient.fail("game window or display changed")
 			p.ancient.interrupt()
 			p.controls.pauseLocked(p.ancient.pauseReason(), true)
 		}
-		if c.saveMenu != old.saveMenu || c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.bounds != old.bounds || c.window != old.window {
-			if c.bounds != old.bounds || c.window != old.window || !p.mercenary.expects(c, now) {
+		if c.saveMenu != old.saveMenu || c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || geometryChanged {
+			if geometryChanged || !p.mercenary.expects(c, now) {
 				p.mercenary.interrupt()
 			}
-			if c.bounds != old.bounds || c.window != old.window {
+			if geometryChanged {
 				p.ascension.interrupt()
 				p.skill.reset()
 			} else if !p.ascension.active {
@@ -892,6 +928,10 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 var errInputContext = errors.New("input context changed")
 
 func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) {
+	input := p.input
+	if input.bind != nil && !(a.kind == handleExport && a.export.step == exportRestoreGame) {
+		input = input.bind(a.frame.context.geometry)
+	}
 	acted, err := p.controls.runClick(ctx, a.frame.generation, func() error {
 		if !(a.kind == handleExport && a.export.step == exportRestoreGame) && p.readers.window != nil && p.readers.window() != a.frame.context.window {
 			return errInputContext
@@ -899,7 +939,7 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 		switch a.kind {
 		case handleExport:
 			if a.export.step == exportRestoreGame {
-				return p.input.focus(a.export.window)
+				return input.focus(a.export.window)
 			}
 			if a.export.step == exportSave {
 				before, err := snapshotExports(p.options.export.dir)
@@ -908,60 +948,60 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 				}
 				a.export.before = before
 			}
-			return p.input.click(a.point)
+			return input.click(a.point)
 		case handleAncient:
 			switch a.ancient.step {
 			case scrollAncients:
-				return p.input.drag(a.point, a.target)
+				return input.drag(a.point, a.target)
 			case openAncientQuantity:
-				return clickAncientCustom(ctx, p.input, a.point)
+				return clickAncientCustom(ctx, input, a.point)
 			case fillAncientQuantity:
-				if err := p.input.click(a.point); err != nil {
+				if err := input.click(a.point); err != nil {
 					return err
 				}
-				return fillAncientCustom(ctx, p.input, a.ancient.quantity)
+				return fillAncientCustom(ctx, input, a.ancient.quantity)
 			default:
-				if err := p.input.click(a.point); err != nil {
+				if err := input.click(a.point); err != nil {
 					return err
 				}
-				return p.input.move(parkPoint(a.frame.context.bounds))
+				return input.move(parkPoint(a.frame.context.bounds))
 			}
 		case handleMercenary:
 			if a.mercenary.step == scrollMercenariesTop || a.mercenary.step == scrollMercenariesBottom {
-				return p.input.drag(a.point, a.target)
+				return input.drag(a.point, a.target)
 			}
-			if err := p.input.click(a.point); err != nil {
+			if err := input.click(a.point); err != nil {
 				return err
 			}
 			if a.mercenary.step == claimAndOpenMercenaryQuest {
 				// Collect becomes Start Quest in place; each click includes release settling.
-				if err := p.input.click(a.point); err != nil {
+				if err := input.click(a.point); err != nil {
 					return err
 				}
 			}
 			if a.mercenary.step == selectMercenaryQuest {
 				return nil
 			}
-			return p.input.move(parkPoint(a.frame.context.bounds))
+			return input.move(parkPoint(a.frame.context.bounds))
 		case clickMonster:
-			return p.input.monsterClick(a.point)
+			return input.monsterClick(a.point)
 		case collectFish, collectGilds, handleAscension:
-			return p.input.click(a.point)
+			return input.click(a.point)
 		case castSkill:
-			return holdGameKey(ctx, p.input, fmt.Sprint(a.key))
+			return holdGameKey(ctx, input, fmt.Sprint(a.key))
 		case enableProgression:
-			return holdGameKey(ctx, p.input, "a")
+			return holdGameKey(ctx, input, "a")
 		case selectQuantity:
-			return p.input.keyTap("t")
+			return input.keyTap("t")
 		case scrollHeroes:
-			return p.input.drag(a.point, a.target)
+			return input.drag(a.point, a.target)
 		case parkPointer:
-			return p.input.move(a.point)
+			return input.move(a.point)
 		case buyHero:
-			if err := clickHeroMax(ctx, p.input, a.point); err != nil {
+			if err := clickHeroMax(ctx, input, a.point); err != nil {
 				return err
 			}
-			return p.input.move(parkPoint(a.frame.context.bounds))
+			return input.move(parkPoint(a.frame.context.bounds))
 		}
 		return fmt.Errorf("unknown game action %d", a.kind)
 	})
@@ -981,13 +1021,16 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			if p.readers.window != nil && p.readers.window() != a.frame.context.window {
 				return errInputContext
 			}
-			if err := p.input.click(mercenaryPoint(a.frame.context.bounds, 710, 500)); err != nil {
+			if err := input.click(mercenaryPoint(a.frame.context.bounds, 710, 500)); err != nil {
 				return err
 			}
-			return p.input.move(parkPoint(a.frame.context.bounds))
+			return input.move(parkPoint(a.frame.context.bounds))
 		})
 	}
 	if errors.Is(err, errInputContext) {
+		if p.options.windowed {
+			return false, err
+		}
 		return false, nil
 	}
 	return acted, err

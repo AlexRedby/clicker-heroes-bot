@@ -1,5 +1,13 @@
 # Third-party licenses
 
+## Clicker Heroes Outsider preview
+
+The regular active Outsider allocation below 21000 AS is derived from
+`Driej/Clicker-Heroes-Outsiders`, commit
+`fbb5c603d16b914ee57ca9f0360e4dc089ea9507`, and ported to Go.
+The source is released under the Unlicense (public domain):
+https://github.com/Driej/Clicker-Heroes-Outsiders/blob/fbb5c603d16b914ee57ca9f0360e4dc089ea9507/LICENSE
+
 ## Clicker Heroes Ancient calculator
 
 The Active allocation formulas, numerical game data and reference test results are derived from `tomcur/ClickerHeroesCalculator`, commit `1c35f5598f210c689a618a7e46a14769f7bf9a39`, and ported to Go.

@@ -339,7 +339,7 @@ func planAncients(ctx context.Context, save ancientSave, reserve string, skillRa
 	}
 	multiplier := bigfloat.Pow(aConst("0.95"), discountLevel)
 	tp := aConst("0")
-	if save.Transcendent {
+	if save.Transcendent != nil && *save.Transcendent {
 		tp = aMax(aMul(aAdd(aMul(aDecay(ancientSouls, "0.0003"), aConst("-0.23")), aConst("0.25")), aConst("100")), aConst("1"))
 	}
 	hp := aAdd(aMul(aRound(aDiv(zone, aConst("500")), false), aConst("0.005")), aConst("1.145"))

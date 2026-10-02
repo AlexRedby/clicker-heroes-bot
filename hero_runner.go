@@ -263,10 +263,33 @@ func (p *heroRunner) sent(a gameAction, now time.Time) {
 	}
 }
 
-func clickHeroMax(ctx context.Context, input heroInput, button image.Point) (err error) {
-	defer func() { err = errors.Join(err, input.keyToggle("q", "up")) }()
-	if err = input.keyToggle("q", "down"); err != nil {
-		return err
+func clickHeroMax(ctx context.Context, input heroInput, button image.Point) error {
+	return clickHeroModified(ctx, input, button, "q")
+}
+
+// Requires a positively identified support row and persistent x1 quantity.
+func clickHeroLevels(ctx context.Context, input heroInput, button image.Point, missing int) error {
+	if missing <= 0 {
+		return fmt.Errorf("hero level deficit must be positive")
+	}
+	key := ""
+	switch {
+	case missing >= 100:
+		key = "ctrl"
+	case missing >= 25:
+		key = "z"
+	case missing >= 10:
+		key = "shift"
+	}
+	return clickHeroModified(ctx, input, button, key)
+}
+
+func clickHeroModified(ctx context.Context, input heroInput, button image.Point, key string) (err error) {
+	if key != "" {
+		defer func() { err = errors.Join(err, input.keyToggle(key, "up")) }()
+		if err = input.keyToggle(key, "down"); err != nil {
+			return err
+		}
 	}
 	if err = ctx.Err(); err != nil {
 		return err

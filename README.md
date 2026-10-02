@@ -13,6 +13,14 @@ Hero leveling, automatic progression, Ascension and Ancient purchases additional
 
 Ancient calculations run inside the Go application. The game data is embedded in the binary; no additional runtime or project-directory files are required for the calculator.
 
+An informational Transcension preview runs independently of the desktop bot:
+
+```sh
+go run ./cmd/transcendence-plan -save "path/to/fresh-save.txt" -out artifacts/transcension-plan.json
+```
+
+It reports estimated Ancient Souls/TP, closed Ascension history, affordable Outsider additions and a separate ideal allocation that may require respec. The active allocation supports fewer than 21000 total AS; higher budgets still get state and reward estimates. Gains, TP and respec behavior need comparison with the installed game's UI. Save history does not establish active-play time or a combat wall, so the preview cannot authorize a reset. It preserves the save and makes no game input; omit `-out` to print JSON. This command needs Go only, without OpenCV, Tesseract or a JavaScript runtime.
+
 ## Run
 
 From the project directory:
@@ -33,6 +41,10 @@ go run . -mode run -x 700 -y 400 -interval 100ms -fish-interval 1s -duration 10m
 ```
 
 The example coordinates are placeholders. Use pixel coordinates from the saved screenshot of the primary display for `-x` and `-y`, including on Retina displays. The bot validates these coordinates and converts screenshot pixels to desktop points on macOS. By default, `shot` saves `artifacts/screenshot.png` and creates the directory if needed. Put other generated test files in `artifacts/` too; Git ignores this directory. You can choose another screenshot path with `-out`. After starting `shot` or `click`, you have 5 seconds (`-delay`) to switch to the game. `run` has no startup countdown; focus the game and press F8 when ready. For `click` or optional monster clicks in `run`, use coordinates inside the monster area.
+
+Opt-in `-windowed` supports a visible game window on Windows/macOS, including a secondary display. Start with `go run . -mode shot -windowed`, then use `go run . -mode run -windowed -hero-levels -skills -progression`. The screenshot contains only the verified viewport; `-x/-y` in windowed mode use pixels from that crop. After a resize, restart with coordinates from a new viewport screenshot if monster clicks are enabled. Without `-windowed`, coordinates and capture keep their primary-display behavior.
+
+Windowed detection verifies the HUD inside the client area or a centered/bottom-aligned 16:9 game area. Show an unobscured normal HUD before starting; existing game dialogs can then reuse the established viewport. Unknown/ambiguous geometry, windows clipped or spanning displays, and lost focus pause input. Window movement or DPI changes discard queued decisions. macOS requires Screen Recording and Accessibility, plus Input Monitoring for the global F8 hook; Windows requires 64-bit Windows with per-monitor DPI awareness support. Cursor readback is checked before mouse-down. Native click/drag, permissions and mixed-display behavior still require validation in the installed game; fixture tests only establish recognition and coordinate math.
 
 `run` starts paused: press **F8** to start, and press F8 again to pause or resume from any window. On some Mac keyboards, press Fn+F8. Pausing blocks new input and invalidates decisions from earlier screenshots. An OCR or detection call already in progress can finish, but its result cannot trigger input after pause/resume. Without `-duration`, it runs until Ctrl+C; a positive `-duration` sets a wall-time limit that also counts while paused. If F8 does not resume the bot, check Accessibility permission for the app running it. Pause before switching away from the game. When native foreground identity is available, input requires the same foreground game process/title observed in the screenshot; if unavailable, the bot reports its visual-context/F8 fallback. This guard does not distinguish windows with identical process/title.
 
