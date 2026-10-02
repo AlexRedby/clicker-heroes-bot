@@ -65,6 +65,7 @@ type exportJob struct {
 }
 type exportResult struct {
 	plan     *ancientPlan
+	prestige *ancientcalc.TranscensionPreview
 	relics   *ancientcalc.RelicPreview
 	relicErr error
 }
@@ -228,6 +229,17 @@ func readExport(job exportJob) (exportResult, error) {
 				continue
 			}
 			result.plan = &value
+			result.prestige = value.Transcension
+		} else {
+			// An advisory Outsider roster does not require owned Ancients and
+			// cannot block a valid relic-only export when metadata is absent.
+			value, err := ancientcalc.PreviewTranscension(job.ctx, data)
+			if job.ctx.Err() != nil {
+				return exportResult{}, job.ctx.Err()
+			}
+			if err == nil {
+				result.prestige = &value
+			}
 		}
 		preview, err := ancientcalc.PreviewRelics(job.ctx, data)
 		if err == nil {

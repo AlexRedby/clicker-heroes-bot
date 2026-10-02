@@ -29,7 +29,8 @@ func main() {
 	robotgo.Scale = false
 	mode := flag.String("mode", "help", "help, shot, click, run, ancients-plan, relics-plan, or transcension-plan")
 	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot or preview JSON for transcension-plan mode")
-	save := flag.String("save", "", "exported save for ancients-plan, relics-plan, transcension-plan, or Ascension invested-soul baseline (read only)")
+	save := flag.String("save", "", "exported save for preview modes, run Outsider roster, or Ascension invested-soul baseline (read only)")
+	outsiderShot := flag.String("screenshot", "", "existing Outsiders screenshot to reconcile with -save in transcension-plan mode (read only)")
 	ancientReserve := flag.String("ancient-reserve", "1%", "Hero Souls to reserve beyond the calculator soul bank")
 	ancientSkillRate := flag.Float64("ancient-skill-rate", 1, "calculator allocation to skill Ancients, from 0 to 1")
 	ancientBeyond8k := flag.Bool("ancient-beyond8k", false, "best hero is levelled beyond 8000; changes calculator gold allocation")
@@ -59,6 +60,9 @@ func main() {
 	if *mode == "help" {
 		flag.Usage()
 		return
+	}
+	if *outsiderShot != "" && *mode != "transcension-plan" {
+		log.Fatal("-screenshot requires transcension-plan mode")
 	}
 	if *windowed {
 		if *mode != "shot" && *mode != "click" && *mode != "run" {
@@ -117,7 +121,11 @@ func main() {
 				path = *output
 			}
 		})
-		err = previewTranscension(ctx, *save, path, os.Stdout)
+		if *outsiderShot != "" {
+			err = previewOutsiders(ctx, *save, *outsiderShot, path, os.Stdout)
+		} else {
+			err = previewTranscension(ctx, *save, path, os.Stdout)
+		}
 	case "relics-plan":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
@@ -203,8 +211,24 @@ func main() {
 			err = e
 			break
 		}
+		var outsiderBase *ancientcalc.TranscensionPreview
+		if *save != "" {
+			if *ascension {
+				outsiderBase = capitalPlan.Transcension
+				if capitalPlan.TranscensionError != "" {
+					fmt.Println("Outsider save preview unavailable:", capitalPlan.TranscensionError)
+				}
+			} else {
+				value, e := readTranscensionPreview(context.Background(), *save)
+				if e != nil {
+					fmt.Println("Outsider save preview unavailable:", e)
+				} else {
+					outsiderBase = &value
+				}
+			}
+		}
 
-		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall, *ascensionMinGain, capital, plan, export, *windowed)
+		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall, *ascensionMinGain, capital, plan, export, outsiderBase, *windowed)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -452,7 +476,7 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.misses = 0
 }
 
-func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration, ascensionMinGain, ascensionCapital float64, ancientPlan *ancientPlan, export *saveExportOptions, windowed bool) error {
+func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration, ascensionMinGain, ascensionCapital float64, ancientPlan *ancientPlan, export *saveExportOptions, outsiderBase *ancientcalc.TranscensionPreview, windowed bool) error {
 	if ascension && (!progression || ascensionStall <= 0 || ascensionMinGain <= 0 || math.IsNaN(ascensionMinGain) || math.IsInf(ascensionMinGain, 0)) {
 		return errors.New("-ascension requires -progression, positive -ascension-stall and finite positive -ascension-min-gain")
 	}
@@ -565,7 +589,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	pipeline := newGamePipeline(&controls, input, pipelineReaders{
 		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation, ascensionEconomy: readAscensionEconomy, ancients: readAncientObservation, outsiders: readOutsiderObservation,
 		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: windowReader,
-	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall, ascensionMinGain: ascensionMinGain, ascensionCapital: ascensionCapital, ancientPlan: ancientPlan, export: export,
+	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall, ascensionMinGain: ascensionMinGain, ascensionCapital: ascensionCapital, ancientPlan: ancientPlan, export: export, outsiderBase: outsiderBase,
 		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval, windowed: windowed})
 	err = pipeline.run(ctx)
 	fmt.Printf("stopped after %d actions\n", pipeline.metrics.actions)

@@ -23,6 +23,16 @@ It reports estimated Ancient Souls/TP, closed Ascension history, affordable Outs
 
 While `run` is active, manually opening the Outsiders tab prints a read-only report of its AS wallet/reward, displayed TP, sacrificed souls, next-AS threshold and complete visible cards with levels and FEED costs. Costs retain the selected quantity (including MAX). Recognition is calibrated against the 1.0e12-6144 frame and checked at 1280/1920/2560 widths; other skins and unreadable fields remain unknown. Reports reuse the shared capture, read at most once every five seconds and discard results after context changes or F8. This does not click Transcend or FEED, scroll the list, or verify reset/respec behavior.
 
+With `run -save`, `-ancients-save` or a successful `-export-dir` export, the report also shows concrete Outsider additions from the current wallet and a separate conditional plan after the displayed AS reward. It checks visible levels, wallet, TP at display precision and fixed-quantity FEED costs against the save/model; hidden levels still come from the save and MAX pricing remains unverified. State/cost mismatches suppress the plan. A changed reward is reported explicitly and the conditional plan uses the UI reward. These checks do not establish save freshness or authorize spending/reset. Missing prestige metadata remains advisory to ordinary Ancient/relic automation.
+
+To inspect the same plan offline with an existing Outsiders image:
+
+```sh
+go run . -mode transcension-plan -save "save.txt" -screenshot "outsiders.png" -out artifacts/outsiders-plan.json
+```
+
+Omitting `-screenshot` preserves the original save-only preview. This image check requires Tesseract, makes no game input and preserves both input files, including their hardlink/symlink aliases.
+
 ## Integrated run and game checks
 
 Update the checkout on the computer running the game, then launch:

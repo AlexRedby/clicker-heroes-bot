@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"clicker-heroes-bot/internal/ancientcalc"
 )
 
 type analysisKind uint8
@@ -58,28 +60,30 @@ type gameFrame struct {
 	context                gameContext
 }
 type analysisJob struct {
-	frame      gameFrame
-	export     *exportJob
-	heroBefore *heroObservation
-	modeOnly   bool
-	economy    bool
-	skills     [9]skillState
+	frame        gameFrame
+	export       *exportJob
+	heroBefore   *heroObservation
+	modeOnly     bool
+	economy      bool
+	skills       [9]skillState
+	outsiderBase *ancientcalc.TranscensionPreview
 }
 type observation struct {
-	kind        analysisKind
-	frame       gameFrame
-	elapsed     time.Duration
-	point       image.Point
-	found       bool
-	skills      [9]skillState
-	progression progressionState
-	hero        heroObservation
-	mercenary   mercenaryObservation
-	ascension   ascensionObservation
-	ancient     ancientObservation
-	export      exportResult
-	outsider    outsiderObservation
-	err         error
+	kind         analysisKind
+	frame        gameFrame
+	elapsed      time.Duration
+	point        image.Point
+	found        bool
+	skills       [9]skillState
+	progression  progressionState
+	hero         heroObservation
+	mercenary    mercenaryObservation
+	ascension    ascensionObservation
+	ancient      ancientObservation
+	export       exportResult
+	outsider     outsiderObservation
+	outsiderPlan outsiderAdvice
+	err          error
 }
 type gameAction struct {
 	kind          actionKind
@@ -121,6 +125,7 @@ type pipelineOptions struct {
 	ascensionStall                                                      time.Duration
 	ascensionMinGain, ascensionCapital                                  float64
 	ancientPlan                                                         *ancientPlan
+	outsiderBase                                                        *ancientcalc.TranscensionPreview
 	export                                                              *saveExportOptions
 	monsterPoint                                                        image.Point
 	fishInterval, clickInterval, gildInterval                           time.Duration
@@ -152,6 +157,7 @@ type gamePipeline struct {
 	export                                              saveExporter
 	relicMessage                                        string
 	outsiderMessage                                     string
+	outsiderBase                                        *ancientcalc.TranscensionPreview
 	outsiderJobFrame                                    uint64
 	nextOutsider                                        time.Time
 	mercenary                                           mercenaryPlanner
@@ -174,6 +180,10 @@ type gamePipeline struct {
 func newGamePipeline(controls *pauseControl, input heroInput, readers pipelineReaders, options pipelineOptions) *gamePipeline {
 	p := &gamePipeline{controls: controls, input: input, readers: readers, options: options, hero: heroRunner{enabled: options.heroes}, queue: make(map[actionKind]gameAction), diagnostics: make(chan heroAttempt, 1)}
 	p.ancient.plan = options.ancientPlan
+	p.outsiderBase = options.outsiderBase
+	if p.outsiderBase == nil && options.ancientPlan != nil {
+		p.outsiderBase = options.ancientPlan.Transcension
+	}
 	p.export.requested = options.export != nil
 	p.hero.onFailure = func(a heroAttempt) {
 		select {
@@ -256,6 +266,9 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 		out.export, out.err = readExport(*job.export)
 	case outsiderAnalysis:
 		out.outsider, out.err = p.readers.outsiders(ctx, job.frame)
+		if out.err == nil {
+			out.outsiderPlan = reconcileOutsiders(ctx, out.outsider, job.outsiderBase)
+		}
 	}
 	out.elapsed = time.Since(start)
 	return out
@@ -573,7 +586,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		}
 		if c.outsiders && p.readers.outsiders != nil && p.outsiderJobFrame == 0 && !now.Before(p.nextOutsider) {
 			p.outsiderJobFrame = p.frame.id
-			replaceJob(jobs[outsiderAnalysis], analysisJob{frame: p.frame})
+			replaceJob(jobs[outsiderAnalysis], analysisJob{frame: p.frame, outsiderBase: p.outsiderBase})
 			p.nextOutsider = now.Add(5 * time.Second)
 		}
 		if p.options.ascension && c.heroes && p.ascension.due(now, p.options.ascensionStall) && p.ascension.jobFrame == 0 && !now.Before(p.ascension.nextRead) {
@@ -660,6 +673,12 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			return nil
 		}
 		p.reportRelics(out.export.relics, out.export.relicErr)
+		// A newer export with missing prestige metadata revokes the older roster
+		// for advice only; ordinary Ancient/relic stages remain independent.
+		p.outsiderBase = out.export.prestige
+		if p.outsiderBase == nil && out.export.plan != nil {
+			p.outsiderBase = out.export.plan.Transcension
+		}
 		if p.export.relicsOnly {
 			p.export.interrupt()
 			p.export.requested = false
@@ -746,10 +765,22 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		if ctx.Err() != nil {
 			return nil
 		}
+		sourceHash := ""
+		if p.outsiderBase != nil {
+			sourceHash = p.outsiderBase.SaveHash
+		}
+		if out.err == nil && out.outsiderPlan.SaveHash != sourceHash {
+			p.metrics.dropped++
+			p.nextOutsider = time.Time{}
+			return nil
+		}
 		message := out.outsider.String()
 		if out.err != nil {
 			out.outsider = outsiderObservation{frame: out.frame}
+			out.outsiderPlan = outsiderAdvice{}
 			message = fmt.Sprintf("Outsiders: unreadable: %v", out.err)
+		} else {
+			message += "\n" + out.outsiderPlan.String()
 		}
 		p.state[out.kind] = out
 		if message != p.outsiderMessage {
