@@ -277,6 +277,7 @@ func (p *gamePipeline) reset(generation uint64) {
 	p.gild.interrupt()
 	p.heroJobFrame = 0
 	p.skill.interrupt()
+	p.progression.invalidateCombat()
 	p.progression.pending = nil
 	p.progression.wantAction = false
 	p.mercenary.interrupt()
@@ -442,6 +443,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			}
 			if c.bounds != old.bounds || c.window != old.window {
 				p.ascension.interrupt()
+				p.skill.reset()
 			} else if !p.ascension.active {
 				p.ascension.invalidate()
 			}
@@ -461,6 +463,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.hero.interrupt()
 			p.heroJobFrame = 0
 			p.skill.interrupt()
+			p.progression.invalidateCombat()
 			p.progression.pending = nil
 			p.progression.wantAction = false
 			p.nextFish, p.nextProgression = time.Time{}, time.Time{}
@@ -620,6 +623,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 	if out.kind == ascensionAnalysis {
 		if p.ascension.observe(out.ascension, out.err, now) {
 			p.progression = progressionPlanner{}
+			p.skill.reset()
 			p.hero.failures, p.hero.enabled = 0, p.options.heroes
 			// accept() already owns the pause-control mutex.
 			if p.options.export != nil {
@@ -648,11 +652,18 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			}
 		case progressionAnalysis:
 			p.ascension.invalidate()
+			p.progression.invalidateCombat()
 			p.nextProgression = now.Add(30 * time.Second)
 			fmt.Printf("progression numbers unreadable: %v; retrying in 30s\n", out.err)
 			return nil
 		default:
 			return out.err
+		}
+	}
+	if out.kind == progressionAnalysis {
+		out.progression.observedAt = out.frame.at
+		if out.progression.Known && out.progression.Zone == 1 && p.progression.lastZone > 2 {
+			p.skill.reset()
 		}
 	}
 	p.state[out.kind] = out

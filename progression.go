@@ -13,38 +13,44 @@ type progressionState struct {
 	Damage         float64
 	DamageKnown    bool
 	Buffs          uint8
+	observedAt     time.Time
 }
 
 type progressionPlanner struct {
-	seen, lastEnabled                bool
-	lastZone, wallZone, failures     int
-	bossZone                         int
-	bossDamage, wallDamage           float64
-	bossDamageKnown, wallDamageKnown bool
-	bossBuffs, wallBuffs             uint8
-	bossFullSince, bossLastFull      time.Time
-	bossFullCombat, wallFullCombat   bool
-	nextAttempt                      time.Time
-	pending                          *progressionAttempt
-	wantAction                       bool
+	seen, lastEnabled                  bool
+	lastZone, wallZone, failures       int
+	bossZone                           int
+	bossDamage, wallDamage             float64
+	bossDamageKnown, wallDamageKnown   bool
+	bossBuffs, wallBuffs               uint8
+	bossFullSince, bossLastObservation time.Time
+	bossFullCombat, wallFullCombat     bool
+	nextAttempt                        time.Time
+	pending                            *progressionAttempt
+	wantAction                         bool
+}
+
+func (p *progressionPlanner) invalidateCombat() {
+	p.bossFullSince, p.bossLastObservation = time.Time{}, time.Time{}
+	p.bossFullCombat = false
 }
 
 func (p *progressionPlanner) rememberBoss(zone int, s progressionState, now time.Time) {
 	if p.bossZone != zone {
 		p.bossZone, p.bossBuffs, p.bossDamageKnown = zone, 0, false
-		p.bossFullSince, p.bossFullCombat = time.Time{}, false
+		p.invalidateCombat()
 	}
 	// A farm-frame retry baseline is not evidence of a buffed boss fight.
 	if s.Enabled && s.Zone == zone {
 		if s.FullCombat {
-			if p.bossFullSince.IsZero() || now.Sub(p.bossLastFull) > 10*time.Second {
+			if p.bossFullSince.IsZero() {
 				p.bossFullSince = now
 			}
-			p.bossLastFull = now
 			p.bossFullCombat = p.bossFullCombat || now.Sub(p.bossFullSince) >= 2*time.Second
 		} else {
 			p.bossFullSince = time.Time{}
 		}
+		p.bossLastObservation = now
 	}
 	p.bossBuffs |= s.Buffs
 	if s.DamageKnown && (!p.bossDamageKnown || s.Damage > p.bossDamage) {
@@ -54,7 +60,16 @@ func (p *progressionPlanner) rememberBoss(zone int, s progressionState, now time
 
 func (p *progressionPlanner) observe(s progressionState, now time.Time) bool {
 	if !s.Known || s.Zone <= 0 {
+		p.invalidateCombat()
 		return false
+	}
+	observedAt := s.observedAt
+	if observedAt.IsZero() {
+		observedAt = now
+	}
+	// Check the gap before fallback too; a fresh farm frame cannot repair missing combat evidence.
+	if !p.bossLastObservation.IsZero() && (observedAt.Before(p.bossLastObservation) || observedAt.Sub(p.bossLastObservation) > 10*time.Second) {
+		p.invalidateCombat()
 	}
 	if p.seen && s.Zone < p.lastZone-1 {
 		// Ascension or a manual zone jump starts a fresh progression assessment.
@@ -62,13 +77,14 @@ func (p *progressionPlanner) observe(s progressionState, now time.Time) bool {
 	}
 	if s.Enabled {
 		if !p.lastEnabled {
-			p.bossFullSince, p.bossFullCombat = time.Time{}, false
+			p.invalidateCombat()
+			p.wallFullCombat = false
 		}
 		if p.wallZone > 0 && s.Zone > p.wallZone {
 			p.wallZone, p.failures, p.wallFullCombat = 0, 0, false
 		}
 		if s.Zone%5 == 0 {
-			p.rememberBoss(s.Zone, s, now)
+			p.rememberBoss(s.Zone, s, observedAt)
 		}
 	} else if p.seen && p.lastEnabled && s.Zone%5 == 4 {
 		wall := s.Zone + 1

@@ -434,6 +434,63 @@ func TestAscensionCombatWallAndRewardPolicy(t *testing.T) {
 	}
 }
 
+func TestCombatHandoffUsesCaptureTime(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		second, fallback time.Duration
+		full             bool
+	}{
+		{"qualifying capture span", 2 * time.Second, 3 * time.Second, true},
+		{"delayed close captures", time.Second, 2 * time.Second, false},
+		{"gap before fallback", 2 * time.Second, 13 * time.Second, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Unix(1000, 0)
+			p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{ascension: true})
+			p.layout = 1
+			c := gameContext{known: true, heroes: true}
+			boss := progressionState{Known: true, Enabled: true, Zone: 110, FullCombat: true}
+			farm := progressionState{Known: true, Zone: 109}
+			for i, offset := range []time.Duration{0, tc.second, tc.fallback} {
+				frame := gameFrame{id: uint64(i + 1), layout: p.layout, at: now.Add(offset), context: c}
+				p.frame = frame
+				s := boss
+				if i == 2 {
+					s = farm
+				}
+				if err := p.applyObservation(context.Background(), observation{kind: progressionAnalysis, frame: frame, progression: s}, now.Add(time.Duration(100+i*2)*time.Second)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if p.progression.wallFullCombat != tc.full || p.ascension.fullCombatFailed != tc.full {
+				t.Fatalf("combat=%t handoff=%t", p.progression.wallFullCombat, p.ascension.fullCombatFailed)
+			}
+			if !p.ascension.lastObservation.Equal(now.Add(tc.fallback)) || p.ascension.due(now.Add(104*time.Second), 3*time.Minute) {
+				t.Fatal("late analysis refreshed stale reset evidence")
+			}
+		})
+	}
+}
+
+func TestCombatRunResetClearsSkills(t *testing.T) {
+	now := time.Unix(1000, 0)
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{ascension: true})
+	p.skill = skillPlanner{pendingEnergize: true, reloaded: [9]bool{true}, retryAt: [9]time.Time{now.Add(time.Minute)}}
+	p.reset(p.generation)
+	if !p.skill.pendingEnergize || !p.skill.reloaded[0] {
+		t.Fatal("same-run cancellation erased skill history")
+	}
+	p.progression.lastZone = 110
+	frame := gameFrame{id: 1, layout: p.layout, at: now, context: gameContext{known: true, heroes: true}}
+	p.frame = frame
+	if err := p.applyObservation(context.Background(), observation{kind: progressionAnalysis, frame: frame, progression: progressionState{Known: true, Zone: 1}}, now); err != nil {
+		t.Fatal(err)
+	}
+	if p.skill.pendingEnergize || p.skill.reloaded[0] || !p.skill.retryAt[0].IsZero() {
+		t.Fatal("verified new run retained old skill history")
+	}
+}
+
 func TestAscensionHUDRealBudget(t *testing.T) {
 	if _, err := exec.LookPath("tesseract"); err != nil {
 		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {

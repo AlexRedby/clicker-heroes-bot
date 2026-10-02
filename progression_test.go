@@ -24,7 +24,7 @@ func TestProgressionScreen(t *testing.T) {
 	}{
 		{"hero-scrollbar-before.png", true, 8127, 0, 0}, {"fish-over-scrollbar.png", true, 8171, 0, 0},
 		{"hero-owned-disabled.png", true, 5707, 0, 0}, {"hero-economy-x1.png", true, 6344, 0, 0}, {"hero-panel-max.png", true, 5595, 349 + math.Log10(4.505), 0},
-		{"hero-tsuchi-x1.png", false, 12654, 819 + math.Log10(2.502), 2}, {"hero-gog-before.png", false, 2404, 158 + math.Log10(6.893), 0}, {"hero-gog-tooltip.png", false, 2404, 289 + math.Log10(1.168), 0},
+		{"hero-tsuchi-x1.png", false, 12654, 819 + math.Log10(2.502), 2 | 32}, {"hero-gog-before.png", false, 2404, 158 + math.Log10(6.893), 0}, {"hero-gog-tooltip.png", false, 2404, 289 + math.Log10(1.168), 0},
 	} {
 		original := loadTestImage(t, "testdata/"+tc.path)
 		for _, divisor := range []int{1, 2} {
@@ -64,6 +64,86 @@ func TestProgressionScreen(t *testing.T) {
 		if err != nil || known {
 			t.Fatalf("unknown UI accepted: %t %v", known, err)
 		}
+	}
+}
+
+func TestProgressionCombatContinuity(t *testing.T) {
+	for _, scenario := range []string{"continuous expiry", "gap after proof", "gap before fallback", "unknown", "cancelled context", "new attempt", "delayed analysis"} {
+		t.Run(scenario, func(t *testing.T) {
+			now := time.Unix(1000, 0)
+			boss := progressionState{Known: true, Enabled: true, Zone: 110, FullCombat: true}
+			farm := progressionState{Known: true, Zone: 109}
+			p := progressionPlanner{}
+			p.observe(boss, now)
+			p.observe(boss, now.Add(2*time.Second))
+			failedAt := now.Add(4 * time.Second)
+			switch scenario {
+			case "continuous expiry":
+				boss.FullCombat = false
+				for sec := 3; sec <= 30; sec++ {
+					p.observe(boss, now.Add(time.Duration(sec)*time.Second))
+				}
+				failedAt = now.Add(31 * time.Second)
+			case "gap after proof":
+				p.observe(boss, now.Add(13*time.Second))
+				failedAt = now.Add(14 * time.Second)
+			case "gap before fallback":
+				failedAt = now.Add(13 * time.Second)
+			case "unknown":
+				p.observe(progressionState{}, now.Add(3*time.Second))
+			case "cancelled context":
+				p.invalidateCombat()
+			case "new attempt":
+				p.observe(farm, now.Add(3*time.Second))
+				p.observe(boss, now.Add(4*time.Second))
+				failedAt = now.Add(5 * time.Second)
+			case "delayed analysis":
+				p = progressionPlanner{}
+				boss.observedAt = now
+				p.observe(boss, now.Add(100*time.Second))
+				boss.observedAt = now.Add(time.Second)
+				p.observe(boss, now.Add(102*time.Second))
+				farm.observedAt = now.Add(2 * time.Second)
+				failedAt = now.Add(103 * time.Second)
+			}
+			p.observe(farm, failedAt)
+			if p.wallZone != 110 || p.wallFullCombat != (scenario == "continuous expiry") {
+				t.Fatalf("wall=%d fullCombat=%t", p.wallZone, p.wallFullCombat)
+			}
+		})
+	}
+}
+
+func TestProgressionAllCombatBuffRetries(t *testing.T) {
+	now := time.Unix(1000, 0)
+	var states [9]skillState
+	for _, key := range []int{1, 2, 3, 7} {
+		states[key-1] = skillState{Known: true, Active: true}
+	}
+	for _, key := range []int{1, 2, 3, 7} {
+		t.Run(string(rune('0'+key)), func(t *testing.T) {
+			p := progressionPlanner{}
+			boss := progressionState{Known: true, Enabled: true, Zone: 110, FullCombat: true, Buffs: progressionBuffs(states)}
+			p.observe(boss, now)
+			p.observe(boss, now.Add(2*time.Second))
+			farm := boss
+			farm.Zone, farm.Enabled = 109, false
+			if p.observe(farm, now.Add(3*time.Second)) {
+				t.Fatal("unchanged failed full combat retried")
+			}
+			stronger := states
+			stronger[key-1].Energized = true
+			farm.Buffs = progressionBuffs(stronger)
+			if !p.observe(farm, now.Add(4*time.Second)) {
+				t.Fatal("new energized combat buff ignored")
+			}
+			boss.Buffs = farm.Buffs
+			p.observe(boss, now.Add(5*time.Second))
+			p.observe(boss, now.Add(7*time.Second))
+			if p.observe(farm, now.Add(8*time.Second)) || p.observe(farm, now.Add(3*time.Minute)) {
+				t.Fatal("already tried energized window retried")
+			}
+		})
 	}
 }
 

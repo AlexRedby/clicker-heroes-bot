@@ -194,6 +194,9 @@ func (p *ascensionPlanner) observeProgress(s progressionState, wall int, now tim
 	if p.active || !s.Known || s.Zone <= 0 {
 		return
 	}
+	if !s.observedAt.IsZero() {
+		now = s.observedAt
+	}
 	if p.highestZone == 0 || s.Zone < p.highestZone-1 {
 		p.highestZone, p.wallZone = s.Zone, 0
 		p.lastProgress = now

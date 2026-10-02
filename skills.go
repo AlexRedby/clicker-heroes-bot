@@ -13,8 +13,6 @@ type skillPlanner struct {
 	retryAt  [9]time.Time
 	// An interrupted Energize must be consumed by a fresh, recognized target.
 	pendingEnergize bool
-	seenGeneration  bool
-	generation      uint64
 	keys            []int
 	confirmed       map[int]bool
 	pending         *skillAttempt
@@ -106,15 +104,9 @@ func (p *skillPlanner) interrupt() {
 	p.keys = nil
 	p.confirmed = nil
 	p.pending = nil
-	p.seenGeneration = false
-	p.reloaded = [9]bool{}
 }
-func (p *skillPlanner) observeFrame(states [9]skillState, frameID, generation uint64, now time.Time) {
-	if !p.seenGeneration || p.generation != generation {
-		p.reloaded = [9]bool{}
-		p.pendingEnergize = p.pendingEnergize || (states[7].Known && !states[7].Ready)
-		p.seenGeneration, p.generation = true, generation
-	}
+func (p *skillPlanner) reset() { *p = skillPlanner{} }
+func (p *skillPlanner) observeFrame(states [9]skillState, frameID, _ uint64, now time.Time) {
 	pending := p.pending
 	if pending == nil || frameID <= pending.frameID {
 		return
@@ -128,6 +120,9 @@ func (p *skillPlanner) observeFrame(states [9]skillState, frameID, generation ui
 		if key != 8 {
 			p.pendingEnergize = false
 		}
+		if key != 8 && key != 9 {
+			p.reloaded[key-1] = false
+		}
 		if key == 9 {
 			for target := range p.confirmed {
 				if target != 8 && target != 9 && states[target-1].Known && states[target-1].Ready {
@@ -137,9 +132,6 @@ func (p *skillPlanner) observeFrame(states [9]skillState, frameID, generation ui
 		}
 		fmt.Printf("activated skill %d\n", key)
 		if unexpected {
-			if pending.before[7].Known && pending.before[7].Ready && states[7].Known && !states[7].Ready {
-				p.pendingEnergize = true
-			}
 			p.keys = nil
 		}
 		return

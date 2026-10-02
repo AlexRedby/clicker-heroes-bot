@@ -54,7 +54,11 @@ func progressionMode(screen image.Image) (known, enabled bool, err error) {
 
 func progressionBuffs(states [9]skillState) uint8 {
 	var buffs uint8
-	for bit, key := range []int{3, 7} {
+	for bit, key := range []int{3, 7, 1, 2} {
+		// Retain the existing 3/7 bits; 1/2 use the upper four bits.
+		if bit >= 2 {
+			bit += 2
+		}
 		state := states[key-1]
 		if state.Known && state.Active {
 			buffs |= 1 << bit
