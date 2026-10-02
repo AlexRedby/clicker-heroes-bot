@@ -5,10 +5,14 @@ import (
 	_ "embed"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	"regexp"
 	"strings"
 
 	"clicker-heroes-bot/internal/ancientcalc"
+
+	xdraw "golang.org/x/image/draw"
 )
 
 //go:embed assets/ancient-controls.png
@@ -123,12 +127,75 @@ type ancientObservation struct {
 	hasThumb    bool
 }
 
+// Quantity text is blue, unlike the white HUD text. Prefer that ink so a
+// blinking black caret cannot invalidate a ready confirmation.
+func ancientQuantityMask(screen image.Image) *image.Gray {
+	r := controlRect(screen, image.Rect(508, 325, 772, 350)).Intersect(screen.Bounds())
+	crop := image.NewRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
+	draw.Draw(crop, crop.Bounds(), screen, r.Min, draw.Src)
+	mask, _ := ancientQuantityInkMask(crop)
+	return mask
+}
+func ancientQuantityInkMask(screen image.Image) (*image.Gray, bool) {
+	r := screen.Bounds()
+	blue := func(x, y int) bool { red, g, b := rgb(screen.At(x, y)); return b > red+40 && b > g+30 && b > 100 }
+	hasBlue := false
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			if blue(x, y) {
+				hasBlue = true
+			}
+		}
+	}
+	mask := image.NewGray(image.Rect(0, 0, r.Dx(), r.Dy()))
+	draw.Draw(mask, mask.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			red, g, b := rgb(screen.At(x, y))
+			if (hasBlue && blue(x, y)) || (!hasBlue && max(red, g, b) < 140) {
+				mask.SetGray(x-r.Min.X, y-r.Min.Y, color.Gray{Y: 0})
+			}
+		}
+	}
+	return mask, hasBlue
+}
+func readAncientQuantity(ctx context.Context, screen image.Image) (string, error) {
+	r := controlRect(screen, image.Rect(508, 325, 772, 350)).Intersect(screen.Bounds())
+	field := image.NewRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
+	draw.Draw(field, field.Bounds(), screen, r.Min, draw.Src)
+	mask, blue := ancientQuantityInkMask(field)
+	// Normalize bold blue game glyphs to the UI's reference scale. Keep fine
+	// black text at native resolution so decimal points are not downsampled.
+	if blue {
+		normalized := image.NewRGBA(image.Rect(0, 0, r.Dx()*1280/screen.Bounds().Dx(), r.Dy()*1280/screen.Bounds().Dx()))
+		xdraw.CatmullRom.Scale(normalized, normalized.Bounds(), field, field.Bounds(), draw.Src, nil)
+		mask, _ = ancientQuantityInkMask(normalized)
+	}
+	var ink image.Rectangle
+	for y := 0; y < mask.Bounds().Dy(); y++ {
+		for x := 0; x < mask.Bounds().Dx(); x++ {
+			if mask.GrayAt(x, y).Y == 0 {
+				ink = ink.Union(image.Rect(x, y, x+1, y+1))
+			}
+		}
+	}
+	if ink.Empty() {
+		return "", nil
+	}
+	source := mask.SubImage(ink)
+	scale := 2
+	padded := image.NewGray(image.Rect(0, 0, source.Bounds().Dx()*scale+2*gameTextPadding, source.Bounds().Dy()*scale+2*gameTextPadding))
+	draw.Draw(padded, padded.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
+	xdraw.NearestNeighbor.Scale(padded, padded.Bounds().Inset(gameTextPadding), source, source.Bounds(), draw.Src, nil)
+	return readTextImage(ctx, padded, 7, "0123456789.eE+-")
+}
+
 func readAncientObservation(ctx context.Context, frame gameFrame) (ancientObservation, error) {
 	out := ancientObservation{frame: frame}
 	screen := frame.image
 	if frame.context.ancientDialog {
 		_, out.okay, _ = ancientControl(screen, 1)
-		raw, err := readGameText(ctx, screen, controlRect(screen, image.Rect(508, 325, 772, 350)), max(1, 2560/screen.Bounds().Dx()), 7, 180, "0123456789.eE+-")
+		raw, err := readAncientQuantity(ctx, screen)
 		if err != nil {
 			return out, err
 		}

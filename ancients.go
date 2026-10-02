@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -155,23 +156,42 @@ type ancientPlanner struct {
 	pending                            *gameAction
 	selected                           int
 	quantity                           string
+	failure, waiting                   string
 	target                             string
 	deadline, nextRead, nextAction     time.Time
 	jobFrame                           uint64
 }
 
 func (p *ancientPlanner) interrupt() {
-	if p.started && !p.finished {
-		p.blocked = true
+	if p.started && !p.finished && !p.blocked {
+		p.fail("batch interrupted before completion")
 	}
 	p.active = false
 	p.pending = nil
 	p.latest = ancientObservation{}
 	p.jobFrame = 0
 }
+func (step ancientStep) String() string {
+	return [...]string{"visit Ancients", "scroll list", "open quantity", "type quantity", "click OK", "return to Heroes"}[step]
+}
+func (p *ancientPlanner) confirmationStatus() string {
+	stage := "planning"
+	if p.pending != nil {
+		stage = p.pending.ancient.step.String()
+	}
+	name := "none"
+	if p.plan != nil && p.selected >= 0 && p.selected < len(p.plan.Rows) {
+		name = p.plan.Rows[p.selected].Name
+	}
+	return fmt.Sprintf("stage=%s, Ancient=%s, expected quantity=%q, read quantity=%q, dialog=%t, OK=%t, visible rows=%d", stage, name, p.quantity, p.latest.quantity, p.latest.frame.context.ancientDialog, p.latest.okay, len(p.latest.rows))
+}
+func (p *ancientPlanner) pauseReason() string {
+	return "Ancient batch blocked: " + p.failure + "; close the dialog, export a fresh save and restart before another batch"
+}
 func (p *ancientPlanner) fail(reason string) {
 	if !p.blocked {
-		fmt.Printf("Ancient purchases paused: %s; close any dialog, export a fresh save and restart before another batch\n", reason)
+		p.failure = reason + " (" + p.confirmationStatus() + ")"
+		fmt.Printf("Ancient purchases stopped: %s\n", p.failure)
 	}
 	p.blocked = true
 	p.active = false
@@ -193,6 +213,15 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 		return
 	}
 	a := p.pending
+	defer func() {
+		if p.pending == a {
+			status := p.confirmationStatus()
+			if status != p.waiting {
+				fmt.Printf("Ancient confirmation pending: %s\n", status)
+				p.waiting = status
+			}
+		}
+	}()
 	switch a.ancient.step {
 	case visitAncients:
 		if !out.frame.context.ancients {
@@ -350,6 +379,8 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 	return a, true
 }
 func (p *ancientPlanner) sent(a gameAction, now time.Time) {
+	fmt.Printf("Ancient action: %s at (%d, %d), quantity=%q\n", a.ancient.step, a.point.X, a.point.Y, a.ancient.quantity)
+	p.waiting = ""
 	p.pending = &a
 	p.latest = ancientObservation{}
 	p.jobFrame = 0
@@ -366,14 +397,9 @@ func ancientActionStable(a gameAction, current gameFrame) bool {
 			return false
 		}
 		if a.ancient.step == confirmAncientQuantity {
-			r := controlRect(current.image, image.Rect(508, 325, 772, 350))
-			for y := r.Min.Y; y < r.Max.Y; y++ {
-				for x := r.Min.X; x < r.Max.X; x++ {
-					text := func(img image.Image) bool { red, g, b := rgb(img.At(x, y)); return max(red, g, b) < 140 }
-					if text(a.frame.image) != text(current.image) {
-						return false
-					}
-				}
+			before, after := ancientQuantityMask(a.frame.image), ancientQuantityMask(current.image)
+			if !bytes.Equal(before.Pix, after.Pix) {
+				return false
 			}
 		}
 		return true

@@ -4,9 +4,11 @@ import (
 	"clicker-heroes-bot/internal/ancientcalc"
 	"context"
 	"errors"
+	"fmt"
 	"github.com/go-vgo/robotgo"
 	xdraw "golang.org/x/image/draw"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/png"
 	"os"
@@ -291,5 +293,93 @@ func TestAncientHalfSizeScreen(t *testing.T) {
 				t.Fatal("Ancient rows", c, out.rows)
 			}
 		})
+	}
+}
+
+func TestAncientRealFilledQuantityReachesOK(t *testing.T) {
+	requireAncientOCR(t)
+	original := loadTestImage(t, "testdata/ancient-quantity-filled.png")
+	for _, width := range []int{original.Bounds().Dx(), 1280} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			screen := image.NewRGBA(image.Rect(0, 0, width, width*original.Bounds().Dy()/original.Bounds().Dx()))
+			xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
+			c, err := recognizedGame(screen)
+			if err != nil || !c.ancientDialog {
+				t.Fatal("filled quantity dialog not recognized", c, err)
+			}
+			now := time.Now()
+			frame := gameFrame{id: 2, layout: 1, at: now, image: screen, context: c}
+			out, err := readAncientObservation(context.Background(), frame)
+			if err != nil || out.quantity != "20" || !out.okay {
+				t.Fatalf("blue quantity not read: %q, OK=%t, %v", out.quantity, out.okay, err)
+			}
+			plan := ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Atman", Current: "164", Target: "184", Quantity: "20"}}}}
+			p := newGamePipeline(&pauseControl{}, heroInput{click: func(point image.Point) error {
+				if !point.In(controlRect(screen, image.Rect(581, 370, 695, 420))) {
+					t.Fatal("clicked outside OK", point)
+				}
+				return nil
+			}, move: func(image.Point) error { return nil }}, pipelineReaders{}, pipelineOptions{ancientPlan: &plan})
+			p.frame = frame
+			p.layout = frame.layout
+			p.ancient.active = true
+			p.ancient.started = true
+			p.ancient.selected = 0
+			p.ancient.quantity = "20"
+			p.ancient.target = "184"
+			p.ancient.done = map[int]bool{}
+			p.ancient.pending = &gameAction{frame: gameFrame{id: 1}, ancient: ancientCommand{step: fillAncientQuantity, quantity: "20"}}
+			p.ancient.observe(out, nil, now)
+			if p.ancient.pending != nil {
+				t.Fatal("typed quantity not confirmed")
+			}
+			p.planAncients(now)
+			a, ok := p.nextAction(now)
+			if !ok || a.ancient.step != confirmAncientQuantity {
+				t.Fatal("OK not scheduled", a.ancient.step, ok)
+			}
+			if acted, err := p.execute(context.Background(), a); err != nil || !acted {
+				t.Fatal("OK not executed", acted, err)
+			}
+			// A black blinking caret must not discard a confirmation for blue text.
+			changed := image.NewRGBA(screen.Bounds())
+			draw.Draw(changed, changed.Bounds(), screen, screen.Bounds().Min, draw.Src)
+			p.frame.image = changed
+			caret := controlRect(screen, image.Rect(662, 330, 663, 344))
+			draw.Draw(changed, caret, image.NewUniform(color.Black), image.Point{}, draw.Src)
+			if !ancientActionStable(a, p.frame) {
+				t.Fatal("caret blink invalidated unchanged blue quantity")
+			}
+			draw.Draw(changed, controlRect(screen, image.Rect(663, 330, 666, 344)), image.NewUniform(color.RGBA{B: 200, A: 255}), image.Point{}, draw.Src)
+			if ancientActionStable(a, p.frame) {
+				t.Fatal("changed blue quantity retained confirmation")
+			}
+		})
+	}
+}
+
+func TestAncientBlockedResumeExplainsFailure(t *testing.T) {
+	controls := pauseControl{}
+	p := newGamePipeline(&controls, heroInput{}, pipelineReaders{}, pipelineOptions{ancientPlan: &ancientPlan{}})
+	p.frame = testPipelineFrame()
+	p.frame.context.ancientDialog = true
+	p.ancient.active = true
+	p.ancient.started = true
+	p.ancient.quantity = "20"
+	p.ancient.pending = &gameAction{frame: p.frame, ancient: ancientCommand{step: fillAncientQuantity}}
+	p.ancient.deadline = time.Now().Add(-time.Second)
+	p.planAncients(time.Now())
+	if !controls.isPaused() || !p.ancient.blocked {
+		t.Fatal("unconfirmed purchase not blocked")
+	}
+	message := controls.message()
+	if !strings.Contains(message, "stage=type quantity") || !strings.Contains(message, "expected quantity=\"20\"") || !strings.Contains(message, "restart") {
+		t.Fatal("missing failure details", message)
+	}
+	generation := controls.snapshot()
+	for i := 0; i < 3; i++ {
+		if !controls.toggle() || controls.message() != message || controls.snapshot() != generation {
+			t.Fatal("blocked F8 announced a resume or lost reason")
+		}
 	}
 }

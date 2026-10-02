@@ -259,24 +259,57 @@ type heroInput struct {
 }
 
 type pauseControl struct {
-	mu         sync.Mutex
-	paused     bool
-	generation uint64
+	mu            sync.Mutex
+	paused        bool
+	resumeBlocked bool
+	pauseReason   string
+	generation    uint64
 }
 
 func (control *pauseControl) toggle() bool {
 	control.mu.Lock()
 	defer control.mu.Unlock()
+	if control.paused && control.resumeBlocked {
+		return true
+	}
 	control.paused = !control.paused
+	control.pauseReason = ""
+	if control.paused {
+		control.pauseReason = "F8"
+	}
 	control.generation++
 	return control.paused
 }
 
-func (control *pauseControl) pause() {
+func (control *pauseControl) pause(reason string) {
 	control.mu.Lock()
 	defer control.mu.Unlock()
+	control.pauseLocked(reason, false)
+}
+func (control *pauseControl) block(reason string) {
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	control.pauseLocked(reason, true)
+}
+
+// Call only while holding the input/pause mutex.
+func (control *pauseControl) pauseLocked(reason string, blocked bool) {
+	if control.paused && control.pauseReason == reason && control.resumeBlocked == blocked {
+		return
+	}
 	control.paused = true
+	control.pauseReason = reason
+	control.resumeBlocked = blocked
 	control.generation++
+	fmt.Printf("paused: %s\n", reason)
+}
+func (control *pauseControl) message() string {
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	if control.paused {
+		return "paused: " + control.pauseReason
+	}
+	return "resumed"
 }
 
 func (control *pauseControl) snapshot() uint64 {
@@ -415,19 +448,16 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			select {
 			case event, ok := <-events:
 				if !ok {
-					controls.pause()
+					controls.pause("global keyboard hook stopped")
 					cancel()
 					return
 				}
 				if isPauseKey(event) {
-					if controls.toggle() {
-						fmt.Println("paused")
-					} else {
-						fmt.Println("resumed")
-					}
+					controls.toggle()
+					fmt.Println(controls.message())
 				}
 			case <-ctx.Done():
-				controls.pause()
+				controls.pause("stopping")
 				return
 			}
 		}

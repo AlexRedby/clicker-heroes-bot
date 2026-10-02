@@ -352,6 +352,9 @@ func (p *gamePipeline) run(ctx context.Context) error {
 			generation := p.controls.snapshot()
 			if generation != p.generation {
 				p.reset(generation)
+				if p.ancient.blocked {
+					p.controls.block(p.ancient.pauseReason())
+				}
 			}
 			if !p.controls.valid(ctx, generation) {
 				continue
@@ -408,7 +411,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	_, err = p.controls.runClick(ctx, p.generation, func() error {
 		old := p.frame.context
 		if (c.bounds != old.bounds || c.window != old.window) && p.ancient.active {
+			p.ancient.fail("game window or display changed")
 			p.ancient.interrupt()
+			p.controls.pauseLocked(p.ancient.pauseReason(), true)
 		}
 		if c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.bounds != old.bounds || c.window != old.window {
 			if c.bounds != old.bounds || c.window != old.window || !p.mercenary.expects(c, now) {
@@ -531,12 +536,10 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 	}
 	if out.kind == ancientAnalysis {
 		p.ancient.observe(out.ancient, out.err, now)
-		if p.ancient.finished || p.ancient.blocked {
-			p.controls.paused = true
-			p.controls.generation++
-			if p.ancient.finished {
-				fmt.Println("Ancient batch finished; paused on Heroes for restart setup")
-			}
+		if p.ancient.finished {
+			p.controls.pauseLocked("Ancient batch finished on Heroes; prepare the next run and press F8", false)
+		} else if p.ancient.blocked {
+			p.controls.pauseLocked(p.ancient.pauseReason(), true)
 		}
 		return nil
 	}
@@ -549,9 +552,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.progression = progressionPlanner{}
 			p.hero.failures, p.hero.enabled = 0, p.options.heroes
 			// accept() already owns the pause-control mutex.
-			p.controls.paused = true
-			p.controls.generation++
-			fmt.Println("Ascension confirmed at zone 1; paused for Hero Souls spending and restart setup; press F8 when ready")
+			p.controls.pauseLocked("Ascension confirmed at zone 1; export a fresh save for Hero Souls spending and restart setup; press F8 when ready", false)
 		}
 		return nil
 	}
@@ -1031,8 +1032,7 @@ func (p *gamePipeline) planGilds(now time.Time) bool {
 		p.gild.deadline = now.Add(20 * time.Second)
 	}
 	if exclusive && (now.After(p.gild.deadline) || p.gild.attempts >= 3) {
-		fmt.Println("gild gift window did not advance; paused, check it and press F8 to resume")
-		p.controls.pause()
+		p.controls.pause("gild gift window did not advance; check it and press F8 to resume")
 		return true
 	}
 	if !p.frame.context.known {
@@ -1085,8 +1085,7 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 		return false
 	}
 	if now.After(p.ascension.deadline) {
-		fmt.Println("Ascension did not advance; paused, check the dialog or relic junk pile and press F8 to resume")
-		p.controls.pause()
+		p.controls.pause("Ascension did not advance; check the dialog or relic junk pile and press F8 to resume")
 		return true
 	}
 	if now.Before(p.ascension.nextAction) || p.ascension.latest.frame.id == 0 || !p.frame.context.ascension {
@@ -1134,19 +1133,19 @@ func (p *gamePipeline) planAncients(now time.Time) bool {
 		return false
 	}
 	if p.ancient.blocked {
-		p.controls.pause()
+		p.controls.block(p.ancient.pauseReason())
 		return true
 	}
 	if p.ancient.pending != nil && now.After(p.ancient.deadline) {
-		p.ancient.fail("input or purchase confirmation timed out")
-		p.controls.pause()
+		p.ancient.fail("confirmation timed out after 20s")
+		p.controls.block(p.ancient.pauseReason())
 		return true
 	}
 	if action, ok := p.ancient.action(p.frame, now); ok {
 		p.enqueue(action, now)
 	}
 	if p.ancient.blocked {
-		p.controls.pause()
+		p.controls.block(p.ancient.pauseReason())
 	}
 	return true
 }
