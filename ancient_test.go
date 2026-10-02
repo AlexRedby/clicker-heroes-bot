@@ -437,3 +437,88 @@ func TestAncientWalletGateUsesDisplayedPrecision(t *testing.T) {
 		})
 	}
 }
+
+func TestAncientCustomInputTiming(t *testing.T) {
+	for _, cancelled := range []bool{false, true} {
+		t.Run(fmt.Sprint(cancelled), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var downAt, clickAt, upAt time.Time
+			held := false
+			input := heroInput{
+				keyToggle: func(key, state string) error {
+					if key != "v" {
+						t.Fatalf("unexpected key %q", key)
+					}
+					held = state == "down"
+					if held {
+						downAt = time.Now()
+						if cancelled {
+							cancel()
+						}
+					} else {
+						upAt = time.Now()
+					}
+					return nil
+				},
+				click: func(image.Point) error {
+					clickAt = time.Now()
+					if !held || clickAt.Sub(downAt) < 100*time.Millisecond {
+						t.Fatal("clicked before V settled")
+					}
+					return clickLeft(ctx, func(...interface{}) error {
+						if !held {
+							t.Fatal("V released during the click")
+						}
+						return nil
+					})
+				},
+			}
+			err := clickAncientCustom(ctx, input, image.Point{})
+			if held || upAt.IsZero() {
+				t.Fatal("V was not released")
+			}
+			if cancelled {
+				if !errors.Is(err, context.Canceled) || !clickAt.IsZero() {
+					t.Fatal("cancelled modifier triggered a purchase", err)
+				}
+			} else if err != nil || upAt.Sub(clickAt) < 200*time.Millisecond {
+				t.Fatal("V was not held through mouse-up settling", err)
+			}
+		})
+	}
+}
+
+func TestAncientOrdinaryPurchaseWithoutDialog(t *testing.T) {
+	requireAncientOCR(t)
+	screen := loadTestImage(t, "testdata/ancient-missed-v.png")
+	out, err := readAncientObservation(context.Background(), gameFrame{id: 2, image: screen, context: gameContext{known: true, ancients: true, bounds: screen.Bounds()}})
+	if err != nil || ancientQuantityDialog(screen) {
+		t.Fatal("reported failure frame", err)
+	}
+	found := false
+	for _, row := range out.rows {
+		if row.name == "Atman" {
+			found = row.level == "185"
+		}
+	}
+	if !found {
+		t.Fatal("Atman level 185 not recognized", out.rows)
+	}
+	plan := ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Atman", Current: "184", Target: "209", Quantity: "25"}}}}
+	p := ancientPlanner{plan: &plan, active: true, selected: 0, quantity: "25", target: "209"}
+	p.sent(gameAction{kind: handleAncient, frame: gameFrame{id: 1}, ancient: ancientCommand{step: openAncientQuantity, quantity: "25"}}, time.Now())
+	unchanged := out
+	unchanged.rows = []ancientScreenRow{{name: "Atman", level: "184"}}
+	p.observe(unchanged, nil, time.Now())
+	if p.blocked || p.pending == nil {
+		t.Fatal("unchanged level was treated as a purchase")
+	}
+	p.observe(out, nil, time.Now())
+	if !p.blocked || !strings.Contains(p.failure, `saved="184", read="185"`) {
+		t.Fatal("ordinary purchase did not block the stale plan", p.failure)
+	}
+	if _, ok := p.action(out.frame, time.Now().Add(time.Second)); ok {
+		t.Fatal("stale plan repeated the purchase")
+	}
+}

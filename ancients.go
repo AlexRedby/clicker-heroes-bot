@@ -242,7 +242,22 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 			return
 		}
 	case openAncientQuantity:
-		if !out.frame.context.ancientDialog || !out.okay {
+		if !out.frame.context.ancientDialog {
+			buy := p.plan.Rows[p.selected]
+			for _, row := range out.rows {
+				if row.name != buy.Name || ancientDisplayMatches(row.level, buy.Current) {
+					continue
+				}
+				level, e1 := ancientcalc.Value(row.level)
+				current, e2 := ancientcalc.Value(buy.Current)
+				if e1 == nil && e2 == nil && level.Cmp(current) > 0 {
+					p.fail(fmt.Sprintf("custom quantity dialog did not open, but %s level increased: saved=%q, read=%q; V modifier may not have registered", buy.Name, buy.Current, row.level))
+					return
+				}
+			}
+			return
+		}
+		if !out.okay {
 			return
 		}
 	case fillAncientQuantity:
@@ -438,7 +453,15 @@ func clickAncientCustom(ctx context.Context, input heroInput, p image.Point) (er
 	if err = input.keyToggle("v", "down"); err != nil {
 		return err
 	}
-	return input.click(p)
+	// Let the game process V before the mouse-down event, not just during the click.
+	timer := time.NewTimer(100 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return input.click(p)
+	}
 }
 func fillAncientCustom(ctx context.Context, input heroInput, quantity string) (err error) {
 	if ctx.Err() != nil {
