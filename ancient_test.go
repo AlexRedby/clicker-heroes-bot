@@ -1,6 +1,7 @@
 package main
 
 import (
+	"clicker-heroes-bot/internal/ancientcalc"
 	"context"
 	"errors"
 	"github.com/go-vgo/robotgo"
@@ -70,41 +71,22 @@ func TestAncientRealScreen(t *testing.T) {
 	}
 }
 
-func TestAncientPlanBudget(t *testing.T) {
-	p := ancientPlan{Souls: "1e1000", Reserve: "1e990", Spent: "9e999", Remaining: "1e999", Ascensions: 1, Owned: []ancientLevel{{1, "Argaiv", "1e500"}}, Rows: []ancientPurchase{{1, "Argaiv", "1e500", "2e500", "1e500", "9e999"}}, CreatedAt: time.Now()}
-	if err := p.validate(); err != nil {
-		t.Fatal(err)
-	}
-	p.Rows[0].ID = 2
-	if p.validate() == nil {
-		t.Fatal("unowned Ancient accepted")
-	}
-	p.Rows[0].ID = 1
-	p.Remaining = "0"
-	if p.validate() == nil {
-		t.Fatal("reserve consumed")
-	}
-	if _, err := ancientValue("NaN"); err == nil {
-		t.Fatal("invalid value accepted")
-	}
-}
-
 func TestAncientPlanExport(t *testing.T) {
-	plan, err := calculateAncients(context.Background(), "testdata/ancient-save.txt", "1%", 1, false)
+	plan, err := calculateAncients(context.Background(), "internal/ancientcalc/testdata/ancient-save.txt", "1%", 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(plan.Owned) != 26 || len(plan.Rows) != 22 || plan.Ascensions != 93 || plan.SaveHash == "" {
 		t.Fatalf("unexpected exported state: owned=%d purchases=%d ascensions=%d", len(plan.Owned), len(plan.Rows), plan.Ascensions)
 	}
-	if err := writeAncientPlan("testdata/ancient-save.txt", plan); err == nil {
+	if err := writeAncientPlan("internal/ancientcalc/testdata/ancient-save.txt", plan); err == nil {
 		t.Fatal("export could be overwritten")
 	}
 	if err := writeAncientPlan(filepath.Join(t.TempDir(), "plan.json"), plan); err != nil {
 		t.Fatal(err)
 	}
 	for _, row := range plan.Rows {
-		quantity, err := ancientInputQuantity(row.Quantity)
+		quantity, err := ancientcalc.InputQuantity(row.Quantity)
 		if err != nil || len(quantity) > 24 {
 			t.Fatalf("unusable quantity %q: %v", quantity, err)
 		}
@@ -118,7 +100,7 @@ func TestAncientTransaction(t *testing.T) {
 	now := time.Now()
 	screen := loadTestImage(t, "testdata/ascension-ancients.png")
 	dialog := loadTestImage(t, "testdata/ancient-quantity.png")
-	plan := ancientPlan{Souls: "1.7554538149018e58", Reserve: "1e56", Rows: []ancientPurchase{{1, "Argaiv", "1e28", "2e28", "1e28", "1e50"}}}
+	plan := ancientPlan{Plan: ancientcalc.Plan{Souls: "1.7554538149018e58", Reserve: "1e56", Rows: []ancientcalc.Purchase{{ID: 1, Name: "Argaiv", Current: "1e28", Target: "2e28", Quantity: "1e28", Cost: "1e50"}}}}
 	p := ancientPlanner{plan: &plan}
 	frame := gameFrame{id: 1, at: now, image: screen, context: gameContext{known: true, heroes: true, bounds: screen.Bounds()}}
 	a, ok := p.action(frame, now)

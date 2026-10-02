@@ -1,6 +1,7 @@
 package main
 
 import (
+	"clicker-heroes-bot/internal/ancientcalc"
 	"context"
 	"errors"
 	"image"
@@ -466,15 +467,15 @@ func TestAscensionCapitalAndPipelineRecovery(t *testing.T) {
 		plan *ancientPlan
 		want float64
 	}{
-		{nil, math.Inf(-1)}, {&ancientPlan{Souls: "1e60"}, math.Inf(-1)}, {&ancientPlan{Souls: "0", Invested: "0"}, math.Inf(-1)},
-		{&ancientPlan{Souls: "1e1000", Invested: "1e1000"}, 1000 + math.Log10(2)},
+		{nil, math.Inf(-1)}, {&ancientPlan{Plan: ancientcalc.Plan{Souls: "1e60"}}, math.Inf(-1)}, {&ancientPlan{Plan: ancientcalc.Plan{Souls: "0", Invested: "0"}}, math.Inf(-1)},
+		{&ancientPlan{Plan: ancientcalc.Plan{Souls: "1e1000", Invested: "1e1000"}}, 1000 + math.Log10(2)},
 	} {
 		got, err := ascensionSoulCapital(tc.plan)
 		if err != nil || (got != tc.want && math.Abs(got-tc.want) > .0001) {
 			t.Fatalf("capital=%v want=%v err=%v", got, tc.want, err)
 		}
 	}
-	if _, err := ascensionSoulCapital(&ancientPlan{Souls: "NaN", Invested: "1"}); err == nil {
+	if _, err := ascensionSoulCapital(&ancientPlan{Plan: ancientcalc.Plan{Souls: "NaN", Invested: "1"}}); err == nil {
 		t.Fatal("invalid capital accepted")
 	}
 	now := time.Now()

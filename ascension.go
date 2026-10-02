@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"clicker-heroes-bot/internal/ancientcalc"
 )
 
 //go:embed assets/ascension-controls.png
@@ -166,7 +168,7 @@ func ascensionSoulCapital(plan *ancientPlan) (float64, error) {
 		return total, nil
 	}
 	for _, raw := range []string{plan.Souls, plan.Invested} {
-		value, err := ancientValue(raw)
+		value, err := ancientcalc.Value(raw)
 		if err != nil {
 			return 0, err
 		}

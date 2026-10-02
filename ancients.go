@@ -7,125 +7,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-vgo/robotgo"
 	"image"
 	"io"
 	"math/big"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
+
+	"clicker-heroes-bot/internal/ancientcalc"
+
+	"github.com/go-vgo/robotgo"
 )
 
-type ancientLevel struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Level string `json:"level"`
-}
-type ancientPurchase struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	Current  string `json:"current"`
-	Target   string `json:"target"`
-	Quantity string `json:"quantity"`
-	Cost     string `json:"cost"`
-}
 type ancientPlan struct {
-	Souls      string            `json:"souls"`
-	Invested   string            `json:"invested,omitempty"`
-	Reserve    string            `json:"reserve"`
-	Spent      string            `json:"spent"`
-	Remaining  string            `json:"remaining"`
-	Ascensions int               `json:"ascensions"`
-	Owned      []ancientLevel    `json:"owned"`
-	Rows       []ancientPurchase `json:"rows"`
-	SaveHash   string            `json:"saveHash"`
-	CreatedAt  time.Time         `json:"createdAt"`
-	savePath   string
-}
-
-var ancientDecimal = regexp.MustCompile(`^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]{1,5})?$`)
-
-// Plans keep decimal strings; the hero OCR log10 representation cannot
-// retain integer purchase quantities.
-func ancientValue(s string) (*big.Float, error) {
-	if len(s) > 10000 || !ancientDecimal.MatchString(s) {
-		return nil, errors.New("invalid Ancient quantity")
-	}
-	n, _, err := big.ParseFloat(s, 10, 256, big.ToNearestEven)
-	if err != nil || n.IsInf() || n.Sign() < 0 {
-		return nil, errors.New("invalid Ancient quantity")
-	}
-	return n, nil
-}
-func (p ancientPlan) validate() error {
-	if p.Ascensions < 0 || len(p.Owned) == 0 || len(p.Owned) > 100 || len(p.Rows) > len(p.Owned) {
-		return errors.New("invalid Ancient plan roster")
-	}
-	totals := make([]*big.Float, 4)
-	for i, s := range []string{p.Souls, p.Reserve, p.Spent, p.Remaining} {
-		v, err := ancientValue(s)
-		if err != nil {
-			return err
-		}
-		totals[i] = v
-	}
-	if p.Invested != "" {
-		if _, err := ancientValue(p.Invested); err != nil {
-			return err
-		}
-	}
-	if totals[2].Cmp(totals[0]) > 0 || totals[3].Cmp(totals[1]) < 0 {
-		return errors.New("Ancient plan exceeds soul budget or reserve")
-	}
-	owned := map[int]ancientLevel{}
-	for _, a := range p.Owned {
-		if a.ID <= 0 || a.Name == "" || len(a.Name) > 60 || strings.ContainsAny(a.Name, "\r\n") {
-			return errors.New("invalid Ancient identity")
-		}
-		level, err := ancientValue(a.Level)
-		if err != nil || level.Sign() <= 0 {
-			return errors.New("invalid owned Ancient level")
-		}
-		if _, exists := owned[a.ID]; exists {
-			return errors.New("duplicate Ancient identity")
-		}
-		owned[a.ID] = a
-	}
-	seen := map[int]bool{}
-	for _, a := range p.Rows {
-		old, ok := owned[a.ID]
-		if !ok || old.Name != a.Name || old.Level != a.Current || seen[a.ID] {
-			return errors.New("Ancient plan targets an unknown or duplicate Ancient")
-		}
-		seen[a.ID] = true
-		current, err := ancientValue(a.Current)
-		if err != nil {
-			return err
-		}
-		target, err := ancientValue(a.Target)
-		if err != nil {
-			return err
-		}
-		quantity, err := ancientValue(a.Quantity)
-		if err != nil {
-			return err
-		}
-		cost, err := ancientValue(a.Cost)
-		if err != nil {
-			return err
-		}
-		if quantity.Sign() <= 0 || cost.Sign() < 0 || target.Cmp(current) <= 0 {
-			return errors.New("Ancient purchase must increase an owned level")
-		}
-	}
-	return nil
+	ancientcalc.Plan
+	SaveHash  string    `json:"saveHash"`
+	CreatedAt time.Time `json:"createdAt"`
+	savePath  string
 }
 
 func calculateAncients(ctx context.Context, savePath, reserve string, skillRate float64, beyond8k bool) (ancientPlan, error) {
 	var plan ancientPlan
-	if _, err := ancientValue(strings.TrimSuffix(reserve, "%")); err != nil {
+	if _, err := ancientcalc.Value(strings.TrimSuffix(reserve, "%")); err != nil {
 		return plan, fmt.Errorf("soul reserve: %w", err)
 	}
 	if !(skillRate >= 0 && skillRate <= 1) {
@@ -140,20 +44,16 @@ func calculateAncients(ctx context.Context, savePath, reserve string, skillRate 
 	if err != nil {
 		return plan, fmt.Errorf("read exported save: %w", err)
 	}
-	if !info.Mode().IsRegular() || info.Size() == 0 || info.Size() > 4<<20 {
+	if !info.Mode().IsRegular() || info.Size() == 0 || info.Size() > ancientcalc.MaxSaveInput {
 		return plan, errors.New("exported save must be a nonempty regular file no larger than 4 MiB")
 	}
-	save, err := io.ReadAll(io.LimitReader(file, maxAncientSaveInput+1))
+	save, err := io.ReadAll(io.LimitReader(file, ancientcalc.MaxSaveInput+1))
 	if err != nil {
 		return plan, fmt.Errorf("read exported save: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	decoded, err := decodeAncientSave(ctx, save)
-	if err != nil {
-		return plan, err
-	}
-	plan, err = planAncients(ctx, decoded, reserve, skillRate, beyond8k)
+	plan.Plan, err = ancientcalc.Calculate(ctx, save, reserve, skillRate, beyond8k)
 	if err != nil {
 		return plan, fmt.Errorf("Ancient calculator: %w", err)
 	}
@@ -200,11 +100,11 @@ func writeAncientPlan(path string, plan ancientPlan) error {
 
 // A scientific UI value denotes a rounding interval, not an exact saved level.
 func ancientDisplayMatches(display, exact string) bool {
-	shown, err := ancientValue(display)
+	shown, err := ancientcalc.Value(display)
 	if err != nil {
 		return false
 	}
-	wanted, err := ancientValue(exact)
+	wanted, err := ancientcalc.Value(exact)
 	if err != nil {
 		return false
 	}
@@ -222,34 +122,13 @@ func ancientDisplayMatches(display, exact string) bool {
 	if i := strings.IndexByte(parts[0], '.'); i >= 0 {
 		decimals = len(parts[0]) - i - 1
 	}
-	tolerance, err := ancientValue(fmt.Sprintf("5e%d", exponent-decimals-1))
+	tolerance, err := ancientcalc.Value(fmt.Sprintf("5e%d", exponent-decimals-1))
 	if err != nil {
 		return false
 	}
 	diff := new(big.Float).SetPrec(256).Sub(shown, wanted)
 	diff.Abs(diff)
 	return diff.Cmp(tolerance) <= 0
-}
-
-// A short, rounded-down quantity fits the visible text field and never increases
-// calculator spending. The omitted digits are below the game's displayed precision.
-func ancientInputQuantity(quantity string) (string, error) {
-	if _, err := ancientValue(quantity); err != nil {
-		return "", err
-	}
-	rat, ok := new(big.Rat).SetString(quantity)
-	if !ok {
-		return "", errors.New("invalid Ancient purchase quantity")
-	}
-	integer := new(big.Int).Quo(rat.Num(), rat.Denom())
-	if integer.Sign() <= 0 {
-		return "", errors.New("Ancient quantity is below one level")
-	}
-	digits := integer.String()
-	if len(digits) <= 15 {
-		return digits, nil
-	}
-	return digits[:1] + "." + digits[1:15] + fmt.Sprint("e", len(digits)-1), nil
 }
 
 type ancientStep uint8
@@ -431,15 +310,15 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 				p.fail("exported level differs for " + buy.Name)
 				return gameAction{}, false
 			}
-			souls, e1 := ancientValue(p.latest.souls)
-			reserve, e2 := ancientValue(p.plan.Reserve)
-			cost, e3 := ancientValue(buy.Cost)
+			souls, e1 := ancientcalc.Value(p.latest.souls)
+			reserve, e2 := ancientcalc.Value(p.plan.Reserve)
+			cost, e3 := ancientcalc.Value(buy.Cost)
 			if e1 != nil || e2 != nil || e3 != nil || souls.Cmp(new(big.Float).SetPrec(256).Add(reserve, cost)) < 0 {
 				p.fail("insufficient observed Hero Souls for " + buy.Name)
 				return gameAction{}, false
 			}
 			var err error
-			p.quantity, err = ancientInputQuantity(buy.Quantity)
+			p.quantity, err = ancientcalc.InputQuantity(buy.Quantity)
 			if err != nil {
 				p.fail(err.Error())
 				return gameAction{}, false
@@ -547,7 +426,7 @@ func fillAncientCustom(ctx context.Context, input heroInput, quantity string) (e
 }
 
 func ancientQuantityMatches(got, want string) bool {
-	if _, err := ancientValue(got); err != nil {
+	if _, err := ancientcalc.Value(got); err != nil {
 		return false
 	}
 	a, ok := new(big.Rat).SetString(got)

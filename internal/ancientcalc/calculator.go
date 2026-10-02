@@ -1,4 +1,4 @@
-package main
+package ancientcalc
 
 import (
 	"context"
@@ -76,7 +76,7 @@ func aString(x *big.Float) string {
 }
 
 func aInput(raw, label string, integer bool) (*big.Float, error) {
-	n, err := ancientValue(raw)
+	n, err := Value(raw)
 	if err != nil {
 		return nil, fmt.Errorf("invalid %s", label)
 	}
@@ -211,8 +211,17 @@ func ancientCostSum(formula string, level *big.Float) *big.Float {
 	panic("unsupported allocation cost formula")
 }
 
-func planAncients(ctx context.Context, save ancientSave, reserve string, skillRate float64, beyond8k bool) (ancientPlan, error) {
-	p := ancientPlan{Rows: []ancientPurchase{}, Owned: []ancientLevel{}}
+// Calculate decodes an exported save and plans purchases for an Active build.
+func Calculate(ctx context.Context, exported []byte, reserve string, skillRate float64, beyond8k bool) (Plan, error) {
+	save, err := decodeAncientSave(ctx, exported)
+	if err != nil {
+		return Plan{}, err
+	}
+	return planAncients(ctx, save, reserve, skillRate, beyond8k)
+}
+
+func planAncients(ctx context.Context, save ancientSave, reserve string, skillRate float64, beyond8k bool) (Plan, error) {
+	p := Plan{Rows: []Purchase{}, Owned: []Level{}}
 	if err := ctx.Err(); err != nil {
 		return p, err
 	}
@@ -433,7 +442,7 @@ func planAncients(ctx context.Context, save ancientSave, reserve string, skillRa
 		if old == nil || old.Sign() == 0 {
 			continue
 		}
-		p.Owned = append(p.Owned, ancientLevel{def.ID, def.Name, aString(old)})
+		p.Owned = append(p.Owned, Level{def.ID, def.Name, aString(old)})
 		target, cost := targets[def.ID], costs[def.ID]
 		if target == nil || cost.Sign() == 0 || target.Cmp(old) <= 0 {
 			continue
@@ -442,12 +451,12 @@ func planAncients(ctx context.Context, save ancientSave, reserve string, skillRa
 		// Reuse the native input formatter on an integer, avoiding float text
 		// rounding before truncating the quantity to the field's 15 digits.
 		integer, _ := quantity.Int(nil)
-		text, err := ancientInputQuantity(integer.String())
+		text, err := InputQuantity(integer.String())
 		if err != nil {
 			return p, err
 		}
 
-		p.Rows = append(p.Rows, ancientPurchase{def.ID, def.Name, aString(old), aString(target), text, aString(cost)})
+		p.Rows = append(p.Rows, Purchase{def.ID, def.Name, aString(old), aString(target), text, aString(cost)})
 	}
-	return p, p.validate()
+	return p, p.Validate()
 }

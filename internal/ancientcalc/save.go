@@ -1,4 +1,4 @@
-package main
+package ancientcalc
 
 import (
 	"bytes"
@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	maxAncientSaveInput  = 4 * 1024 * 1024
+	// MaxSaveInput bounds exported save files before decoding.
+	MaxSaveInput         = 4 * 1024 * 1024
 	maxAncientSaveOutput = 16 * 1024 * 1024
 )
 
@@ -102,7 +103,7 @@ func decodeAncientSave(ctx context.Context, exported []byte) (ancientSave, error
 		ctx = context.Background()
 	}
 	var save ancientSave
-	if len(exported) == 0 || len(exported) > maxAncientSaveInput {
+	if len(exported) == 0 || len(exported) > MaxSaveInput {
 		return save, errors.New("save must be non-empty and at most 4 MiB")
 	}
 	select {

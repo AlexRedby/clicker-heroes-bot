@@ -7,6 +7,8 @@ import (
 	"image"
 	"regexp"
 	"strings"
+
+	"clicker-heroes-bot/internal/ancientcalc"
 )
 
 //go:embed assets/ancient-controls.png
@@ -152,7 +154,7 @@ func readAncientObservation(ctx context.Context, frame gameFrame) (ancientObserv
 		}
 		raw = strings.TrimSpace(raw)
 		raw = ancientLevelLabel.ReplaceAllString(raw, "")
-		if _, err := ancientValue(raw); err != nil {
+		if _, err := ancientcalc.Value(raw); err != nil {
 			continue
 		}
 		name, err := readGameText(ctx, screen, ancientNameRegion(screen, point), max(1, 2560/screen.Bounds().Dx()), 7, -180, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ,'")

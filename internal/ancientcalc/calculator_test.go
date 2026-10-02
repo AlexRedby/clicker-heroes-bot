@@ -1,4 +1,4 @@
-package main
+package ancientcalc
 
 import (
 	"context"
@@ -22,7 +22,7 @@ func TestAncientCalculatorReference(t *testing.T) {
 				SkillRate     float64
 				Beyond8k      bool
 			}
-			Expected ancientPlan
+			Expected Plan
 		}
 	}
 	if err := json.Unmarshal(data, &reference); err != nil {
@@ -33,11 +33,7 @@ func TestAncientCalculatorReference(t *testing.T) {
 	}
 	for _, tc := range reference.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
-			decoded, err := decodeAncientSave(context.Background(), []byte(tc.Input.Save))
-			if err != nil {
-				t.Fatal(err)
-			}
-			got, err := planAncients(context.Background(), decoded, tc.Input.Reserve, tc.Input.SkillRate, tc.Input.Beyond8k)
+			got, err := Calculate(context.Background(), []byte(tc.Input.Save), tc.Input.Reserve, tc.Input.SkillRate, tc.Input.Beyond8k)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -47,8 +43,8 @@ func TestAncientCalculatorReference(t *testing.T) {
 			}
 			compare := func(label, a, b string) {
 				t.Helper()
-				x, e1 := ancientValue(a)
-				y, e2 := ancientValue(b)
+				x, e1 := Value(a)
+				y, e2 := Value(b)
 				if e1 != nil || e2 != nil {
 					t.Fatalf("%s invalid amounts %q %q", label, a, b)
 				}

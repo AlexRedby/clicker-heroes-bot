@@ -103,3 +103,9 @@ go build .
 On headless Linux, run tests with `xvfb-run -a go test ./...` because the keyboard hook needs an X display. `Dockerfile.gocv` includes OpenCV and Tesseract with English data and sets `REQUIRE_OCR_TESTS=1`, so missing OCR dependencies fail the test suite. For a native test environment, use `REQUIRE_OCR_TESTS=1 go test ./...` to require OCR checks too. When running `xvfb-run` as a Docker command, use `docker run --init` so its X server startup signal is handled correctly.
 
 `go.mod` declares the module name and dependency versions; `go.sum` records checksums for downloaded modules. `main.go` contains the command modes, and `fish_sift.go` detects the fish in screenshots.
+
+The pure Ancient calculator lives in `internal/ancientcalc`, together with its embedded data and test fixtures. It decodes exported saves and returns purchase plans; the root package handles the CLI, screenshots and game input. The project remains one Go module. Calculator tests need no OpenCV, Tesseract or desktop session:
+
+```sh
+CGO_ENABLED=0 go test ./internal/ancientcalc
+```

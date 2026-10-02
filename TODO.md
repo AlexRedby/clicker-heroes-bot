@@ -39,6 +39,13 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 - Verify the live `-mercenaries` loop: notification, saved visible-row plan, paired Collect/Start Quest clicks, offer selection, fixed Okay after 300 ms, faster scrolling to the fifth mercenary, returning to Heroes and F8 interruption/resume alongside fish and skills. Supplied screenshots and regression tests cover initial roster/offer OCR, four/five-mercenary sweeps without intermediate roster OCR, unreadable offers, interruptions and transient context recovery; native timing still needs a running game on the target device.
 - Capture real death and free-recruitment screens; verify that Revive/Bury remain untouched and recruitment quests are recognized before relying on automatic roster replenishment. Unsupported layouts must end the visit without ruby spending.
 
+## Native Ancient calculator review
+
+- Fix exact-budget allocations in `internal/ancientcalc/calculator.go`: search uses `spent < available` and rejects a fitting plan. Reproduction: Fragsworth=1, Morgulis=1, wallet=5, reserve=0, skill rate=0 returns no purchases; Fragsworth=2 and Morgulis=4 cost exactly 5. Add an independent regression, then rerun the frozen-reference cases and review intended output changes.
+- Verify the installed game's custom-quantity cost for Juggernaut/Solomon before treating `polynomial1_5` estimates as purchase budgets. The inherited cumulative approximation gives 143 at level 10 versus 146 for the sum of individually rounded level costs; a wallet=83 plan reports spending 82 but individually priced levels cost 84. Compare bulk pricing and Chor'gorloth rounding against the client or an observed purchase; keep the reserve safe without iterating through enormous levels.
+- Add independent allocation invariants and small-budget cases alongside reference parity: affordable exact fits, row quantity versus target delta, row costs versus total spending, and remaining souls versus reserve. Frozen outputs alone also preserve upstream mistakes.
+- Preserve context cancellation when `zlib.NewReader` fails in `internal/ancientcalc/save.go`; a canceled context currently becomes `invalid compressed save`. Add a decoder regression that covers cancellation during initialization.
+
 ## Prestige and later upgrades
 
 ### Automatic Ascension
