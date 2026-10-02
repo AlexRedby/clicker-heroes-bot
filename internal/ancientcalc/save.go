@@ -26,9 +26,17 @@ type ancientSave struct {
 	HighestFinishedZonePersist json.Number          `json:"highestFinishedZonePersist"`
 	AncientSoulsTotal          json.Number          `json:"ancientSoulsTotal"`
 	NumWorldResets             json.Number          `json:"numWorldResets"`
-	Transcendent               bool                 `json:"transcendent"`
+	Transcendent               *bool                `json:"transcendent"`
 	Ancients                   ancientSaveAncients  `json:"ancients"`
 	Outsiders                  ancientSaveOutsiders `json:"outsiders"`
+	AncientSouls               json.Number          `json:"ancientSouls"`
+	PrimalSouls                json.Number          `json:"primalSouls"`
+	TotalHeroLevels            json.Number          `json:"totalHeroLevels"`
+	NumberOfTranscensions      json.Number          `json:"numberOfTranscensions"`
+	AscensionsThisTranscension json.Number          `json:"numAscensionsThisTranscension"`
+	Version                    json.Number          `json:"version"`
+	Build                      string               `json:"readPatchNumber"`
+	Stats                      prestigeStats        `json:"stats"`
 }
 
 type ancientSaveAncients struct {
@@ -40,8 +48,9 @@ type ancientSaveOutsiders struct {
 }
 
 type ancientSaveEntry struct {
-	Level          json.Number `json:"level"`
-	SpentHeroSouls json.Number `json:"spentHeroSouls"`
+	Level             json.Number `json:"level"`
+	SpentHeroSouls    json.Number `json:"spentHeroSouls"`
+	SpentAncientSouls json.Number `json:"spentAncientSouls"`
 }
 
 type saveContextReader struct {

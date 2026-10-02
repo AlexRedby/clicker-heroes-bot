@@ -22,7 +22,7 @@ Goal: complete the unattended active-play loop using the existing shared capture
 | R5 | Combat and boss recovery: validate active/ready skill states, Energize/Reload waves, variable cooldowns, failed-boss retry and the Ascension handoff. | First | Concrete remaining gaps and fixture/live scenarios; reuse current skill/progression/Ascension policies rather than replacing them without evidence. |
 | R6 | Capture and fish performance: measure capture, SIFT, OCR and queue delays, then propose only demonstrated reductions in repeated work or latency. | First | Reproducible baseline and quality-preserving experiments over real, rotated, small and scrollbar-overlap fish; no performance win inferred from fewer detections. |
 | R7 | Windowed game and display scaling: locate the game viewport, map screenshot coordinates to input, and plan focus/permission handling across Windows/macOS. | Later | Native coordinate evidence; correct ROI translation, unknown-window behavior and F8; full-screen behavior remains supported. |
-| R8 | Transcension and Outsiders: determine when Transcension beats another Ascension, decode relevant save fields, and plan Outsider allocation plus UI stages. | Later | Research and preview/recommendation first; automated reset waits for the complete Ascension loop, verified UI evidence and an explicit enabled mode. |
+| R8 | Transcension and Outsiders: validate the read-only preview against the installed UI and implement gated native stages. | Later | Match reward, TP, costs and respec semantics to UI; automated reset waits for the complete Ascension loop and an explicit enabled mode. |
 | R9 | Mercenary recovery and recruitment in the existing mercenary chat: current quest loop validation, dead/missing mercenaries and free recruitment. | Parallel | Preserve saved roster plans and the fixed Okay delay; unsupported screens do not spend rubies; no duplicate quest implementation. |
 
 ### Integration sequence (owned by the main chat)
@@ -99,4 +99,5 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ### Transcension
 
-- Read expected Ancient Souls and recommend Transcension; automate the reset and Outsider spending only after the earlier loops are reliable.
+- Match the fresh `cmd/transcendence-plan` preview to the installed game's reward/TP display, Outsider costs and respec/refund semantics. Capture the Transcension/Outsiders tab, reward confirmation, respec controls, one small purchase before/after, immediate manual-reset HUD/export and first-run Ancient summon controls.
+- Enable native Transcension and Outsider spending only after two complete consecutive Ascension/restart cycles, a confirmed combat wall and active-play timing evidence, verified reset recovery and an explicit enabled mode. The current preview is informational; save timestamps do not establish a reset decision.

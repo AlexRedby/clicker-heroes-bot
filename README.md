@@ -13,6 +13,14 @@ Hero leveling, automatic progression, Ascension and Ancient purchases additional
 
 Ancient calculations run inside the Go application. The game data is embedded in the binary; no additional runtime or project-directory files are required for the calculator.
 
+An informational Transcension preview runs independently of the desktop bot:
+
+```sh
+go run ./cmd/transcendence-plan -save "path/to/fresh-save.txt" -out artifacts/transcension-plan.json
+```
+
+It reports estimated Ancient Souls/TP, closed Ascension history, affordable Outsider additions and a separate ideal allocation that may require respec. The active allocation supports fewer than 21000 total AS; higher budgets still get state and reward estimates. Gains, TP and respec behavior need comparison with the installed game's UI. Save history does not establish active-play time or a combat wall, so the preview cannot authorize a reset. It preserves the save and makes no game input; omit `-out` to print JSON. This command needs Go only, without OpenCV, Tesseract or a JavaScript runtime.
+
 ## Run
 
 From the project directory:
