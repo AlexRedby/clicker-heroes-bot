@@ -1,5 +1,33 @@
 # TODO
 
+## Remaining feature roadmap
+
+Goal: complete the unattended active-play loop using the existing shared capture, bounded analyzers and serialized input queue. Each feature first gets an actionable plan in its own chat; implementation follows a separate user request. Keep working strategies simple: the latest hero, saving for the next hero, native hotkeys/input where available, and no ruby spending.
+
+### Independent planning streams
+
+| ID | Scope and deliverable | Priority | Completion gate |
+| --- | --- | --- | --- |
+| R1 | Ascension restart and hero bootstrap: short lists without a scrollbar, first hero purchases, hero skill/upgrades unlocks including Amenhotep, optional Buy Available Upgrades, existing Auto Clicker target setup, and the last hero without a successor. | First | A plan with ordered startup states and verified UI evidence; no regression to the ordinary latest-hero strategy; F8 and missing-input cases specified. Buy Available Upgrades remains optional when the user already assigns an Auto Clicker to it. |
+| R2 | Ancient calculator correctness: exact-budget fits, independent allocation/cost/reserve invariants, Juggernaut/Solomon bulk-cost evidence and decoder cancellation propagation. | First | Concrete reproductions and proposed fixes; distinguish frozen-reference parity from independent correctness; six-digit downward purchase input remains safe. |
+| R3 | Relic management: recognize the inventory/full-junk blocker, determine how equipment and junk handling fit before Ascension, and propose a minimal active-build policy. | First | Verified screens or exact missing-input list; explicit equipment and discard policy; unknown items are not silently destroyed. |
+| R4 | Gild redistribution: choose a good target consistent with latest-hero progression, calculate transfer cost from current save/state, and plan UI application. | Next | Keep earned gift opening separate; account for soul costs and reserves; no ruby spending and no repeated transfers to the same target. |
+| R5 | Combat and boss recovery: validate active/ready skill states, Energize/Reload waves, variable cooldowns, failed-boss retry and the Ascension handoff. | First | Concrete remaining gaps and fixture/live scenarios; reuse current skill/progression/Ascension policies rather than replacing them without evidence. |
+| R6 | Capture and fish performance: measure capture, SIFT, OCR and queue delays, then propose only demonstrated reductions in repeated work or latency. | First | Reproducible baseline and quality-preserving experiments over real, rotated, small and scrollbar-overlap fish; no performance win inferred from fewer detections. |
+| R7 | Windowed game and display scaling: locate the game viewport, map screenshot coordinates to input, and plan focus/permission handling across Windows/macOS. | Later | Native coordinate evidence; correct ROI translation, unknown-window behavior and F8; full-screen behavior remains supported. |
+| R8 | Transcension and Outsiders: determine when Transcension beats another Ascension, decode relevant save fields, and plan Outsider allocation plus UI stages. | Later | Research and preview/recommendation first; automated reset waits for the complete Ascension loop, verified UI evidence and an explicit enabled mode. |
+| R9 | Mercenary recovery and recruitment in the existing mercenary chat: current quest loop validation, dead/missing mercenaries and free recruitment. | Parallel | Preserve saved roster plans and the fixed Okay delay; unsupported screens do not spend rubies; no duplicate quest implementation. |
+
+### Integration sequence (owned by the main chat)
+
+1. Accept R1/R2/R3/R5 plans and close the corresponding live gates below. Keep R6 measurement independent from gameplay decisions.
+2. Implement ready feature slices in isolated worktrees. Feature chats own feature files; the main chat coordinates changes to main.go, pipeline.go, shared context/assets and root TODO.md so parallel work does not overwrite them.
+3. Replace the intentional pauses after reset and the Ancient batch with explicit bootstrap handoffs only after bootstrap, export/spending, required unlocks and relic blocking are reliable. A failed purchase must not be replayed from a stale plan.
+4. Verify two complete consecutive cycles: combat wall -> confirmed Ascension -> zone 1 -> fresh export -> Ancient purchases -> bootstrap/upgrades -> existing Auto Clicker targets -> automatic progression. Include F8 during transitions, missed input, fish over controls, Explorer focus restoration and unsupported dialogs. Code/fixture checks do not establish native game acceptance.
+5. Add R4 when the repeated loop works. R7 remains independent platform work. Enable R8 automation only after the loop and recommendation/Outsider preview are accepted.
+
+The detailed unfinished implementation and live-validation gates below remain authoritative. Remove completed work; keep missing screenshot/native-game gates visible.
+
 ## Shared observation and action pipeline
 
 Architecture: [Automation pipeline](docs/automation-pipeline.md).
