@@ -205,7 +205,6 @@ type ancientPlanner struct {
 	selected                           int
 	quantity                           string
 	failure, waiting                   string
-	target                             string
 	deadline, nextRead, nextAction     time.Time
 	jobFrame                           uint64
 }
@@ -315,24 +314,20 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 		}
 		p.quantityEntered = true
 	case confirmAncientQuantity:
-		if !out.frame.context.ancients {
+		c, owner := out.frame.context, a.frame.context
+		if !owner.known || !owner.ancientDialog || !c.known || !c.ancients || c.ancientDialog || c.heroes || c.mercenaries || c.saveMenu || c.ascension || c.questDialog || c.modal != noGildModal || c.window == "!outside-game" || c.window != owner.window || c.bounds != owner.bounds || c.geometry != owner.geometry || out.frame.generation != a.frame.generation {
 			return
 		}
-		name := p.plan.Rows[p.selected].Name
-		for _, row := range out.rows {
-			if row.name == name && ancientDisplayMatches(row.level, p.target) {
-				p.done[p.selected] = true
-				fmt.Printf("leveled Ancient %s by %s\n", name, p.quantity)
-				p.selected = -1
-				p.quantity = ""
-				p.quantityEntered = false
-				p.target = ""
-				p.pending = nil
-				p.deadline = time.Time{}
-				return
-			}
+		if p.plan == nil || p.selected < 0 || p.selected >= len(p.plan.Rows) {
+			p.fail("unowned quantity confirmation")
+			return
 		}
-		return
+		// Dialog closure acknowledges submission; a silent failed buy can underbuy.
+		p.done[p.selected] = true
+		fmt.Printf("submitted Ancient %s quantity=%s; quantity dialog closed\n", p.plan.Rows[p.selected].Name, p.quantity)
+		p.selected = -1
+		p.quantity = ""
+		p.quantityEntered = false
 	case returnAncientHeroes:
 		if !out.frame.context.heroes {
 			return
@@ -423,14 +418,6 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 			p.quantity, err = ancientcalc.InputQuantity(buy.Quantity)
 			if err != nil {
 				p.fail(err.Error())
-				return gameAction{}, false
-			}
-			current, _ := new(big.Rat).SetString(buy.Current)
-			delta, _ := new(big.Rat).SetString(p.quantity)
-			target := new(big.Rat).Add(current, delta)
-			p.target = target.Num().Quo(target.Num(), target.Denom()).String()
-			if ancientDisplayMatches(row.level, p.target) {
-				p.fail("purchase too small to verify visibly for " + buy.Name)
 				return gameAction{}, false
 			}
 			p.selected = i

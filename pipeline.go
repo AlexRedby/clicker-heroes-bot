@@ -240,7 +240,11 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 			out.ascension, out.err = p.readers.ascension(ctx, job.frame)
 		}
 	case ancientAnalysis:
-		out.ancient, out.err = p.readers.ancients(ctx, job.frame)
+		if job.modeOnly {
+			out.ancient = ancientObservation{frame: job.frame}
+		} else {
+			out.ancient, out.err = p.readers.ancients(ctx, job.frame)
+		}
 	case exportAnalysis:
 		out.export, out.err = readExport(*job.export)
 	}
@@ -542,7 +546,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		}
 		if p.ancient.active && p.ancient.jobFrame == 0 && !now.Before(p.ancient.nextRead) && c.window != "!outside-game" {
 			p.ancient.jobFrame = p.frame.id
-			replaceJob(jobs[ancientAnalysis], analysisJob{frame: p.frame})
+			replaceJob(jobs[ancientAnalysis], analysisJob{frame: p.frame, modeOnly: p.ancient.pending != nil && p.ancient.pending.ancient.step == confirmAncientQuantity})
 			p.ancient.nextRead = now.Add(300 * time.Millisecond)
 		}
 		if c.ancientDialog || p.ancient.active || (p.ancient.plan != nil && !p.ancient.finished) {

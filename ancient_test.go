@@ -247,19 +247,18 @@ func TestAncientTransaction(t *testing.T) {
 		t.Fatal("quantity did not authorize confirmation")
 	}
 	p.sent(a, now)
-	out.frame.id = frame.id + 1
-	p.observe(out, nil, now.Add(time.Second))
+	frame.id++
+	p.observe(ancientObservation{frame: frame, okay: true}, nil, now.Add(time.Second))
 	if p.pending == nil || len(p.done) != 0 {
-		t.Fatal("unchanged level confirmed")
+		t.Fatal("open dialog acknowledged")
 	}
-	if _, ok := p.action(out.frame, now.Add(2*time.Second)); ok {
+	if _, ok := p.action(frame, now.Add(2*time.Second)); ok {
 		t.Fatal("OK was repeated")
 	}
-	out.frame.id++
-	out.rows[0].level = "2.000e28"
-	p.observe(out, nil, now.Add(2*time.Second))
+	out.frame.id = frame.id + 1
+	p.observe(ancientObservation{frame: out.frame}, nil, now.Add(2*time.Second))
 	if p.pending != nil || !p.done[0] {
-		t.Fatal("increased level not confirmed")
+		t.Fatal("closed owned dialog not acknowledged")
 	}
 	a, ok = p.action(out.frame, now.Add(2*time.Second))
 	if !ok || a.ancient.step != returnAncientHeroes {
@@ -583,7 +582,7 @@ func TestAncientOrdinaryPurchaseWithoutDialog(t *testing.T) {
 		t.Fatal("Atman level 185 not recognized", out.rows)
 	}
 	plan := ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Atman", Current: "184", Target: "209", Quantity: "25"}}}}
-	p := ancientPlanner{plan: &plan, active: true, selected: 0, quantity: "25", target: "209"}
+	p := ancientPlanner{plan: &plan, active: true, selected: 0, quantity: "25"}
 	p.sent(gameAction{kind: handleAncient, frame: gameFrame{id: 1}, ancient: ancientCommand{step: openAncientQuantity, quantity: "25"}}, time.Now())
 	unchanged := out
 	unchanged.rows = []ancientScreenRow{{name: "Atman", level: "184"}}
@@ -600,7 +599,7 @@ func TestAncientOrdinaryPurchaseWithoutDialog(t *testing.T) {
 	}
 }
 
-func TestAncientEnergonPurchaseConfirmation(t *testing.T) {
+func TestAncientEnergonLevelRecognition(t *testing.T) {
 	requireAncientOCR(t)
 	original := loadTestImage(t, "testdata/ancient-energon-leveled.png")
 	for _, width := range []int{original.Bounds().Dx(), 1280} {
@@ -624,25 +623,7 @@ func TestAncientEnergonPurchaseConfirmation(t *testing.T) {
 			if energon < 0 {
 				t.Fatal("Energon level 201 not recognized", out.rows)
 			}
-			plan := ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Energon", Current: "149", Target: "201", Quantity: "52"}}}}
-			p := ancientPlanner{plan: &plan, active: true, selected: 0, quantity: "52", target: "201", done: map[int]bool{}}
-			now := time.Now()
-			p.sent(gameAction{frame: gameFrame{id: 1}, ancient: ancientCommand{step: confirmAncientQuantity, quantity: "52"}}, now)
-			unchanged := out
-			unchanged.rows = append([]ancientScreenRow(nil), out.rows...)
-			unchanged.rows[energon].level = "149"
-			p.observe(unchanged, nil, now)
-			if p.pending == nil || p.done[0] {
-				t.Fatal("unchanged level confirmed")
-			}
-			if _, ok := p.action(out.frame, now.Add(time.Second)); ok {
-				t.Fatal("unconfirmed OK repeated")
-			}
-			out.frame.id++
-			p.observe(out, nil, now.Add(time.Second))
-			if p.pending != nil || !p.done[0] || p.blocked {
-				t.Fatal("successful Energon purchase not confirmed", p.failure)
-			}
+
 		})
 	}
 }
@@ -659,55 +640,191 @@ func TestAncientLevelLabelPreservesDigits(t *testing.T) {
 	}
 }
 
-func TestAncientKumawakamaruPurchaseConfirmation(t *testing.T) {
-	requireAncientOCR(t)
-	screen := loadTestImage(t, "testdata/ancient-kumawakamaru-leveled.png")
-	c, err := recognizedGame(screen)
-	if err != nil || !c.known || !c.ancients || c.ancientDialog {
-		t.Fatal("post-purchase context", c, err)
+func TestAncientSubmissionSkipsOCR(t *testing.T) {
+	for _, tc := range []struct{ file, name, current, quantity string }{
+		{"testdata/ancient-dora-submitted.png", "Dora", "161", "48"},
+		{"testdata/ancient-kumawakamaru-leveled.png", "Kumawakamaru", "140", "71"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			screen := loadTestImage(t, tc.file)
+			c, err := recognizedGame(screen)
+			if err != nil || !c.known || !c.ancients || c.ancientDialog {
+				t.Fatal("ordinary Ancients context", c, err)
+			}
+			c.window = "game"
+			controls := pauseControl{}
+			plan := ancientPlan{Plan: ancientcalc.Plan{Reserve: "1", Rows: []ancientcalc.Purchase{
+				{Name: tc.name, Current: tc.current, Quantity: tc.quantity},
+				{Name: "Dogcog", Current: "100", Quantity: "1", Cost: "1"},
+			}}}
+			p := newGamePipeline(&controls, heroInput{capture: func() (image.Image, error) { return screen, nil }}, pipelineReaders{
+				context: recognizedGame, window: func() string { return "game" },
+				ancients: func(context.Context, gameFrame) (ancientObservation, error) { panic("post-OK OCR must not run") },
+			}, pipelineOptions{ancientPlan: &plan})
+			owner := c
+			owner.ancients, owner.ancientDialog = false, true
+			p.frame = gameFrame{id: 1, layout: 1, image: screen, context: owner}
+			p.layout = 1
+			p.ancient.active, p.ancient.started = true, true
+			p.ancient.budgetChecked, p.ancient.topChecked = true, true
+			p.ancient.selected, p.ancient.quantity = 0, tc.quantity
+			p.ancient.done = map[int]bool{}
+			p.actionCompleted(actionResult{action: gameAction{kind: handleAncient, frame: p.frame, ancient: ancientCommand{step: confirmAncientQuantity, quantity: tc.quantity}}}, now)
+			jobs := make([]chan analysisJob, analysisCount)
+			for i := range jobs {
+				jobs[i] = make(chan analysisJob, 1)
+			}
+			if err := p.capture(context.Background(), now.Add(time.Second), jobs); err != nil {
+				t.Fatal(err)
+			}
+			job := <-jobs[ancientAnalysis]
+			if !job.modeOnly || job.frame.id <= 1 || job.frame.layout == 1 {
+				t.Fatal("closed-dialog capture did not schedule a new context-only frame", job)
+			}
+			out := p.analyze(context.Background(), ancientAnalysis, job)
+			if out.err != nil || len(out.ancient.rows) != 0 || out.ancient.souls != "" {
+				t.Fatal("acknowledgement read purchase results", out)
+			}
+			stale := out
+			stale.frame.layout--
+			p.accept(context.Background(), stale, now.Add(time.Second))
+			if p.ancient.pending == nil || p.ancient.done[0] {
+				t.Fatal("obsolete layout acknowledged submission")
+			}
+			p.accept(context.Background(), out, now.Add(time.Second))
+			if p.ancient.pending != nil || !p.ancient.done[0] || p.ancient.selected != -1 || p.ancient.quantity != "" || !p.ancient.deadline.IsZero() {
+				t.Fatal("closed dialog did not retire submitted item", p.ancient)
+			}
+			reads := 0
+			p.readers.ancients = func(_ context.Context, frame gameFrame) (ancientObservation, error) {
+				reads++
+				return ancientObservation{frame: frame, souls: "10", rows: []ancientScreenRow{{name: "Dogcog", level: "100", point: image.Pt(243, 711)}}}, nil
+			}
+			if err := p.capture(context.Background(), now.Add(2*time.Second), jobs); err != nil {
+				t.Fatal(err)
+			}
+			job = <-jobs[ancientAnalysis]
+			if job.modeOnly {
+				t.Fatal("next purchase skipped pre-purchase OCR")
+			}
+			p.accept(context.Background(), p.analyze(context.Background(), ancientAnalysis, job), now.Add(2*time.Second))
+			a, ok := p.ancient.action(p.frame, now.Add(2*time.Second))
+			if reads != 1 || !ok || a.ancient.step != openAncientQuantity || p.ancient.selected != 1 {
+				t.Fatal("next checked item did not proceed", reads, a, ok)
+			}
+			p.ancient.sent(a, now.Add(2*time.Second))
+			p.accept(context.Background(), out, now.Add(3*time.Second))
+			if _, ok := p.ancient.action(p.frame, now.Add(3*time.Second)); ok || p.ancient.done[1] {
+				t.Fatal("stale acknowledgement replayed input or retired the next item")
+			}
+			controls.toggle()
+			p.reset(controls.snapshot())
+			p.accept(context.Background(), out, now.Add(4*time.Second))
+			if p.ancient.active || !p.ancient.blocked || p.ancient.done[1] {
+				t.Fatal("F8 accepted old work")
+			}
+			if executed, err := controls.runClick(context.Background(), a.frame.generation, func() error { t.Fatal("old input executed after F8"); return nil }); executed || err != nil {
+				t.Fatal("old input generation survived F8", executed, err)
+			}
+		})
 	}
-	out, err := readAncientObservation(context.Background(), gameFrame{id: 2, image: screen, context: c})
-	if err != nil || out.souls != "4.165e65" {
-		t.Fatal("post-purchase wallet", out.souls, err)
-	}
-	selected := -1
-	for i, row := range out.rows {
-		if row.name == "Kumawakamaru" && row.level == "211" {
-			selected = i
-		}
-	}
-	if selected < 0 {
-		t.Fatal("Kumawakamaru level 211 with relic marker not recognized", out.rows)
-	}
-	plan := ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Kumawakamaru", Current: "140", Target: "211", Quantity: "71"}}}}
-	p := ancientPlanner{plan: &plan, active: true, started: true, selected: 0, quantity: "71", target: "211", done: map[int]bool{}, budgetChecked: true, topChecked: true}
+}
+
+func TestAncientSubmissionRejectsUnownedFrames(t *testing.T) {
 	now := time.Now()
-	p.sent(gameAction{frame: gameFrame{id: 1}, ancient: ancientCommand{step: confirmAncientQuantity, quantity: "71"}}, now)
-	for _, level := range []string{"140", "141", "212", "211 (*)", "missing", "stale"} {
-		unconfirmed := out
-		unconfirmed.rows = append([]ancientScreenRow(nil), out.rows...)
-		switch level {
-		case "missing":
-			unconfirmed.rows = nil
-		case "stale":
-			unconfirmed.frame.id = 1
-		default:
-			unconfirmed.rows[selected].level = level
-		}
-		p.observe(unconfirmed, nil, now)
-		if p.pending == nil || p.done[0] || p.blocked {
-			t.Fatal("unverified purchase confirmed", level, p.failure)
-		}
-		if _, ok := p.action(out.frame, now.Add(time.Second)); ok {
-			t.Fatal("unconfirmed OK repeated", level)
-		}
+	frame := gameFrame{id: 1, generation: 7, layout: 2, context: gameContext{known: true, ancientDialog: true, window: "game", bounds: image.Rect(0, 0, 1280, 720)}}
+	closed := frame
+	closed.id++
+	closed.context.ancientDialog, closed.context.ancients = false, true
+	for _, fault := range []string{"open", "unknown", "heroes", "mercenaries", "gild", "save", "quest", "ascension", "foreign", "outside", "bounds", "geometry", "generation", "stale", "error", "unowned"} {
+		t.Run(fault, func(t *testing.T) {
+			plan := ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Dora", Quantity: "48"}}}}
+			p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{
+				ancients: func(context.Context, gameFrame) (ancientObservation, error) { panic("pending OK must not read OCR") },
+			}, pipelineOptions{ancientPlan: &plan})
+			p.ancient.active, p.ancient.started = true, true
+			p.ancient.selected, p.ancient.quantity, p.ancient.done = 0, "48", map[int]bool{}
+			p.ancient.sent(gameAction{frame: frame, ancient: ancientCommand{step: confirmAncientQuantity, quantity: "48"}}, now)
+			bad := closed
+			switch fault {
+			case "open":
+				bad.context = frame.context
+			case "unknown":
+				bad.context.known = false
+			case "heroes":
+				bad.context.heroes = true
+			case "mercenaries":
+				bad.context.mercenaries = true
+			case "gild":
+				bad.context.modal = unknownGildModal
+			case "save":
+				bad.context.saveMenu = true
+			case "quest":
+				bad.context.questDialog = true
+			case "ascension":
+				bad.context.ascension = true
+			case "foreign":
+				bad.context.window = "other game"
+			case "outside":
+				bad.context.window = "!outside-game"
+			case "bounds":
+				bad.context.bounds.Max.X++
+			case "geometry":
+				bad.context.geometry = viewportGeometry{Capture: image.Rect(1, 1, 2, 2)}
+			case "generation":
+				bad.generation++
+			case "stale":
+				bad.id = frame.id
+			case "unowned":
+				p.ancient.selected = -1
+			}
+			out := p.analyze(context.Background(), ancientAnalysis, analysisJob{frame: bad, modeOnly: true})
+			if fault == "error" {
+				out.err = errors.New("context read failed")
+			}
+			p.ancient.observe(out.ancient, out.err, now.Add(time.Second))
+			if p.ancient.done[0] {
+				t.Fatal("unowned frame acknowledged submission")
+			}
+			if _, ok := p.ancient.action(bad, now.Add(2*time.Second)); ok {
+				t.Fatal("unconfirmed OK repeated")
+			}
+			p.planAncients(now.Add(21 * time.Second))
+			if !p.ancient.blocked || p.ancient.pending != nil {
+				t.Fatal("unacknowledged submission did not block at deadline")
+			}
+		})
 	}
-	out.frame.id++
-	p.observe(out, nil, now.Add(time.Second))
-	if p.pending != nil || !p.done[0] || p.blocked || p.selected != -1 || p.quantity != "" || !p.deadline.IsZero() {
-		t.Fatal("successful Kumawakamaru purchase not confirmed", p.failure)
-	}
-	if a, ok := p.action(out.frame, now.Add(time.Second)); !ok || a.ancient.step != returnAncientHeroes {
-		t.Fatal("confirmed purchase repeated instead of returning to Heroes", a, ok)
+}
+
+func TestAncientNextPurchaseGuards(t *testing.T) {
+	for _, fault := range []string{"none", "balance", "level", "quantity"} {
+		t.Run(fault, func(t *testing.T) {
+			plan := ancientPlan{Plan: ancientcalc.Plan{Reserve: "5", Rows: []ancientcalc.Purchase{
+				{Name: "Dora"},
+				{Name: "Dogcog", Current: "1e28", Target: "10000000000000000000000000001", Quantity: "1", Cost: "1"},
+			}}}
+			frame := gameFrame{id: 10, context: gameContext{known: true, ancients: true}}
+			out := ancientObservation{frame: frame, souls: "10", rows: []ancientScreenRow{{name: "Dogcog", level: "1.000e28"}}}
+			switch fault {
+			case "balance":
+				out.souls = "5"
+			case "level":
+				out.rows[0].level = "2.000e28"
+			case "quantity":
+				plan.Rows[1].Quantity = "0"
+			}
+			p := ancientPlanner{plan: &plan, active: true, started: true, budgetChecked: true, topChecked: true, selected: -1, done: map[int]bool{0: true}}
+			p.observe(out, nil, time.Now())
+			a, ok := p.action(frame, time.Now())
+			if fault == "none" {
+				if !ok || a.ancient.step != openAncientQuantity || p.selected != 1 || p.blocked {
+					t.Fatal("valid positive purchase below displayed precision was rejected")
+				}
+			} else if ok || !p.blocked {
+				t.Fatal("next purchase bypassed its pre-purchase guard", fault)
+			}
+		})
 	}
 }

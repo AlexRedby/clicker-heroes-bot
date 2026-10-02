@@ -6,7 +6,7 @@ Integration is waiting for real post-reset Heroes/ordinary-upgrade and existing 
 
 - Recognize the native relic-junk blocker and block reset on nonempty or unknown junk with a specific reason. The integrated export preflight is advisory; equipment/salvage UI still requires real evidence.
 - Connect bootstrap to shared observations and serialized input: identify support hero rows, buy only missing levels/ordinary skill unlocks, and preserve the latest-hero policy. Never purchase the Ascension upgrade as an ordinary upgrade.
-- Replace reset/Ancient completion pauses with a fresh-export -> confirmed spending -> Heroes bootstrap -> progression handoff; no stale spending-plan replay after F8 or failed input.
+- Replace reset/Ancient completion pauses with a fresh-export -> submitted Ancient spending -> Heroes bootstrap -> progression handoff; no stale spending-plan replay after F8 or failed input.
 - Add bounded failure/recovery handling and runnable regressions for two consecutive cycles, no-purchase plans, F8/context changes, unavailable gold, fish obstruction and missing UI evidence.
 - Run the full suite/build on OpenCV 4.13/Tesseract and review the integration independently; update README with the actual launch flags and remaining limitations.
 - Verify two consecutive cycles in the installed game once initial hero rows/upgrades, Auto Clicker targets and Relics/junk UI are available. Fixture tests are not native acceptance.
@@ -103,9 +103,9 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ### Hero Souls spending
 
-- Verify a live large Ancient purchase with six-significant-digit input and the 200 ms entry wait, including level confirmation and F8 interruption.
+- Verify a live large Ancient purchase with six-significant-digit input and the 200 ms entry wait, including closed owned-dialog acknowledgement and F8 interruption.
 - Verify V custom-quantity opening in the running Windows game after the added 100 ms key-settling delay, using a fresh export after Atman's unintended level increase.
-- Verify one live `-ancients-save` batch with a fresh export, expanded Ancient cards, V custom quantity, actual text entry, visible level confirmation, scrolling through all planned rows and return to Heroes. Include F8 and a missed input; obtain post-purchase frames if level OCR needs calibration. Supplied frames and regressions cover recognition, budget protection, transaction ownership, stale input and interruption.
+- Verify one live `-ancients-save` batch with a fresh export, expanded Ancient cards, V custom quantity, actual text entry, one-shot OK submission acknowledged by a newer ordinary Ancients frame, fresh level/budget checks before each next purchase, scrolling through all planned rows and return to Heroes. Include F8, an open dialog timeout and a silently failed purchase that closes the dialog (allowed underbuy, no replay). Supplied frames and regressions cover recognition, budget protection, transaction ownership, stale input and interruption.
 - Verify live `-export-dir` acquisition on Windows: menu -> Save -> delayed Explorer foreground -> original game focus -> menu close -> fresh file -> current Hero Souls budget check -> Ancient batch. Verify truncated scientific wallet values against the export and use the `saved`/`read` diagnostics on a mismatch; pending Ascension souls must not authorize spending. Check menu closing while Save is highlighted, the configured export folder and filename, F8 during acquisition, a failed Save, blocked OK and the same sequence after Ascension. Automated regressions cover menu recognition, stale/partial exports, cancellation and queue isolation. Initial hero buying, Amenhotep unlock and Auto Clicker setup still gate unattended restart; consider gild transfers and relics after that loop works.
 
 ### Transcension
