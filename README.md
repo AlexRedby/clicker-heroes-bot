@@ -21,6 +21,8 @@ go run . -mode transcension-plan -save "path/to/fresh-save.txt" -out artifacts/t
 
 It reports estimated Ancient Souls/TP, closed Ascension history, affordable Outsider additions and a separate ideal allocation that may require respec. The active allocation supports fewer than 21000 total AS; higher budgets still get state and reward estimates. Gains, TP and respec behavior need comparison with the installed game's UI. Save history does not establish active-play time or a combat wall, so the preview cannot authorize a reset. It preserves the save and makes no game input; omit `-out` to print JSON. Fresh Ancient plans also include this preview, so `run -export-dir` reports it automatically without another process. Pure calculator tests in `internal/ancientcalc` need Go only; the main executable requires OpenCV.
 
+While `run` is active, manually opening the Outsiders tab prints a read-only report of its AS wallet/reward, displayed TP, sacrificed souls, next-AS threshold and complete visible cards with levels and FEED costs. Costs retain the selected quantity (including MAX). Recognition is calibrated against the 1.0e12-6144 frame and checked at 1280/1920/2560 widths; other skins and unreadable fields remain unknown. Reports reuse the shared capture, read at most once every five seconds and discard results after context changes or F8. This does not click Transcend or FEED, scroll the list, or verify reset/respec behavior.
+
 ## Integrated run and game checks
 
 Update the checkout on the computer running the game, then launch:

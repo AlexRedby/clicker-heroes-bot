@@ -22,6 +22,7 @@ const (
 	ascensionAnalysis
 	ancientAnalysis
 	exportAnalysis
+	outsiderAnalysis
 	analysisCount
 )
 
@@ -44,11 +45,11 @@ const (
 )
 
 type gameContext struct {
-	known, heroes, mercenaries, questDialog, ascension, ancients, ancientDialog, saveMenu bool
-	modal                                                                                 gildModal
-	window                                                                                string
-	bounds                                                                                image.Rectangle
-	geometry                                                                              viewportGeometry
+	known, heroes, mercenaries, questDialog, ascension, ancients, ancientDialog, saveMenu, outsiders bool
+	modal                                                                                            gildModal
+	window                                                                                           string
+	bounds                                                                                           image.Rectangle
+	geometry                                                                                         viewportGeometry
 }
 type gameFrame struct {
 	id, generation, layout uint64
@@ -77,6 +78,7 @@ type observation struct {
 	ascension   ascensionObservation
 	ancient     ancientObservation
 	export      exportResult
+	outsider    outsiderObservation
 	err         error
 }
 type gameAction struct {
@@ -109,6 +111,7 @@ type pipelineReaders struct {
 	ascension        func(context.Context, gameFrame) (ascensionObservation, error)
 	ascensionEconomy func(context.Context, gameFrame) (ascensionObservation, error)
 	ancients         func(context.Context, gameFrame) (ancientObservation, error)
+	outsiders        func(context.Context, gameFrame) (outsiderObservation, error)
 	heroes           heroReaders
 	window           func() string
 }
@@ -148,6 +151,9 @@ type gamePipeline struct {
 	ancient                                             ancientPlanner
 	export                                              saveExporter
 	relicMessage                                        string
+	outsiderMessage                                     string
+	outsiderJobFrame                                    uint64
+	nextOutsider                                        time.Time
 	mercenary                                           mercenaryPlanner
 	fish                                                fishClickTracker
 	gild                                                gildCollector
@@ -216,6 +222,7 @@ func recognizedGame(screen image.Image) (gameContext, error) {
 	c.heroes = c.known && heroTabSelected(screen)
 	c.mercenaries = known && mercenaryTabSelected(screen)
 	c.ancients = known && ancientTabSelected(screen)
+	c.outsiders = c.known && outsiderTabSelected(screen)
 	return c, err
 }
 
@@ -247,6 +254,8 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 		}
 	case exportAnalysis:
 		out.export, out.err = readExport(*job.export)
+	case outsiderAnalysis:
+		out.outsider, out.err = p.readers.outsiders(ctx, job.frame)
 	}
 	out.elapsed = time.Since(start)
 	return out
@@ -286,6 +295,9 @@ func (p *gamePipeline) reset(generation uint64) {
 	p.hero.interrupt()
 	p.gild.interrupt()
 	p.heroJobFrame = 0
+	p.outsiderJobFrame = 0
+	p.nextOutsider = time.Time{}
+	p.outsiderMessage = ""
 	p.skill.interrupt()
 	p.progression.invalidateCombat()
 	p.progression.pending = nil
@@ -450,6 +462,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	if p.readers.window != nil {
 		c.window = p.readers.window()
 		if c.window == "!outside-game" {
+			c.outsiders = false
 			c.ancients, c.ancientDialog, c.saveMenu = false, false, false
 			c.known, c.heroes, c.mercenaries, c.questDialog, c.ascension, c.modal = false, false, false, false, false, noGildModal
 		}
@@ -480,7 +493,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.ancient.interrupt()
 			p.controls.pauseLocked(p.ancient.pauseReason(), true)
 		}
-		if c.saveMenu != old.saveMenu || c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || geometryChanged {
+		if c.outsiders != old.outsiders || c.saveMenu != old.saveMenu || c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || geometryChanged {
 			if geometryChanged || !p.mercenary.expects(c, now) {
 				p.mercenary.interrupt()
 			}
@@ -500,6 +513,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			}
 			p.ascension.jobFrame = 0
 			p.ancient.jobFrame = 0
+			p.outsiderJobFrame = 0
+			p.nextOutsider = time.Time{}
+			p.outsiderMessage = ""
 			p.mercenaryJobFrame = 0
 			p.nextMercenary = time.Time{}
 			p.layout++
@@ -555,6 +571,11 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		if c.ascension || p.ascension.active || !c.known || c.modal != noGildModal || p.gild.active {
 			return nil
 		}
+		if c.outsiders && p.readers.outsiders != nil && p.outsiderJobFrame == 0 && !now.Before(p.nextOutsider) {
+			p.outsiderJobFrame = p.frame.id
+			replaceJob(jobs[outsiderAnalysis], analysisJob{frame: p.frame})
+			p.nextOutsider = now.Add(5 * time.Second)
+		}
 		if p.options.ascension && c.heroes && p.ascension.due(now, p.options.ascensionStall) && p.ascension.jobFrame == 0 && !now.Before(p.ascension.nextRead) {
 			p.ascension.jobFrame = p.frame.id
 			replaceJob(jobs[ascensionAnalysis], analysisJob{frame: p.frame, economy: true})
@@ -591,6 +612,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 }
 
 func (p *gamePipeline) accept(ctx context.Context, out observation, now time.Time) error {
+	if out.kind == outsiderAnalysis && out.frame.id == p.outsiderJobFrame {
+		p.outsiderJobFrame = 0
+	}
 	if out.kind == ancientAnalysis && out.frame.id == p.ancient.jobFrame {
 		p.ancient.jobFrame = 0
 	}
@@ -711,6 +735,26 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			} else {
 				p.controls.pauseLocked("Ascension confirmed at zone 1; export a fresh save for Hero Souls spending and restart setup; press F8 when ready", false)
 			}
+		}
+		return nil
+	}
+	if out.kind == outsiderAnalysis {
+		if !out.frame.context.outsiders || !p.frame.context.outsiders {
+			p.metrics.dropped++
+			return nil
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		message := out.outsider.String()
+		if out.err != nil {
+			out.outsider = outsiderObservation{frame: out.frame}
+			message = fmt.Sprintf("Outsiders: unreadable: %v", out.err)
+		}
+		p.state[out.kind] = out
+		if message != p.outsiderMessage {
+			fmt.Println(message)
+			p.outsiderMessage = message
 		}
 		return nil
 	}
@@ -1195,7 +1239,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 
 func (m pipelineMetrics) String() string {
 	parts := []string{fmt.Sprintf("captures=%d capture=%s actions=%d input=%s queue=%s stale=%d", m.captures, m.captureTime, m.actions, m.inputTime, m.queueTime, m.dropped)}
-	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export"} {
+	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders"} {
 		parts = append(parts, fmt.Sprintf("%s=%d/%s", name, m.counts[i], m.elapsed[i]))
 	}
 	return strings.Join(parts, " ")
