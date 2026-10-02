@@ -1,37 +1,17 @@
-// Command transcendence-plan reads an export and writes an informational preview.
-// It has no native capture/input dependencies and cannot reset the game.
 package main
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
-	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"time"
 
 	"clicker-heroes-bot/internal/ancientcalc"
 )
 
-func main() {
-	save := flag.String("save", "", "exported Clicker Heroes save (read only)")
-	out := flag.String("out", "", "preview JSON file; empty writes to stdout")
-	flag.Parse()
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	if err := run(ctx, *save, *out, os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "Transcension preview:", err)
-		os.Exit(1)
-	}
-}
-
-func run(ctx context.Context, savePath, output string, stdout io.Writer) error {
+func previewTranscension(ctx context.Context, savePath, output string, stdout io.Writer) error {
 	if savePath == "" {
 		return errors.New("-save is required")
 	}

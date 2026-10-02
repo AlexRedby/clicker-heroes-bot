@@ -23,11 +23,14 @@ import (
 
 type ancientPlan struct {
 	ancientcalc.Plan
-	SaveHash  string                `json:"saveHash"`
-	CreatedAt time.Time             `json:"createdAt"`
-	Gilds     *ancientcalc.GildPlan `json:"gilds,omitempty"`
-	GildError string                `json:"gildError,omitempty"`
-	savePath  string
+	SaveHash          string                           `json:"saveHash"`
+	CreatedAt         time.Time                        `json:"createdAt"`
+	Gilds             *ancientcalc.GildPlan            `json:"gilds,omitempty"`
+	GildError         string                           `json:"gildError,omitempty"`
+	Transcension      *ancientcalc.TranscensionPreview `json:"transcension,omitempty"`
+	TranscensionError string                           `json:"transcensionError,omitempty"`
+
+	savePath string
 }
 
 func calculateAncients(ctx context.Context, savePath, reserve string, skillRate float64, beyond8k bool) (ancientPlan, error) {
@@ -77,6 +80,16 @@ func calculateAncientData(ctx context.Context, save []byte, savePath, reserve st
 	} else {
 		plan.Gilds = &gilds
 	}
+	prestige, err := ancientcalc.PreviewTranscension(ctx, save)
+	if ctx.Err() != nil {
+		return plan, ctx.Err()
+	}
+	if err != nil {
+		plan.TranscensionError = err.Error()
+	} else {
+		plan.Transcension = &prestige
+	}
+
 	sum := sha256.Sum256(save)
 	plan.SaveHash = hex.EncodeToString(sum[:])
 	plan.CreatedAt = time.Now().UTC()
@@ -119,6 +132,12 @@ func writeAncientPlan(path string, plan ancientPlan) error {
 		}
 	} else if plan.GildError != "" {
 		fmt.Println("Gild redistribution preview unavailable:", plan.GildError)
+	}
+	if plan.Transcension != nil {
+		p := plan.Transcension
+		fmt.Printf("Transcension preview: recommendation=%s, Ancient Souls=%d; informational only\n", p.Recommendation, p.AncientSouls)
+	} else if plan.TranscensionError != "" {
+		fmt.Println("Transcension preview unavailable:", plan.TranscensionError)
 	}
 	fmt.Println("saved", path)
 	return nil

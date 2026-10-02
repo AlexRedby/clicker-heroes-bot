@@ -39,6 +39,12 @@ func testIntegratedGildSave(t *testing.T, includeGild bool) []byte {
 		heroes["42"] = map[string]any{"id": 42, "uid": 42, "level": 1000, "epicLevel": 0, "locked": false}
 		heroes["43"] = map[string]any{"id": 43, "uid": 43, "level": 0, "epicLevel": 2, "locked": true}
 		payload["numberOfTranscensions"] = 1
+		payload["numAscensionsThisTranscension"] = 3
+		payload["version"] = 7
+		payload["readPatchNumber"] = "1.0e12-6144"
+		payload["ancientSouls"] = 0
+		payload["primalSouls"] = 0
+		payload["totalHeroLevels"] = 1000
 		payload["transcensionTimestamp"] = 100
 		payload["heroCollection"] = map[string]any{"heroes": heroes}
 		payload["upgrades"] = map[string]bool{"200": true}
@@ -155,6 +161,9 @@ func TestAncientPlanIncludesReadOnlyGildPreview(t *testing.T) {
 		t.Fatalf("gild preview changed Ancient budget: plan=%+v base=%+v", plan.Plan, base)
 	}
 	wantHash := sha256.Sum256(save)
+	if plan.Transcension == nil || plan.TranscensionError != "" || plan.Transcension.UIVerified || plan.Transcension.SaveHash != plan.SaveHash {
+		t.Fatalf("Transcension preview: %+v error=%q", plan.Transcension, plan.TranscensionError)
+	}
 	if plan.SaveHash != fmt.Sprintf("%x", wantHash) || plan.Gilds.SaveHash != plan.SaveHash {
 		t.Fatalf("save hash=%q", plan.SaveHash)
 	}
@@ -170,6 +179,9 @@ func TestAncientPlanIncludesReadOnlyGildPreview(t *testing.T) {
 	if err := json.Unmarshal(encoded, &persisted); err != nil {
 		t.Fatal(err)
 	}
+	if _, ok := persisted["transcension"]; !ok {
+		t.Fatal("persisted plan omitted Transcension preview")
+	}
 	if _, ok := persisted["gilds"]; !ok {
 		t.Fatal("persisted plan omitted gild preview")
 	}
@@ -179,6 +191,9 @@ func TestAncientPlanSurvivesMissingGildMetadata(t *testing.T) {
 	plan, err := calculateAncientData(context.Background(), testIntegratedGildSave(t, false), "synthetic-save", "0", 1, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if plan.Transcension != nil || plan.TranscensionError == "" {
+		t.Fatal("missing prestige metadata did not remain advisory")
 	}
 	if plan.Gilds != nil || plan.GildError == "" || plan.Souls == "" {
 		t.Fatalf("missing gild metadata: gilds=%+v error=%q souls=%q", plan.Gilds, plan.GildError, plan.Souls)

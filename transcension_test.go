@@ -12,7 +12,7 @@ import (
 func TestPreviewOutputPreservesSaveAliases(t *testing.T) {
 	// Use the sanitized prestige fixture; no account data is needed.
 	save := filepath.Join(t.TempDir(), "save.txt")
-	original, err := os.ReadFile("../../internal/ancientcalc/testdata/prestige-save.txt")
+	original, err := os.ReadFile("internal/ancientcalc/testdata/prestige-save.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestPreviewOutputPreservesSaveAliases(t *testing.T) {
 					t.Skipf("%s unsupported: %v", kind, err)
 				}
 			}
-			if err := run(context.Background(), save, out, nil); err == nil {
+			if err := previewTranscension(context.Background(), save, out, nil); err == nil {
 				t.Fatalf("accepted output %s", kind)
 			}
 			unchanged, err := os.ReadFile(save)
@@ -42,14 +42,14 @@ func TestPreviewOutputPreservesSaveAliases(t *testing.T) {
 		})
 	}
 	out := filepath.Join(filepath.Dir(save), "preview.json")
-	if err := run(context.Background(), save, out, nil); err != nil {
+	if err := previewTranscension(context.Background(), save, out, nil); err != nil {
 		t.Fatal(err)
 	}
 	if result, err := os.ReadFile(out); err != nil || len(result) == 0 {
 		t.Fatal("missing preview")
 	}
 	var stdout bytes.Buffer
-	if err := run(context.Background(), save, "", &stdout); err != nil {
+	if err := previewTranscension(context.Background(), save, "", &stdout); err != nil {
 		t.Fatal(err)
 	}
 	var preview map[string]any

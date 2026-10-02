@@ -27,15 +27,15 @@ import (
 
 func main() {
 	robotgo.Scale = false
-	mode := flag.String("mode", "help", "help, shot, click, run, ancients-plan, or relics-plan")
-	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot mode")
-	save := flag.String("save", "", "exported save for ancients-plan, relics-plan, or Ascension invested-soul baseline (read only)")
+	mode := flag.String("mode", "help", "help, shot, click, run, ancients-plan, relics-plan, or transcension-plan")
+	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot or preview JSON for transcension-plan mode")
+	save := flag.String("save", "", "exported save for ancients-plan, relics-plan, transcension-plan, or Ascension invested-soul baseline (read only)")
 	ancientReserve := flag.String("ancient-reserve", "1%", "Hero Souls to reserve beyond the calculator soul bank")
 	ancientSkillRate := flag.Float64("ancient-skill-rate", 1, "calculator allocation to skill Ancients, from 0 to 1")
 	ancientBeyond8k := flag.Bool("ancient-beyond8k", false, "best hero is levelled beyond 8000; changes calculator gold allocation")
 	ancientSave := flag.String("ancients-save", "", "exported save for one Ancient purchase batch before normal run actions")
 	exportDir := flag.String("export-dir", "", "Save folder; suggest relics, buy Ancients at startup/after Ascension, and inspect relics before Ascension")
-	ancientPlanOutput := flag.String("ancient-plan-out", "artifacts/ancients-plan.json", "Ancient purchase plan and gild redistribution preview output")
+	ancientPlanOutput := flag.String("ancient-plan-out", "artifacts/ancients-plan.json", "Ancient purchase plan with gild and Transcension previews")
 	x := flag.Int("x", 0, "screen X coordinate for click or optional monster clicks in run mode")
 	y := flag.Int("y", 0, "screen Y coordinate for click or optional monster clicks in run mode")
 	interval := flag.Duration("interval", 100*time.Millisecond, "time between optional monster clicks in run mode")
@@ -106,6 +106,18 @@ func main() {
 		if err == nil {
 			err = writeAncientPlan(*ancientPlanOutput, plan)
 		}
+	case "transcension-plan":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		path := ""
+		flag.Visit(func(f *flag.Flag) {
+			if f.Name == "out" {
+				path = *output
+			}
+		})
+		err = previewTranscension(ctx, *save, path, os.Stdout)
 	case "relics-plan":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()

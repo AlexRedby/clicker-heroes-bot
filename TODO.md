@@ -1,5 +1,22 @@
 # TODO
 
+## Ready-agent integration
+
+- Integrate the committed Relics preview, Ancient budget/cancellation fixes and measured SIFT/OCR changes into the shared executable.
+- Expose the existing Transcension preview through the main executable and fresh Ancient plan, without enabling reset or Outsider purchases.
+- Run integrated OpenCV 4.13/Tesseract tests, vet/build and a focused review; reconcile unfinished evidence gates, then push to origin/main.
+
+## Unattended Ascension milestone
+
+Integration is waiting for real post-reset Heroes/ordinary-upgrade and existing Auto Clicker frames, plus Relics/junk-blocker evidence. The user cannot supply them yet and requested stopping dependent work. Keep reset/purchase completion pauses until the missing UI is verified.
+
+- Integrate the existing read-only relic export/preflight without installing an Ancient spending plan; block reset on nonempty or unknown junk with a specific reason. Equipment/salvage UI still requires real evidence.
+- Connect bootstrap to shared observations and serialized input: identify support hero rows, buy only missing levels/ordinary skill unlocks, and preserve the latest-hero policy. Never purchase the Ascension upgrade as an ordinary upgrade.
+- Replace reset/Ancient completion pauses with a fresh-export -> confirmed spending -> Heroes bootstrap -> progression handoff; no stale spending-plan replay after F8 or failed input.
+- Add bounded failure/recovery handling and runnable regressions for two consecutive cycles, no-purchase plans, F8/context changes, unavailable gold, fish obstruction and missing UI evidence.
+- Run the full suite/build on OpenCV 4.13/Tesseract and review the integration independently; update README with the actual launch flags and remaining limitations.
+- Verify two consecutive cycles in the installed game once initial hero rows/upgrades, Auto Clicker targets and Relics/junk UI are available. Fixture tests are not native acceptance.
+
 ## R1 implementation in this worktree
 
 - Connect bootstrapPlanner to verified hero/upgrade readers and the shared action queue: targeted support visits, bounded clickHeroLevels purchases with existing heroRunner confirmation, ordinary upgrade clicks and F8/handoff callbacks. Integration remains owned by the main chat.
@@ -9,7 +26,7 @@
 
 ## Remaining feature roadmap
 
-Goal: complete the unattended active-play loop using the existing shared capture, bounded analyzers and serialized input queue. Each feature first gets an actionable plan in its own chat; implementation follows a separate user request. Keep working strategies simple: the latest hero, saving for the next hero, native hotkeys/input where available, and no ruby spending.
+Goal: complete the unattended active-play loop using the existing shared capture, bounded analyzers and serialized input queue. Independent feature work is planned in its own chat; the unattended Ascension milestone is now approved for implementation. Keep working strategies simple: the latest hero, saving for the next hero, native hotkeys/input where available, and no ruby spending.
 
 ### Independent planning streams
 
