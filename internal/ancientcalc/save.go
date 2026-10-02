@@ -77,6 +77,9 @@ func inflateAncientSave(ctx context.Context, input []byte, raw bool) ([]byte, er
 	} else {
 		reader, err = zlib.NewReader(source)
 		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
 			return nil, errors.New("invalid compressed save")
 		}
 	}

@@ -86,3 +86,54 @@ func TestDecodeAncientSaveRejectsMalformedAndCancelled(t *testing.T) {
 		t.Fatalf("cancellation error = %v", err)
 	}
 }
+
+type cancelAfterInitialCheck struct {
+	context.Context
+	err   error
+	done  chan struct{}
+	calls int
+}
+
+func (c *cancelAfterInitialCheck) Done() <-chan struct{} {
+	c.calls++
+	if c.calls == 1 {
+		return nil
+	}
+	return c.done
+}
+func (c *cancelAfterInitialCheck) Err() error {
+	if c.calls < 2 {
+		return nil
+	}
+	return c.err
+}
+
+func TestDecodeAncientSaveCancellationDuringInflate(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "canceled", err: context.Canceled},
+		{name: "deadline", err: context.DeadlineExceeded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, raw := range []bool{false, true} {
+				ctx := &cancelAfterInitialCheck{Context: context.Background(), err: tc.err, done: make(chan struct{})}
+				close(ctx.done)
+				_, err := decodeAncientSave(ctx, encodeModernSave(t, raw))
+				if !errors.Is(err, tc.err) {
+					t.Fatalf("raw=%t: cancellation error = %v", raw, err)
+				}
+			}
+		})
+	}
+}
+
+func TestInflateAncientSaveRejectsMalformedCompressed(t *testing.T) {
+	for _, raw := range []bool{false, true} {
+		_, err := inflateAncientSave(context.Background(), []byte{0, 0, 0, 0}, raw)
+		if err == nil || err.Error() != "invalid compressed save" {
+			t.Fatalf("raw=%t: malformed compressed save error = %v", raw, err)
+		}
+	}
+}

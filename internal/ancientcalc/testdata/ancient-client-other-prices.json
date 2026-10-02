@@ -1,0 +1,775 @@
+{
+  "source": "Official 1.0e12-6144 BigNumber operations composed in the original One/Linear/ExponentialPartialSum order; linear resource coefficient1",
+  "wasm_sha256": "b0a8aa726c336abc9b98a11549cc45da9bec76803a0888752abd7f0fe21456db",
+  "leaf_sha256": "2dd6673b655d0101f4c2e866abc4a1f1a3a34930389b444aa3798dab9c67df7c",
+  "cases": [
+    {
+      "formula": "one",
+      "current": "1",
+      "target": "2",
+      "chor": "0",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1",
+      "target": "2",
+      "chor": "1",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1",
+      "target": "2",
+      "chor": "6",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1",
+      "target": "2",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1",
+      "target": "10",
+      "chor": "0",
+      "mantissa": 9,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1",
+      "target": "10",
+      "chor": "1",
+      "mantissa": 9,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1",
+      "target": "10",
+      "chor": "6",
+      "mantissa": 7,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1",
+      "target": "10",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "10",
+      "target": "11",
+      "chor": "0",
+      "mantissa": 2,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "10",
+      "target": "11",
+      "chor": "1",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "10",
+      "target": "11",
+      "chor": "6",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "10",
+      "target": "11",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "99",
+      "target": "100",
+      "chor": "0",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "99",
+      "target": "100",
+      "chor": "1",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "99",
+      "target": "100",
+      "chor": "6",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "99",
+      "target": "100",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "9999",
+      "target": "10000",
+      "chor": "0",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "9999",
+      "target": "10000",
+      "chor": "1",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "9999",
+      "target": "10000",
+      "chor": "6",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "9999",
+      "target": "10000",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1e9",
+      "target": "1000000004",
+      "chor": "0",
+      "mantissa": 5,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1e9",
+      "target": "1000000004",
+      "chor": "1",
+      "mantissa": 4,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1e9",
+      "target": "1000000004",
+      "chor": "6",
+      "mantissa": 3,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1e9",
+      "target": "1000000004",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "one",
+      "current": "1e20",
+      "target": "2e20",
+      "chor": "0",
+      "mantissa": 1,
+      "exponent": 20
+    },
+    {
+      "formula": "one",
+      "current": "1e20",
+      "target": "2e20",
+      "chor": "1",
+      "mantissa": 9.5,
+      "exponent": 19
+    },
+    {
+      "formula": "one",
+      "current": "1e20",
+      "target": "2e20",
+      "chor": "6",
+      "mantissa": 7.3509189062499996,
+      "exponent": 19
+    },
+    {
+      "formula": "one",
+      "current": "1e20",
+      "target": "2e20",
+      "chor": "150",
+      "mantissa": 4.555549744836185,
+      "exponent": 16
+    },
+    {
+      "formula": "one",
+      "current": "1e20",
+      "target": "2e31",
+      "chor": "0",
+      "mantissa": 2,
+      "exponent": 31
+    },
+    {
+      "formula": "one",
+      "current": "1e20",
+      "target": "2e31",
+      "chor": "1",
+      "mantissa": 1.9,
+      "exponent": 31
+    },
+    {
+      "formula": "one",
+      "current": "1e20",
+      "target": "2e31",
+      "chor": "6",
+      "mantissa": 1.4701837812499998,
+      "exponent": 31
+    },
+    {
+      "formula": "one",
+      "current": "1e20",
+      "target": "2e31",
+      "chor": "150",
+      "mantissa": 9.11109948967237,
+      "exponent": 27
+    },
+    {
+      "formula": "linear",
+      "current": "1",
+      "target": "2",
+      "chor": "0",
+      "mantissa": 2,
+      "exponent": 0
+    },
+    {
+      "formula": "linear",
+      "current": "1",
+      "target": "2",
+      "chor": "1",
+      "mantissa": 2,
+      "exponent": 0
+    },
+    {
+      "formula": "linear",
+      "current": "1",
+      "target": "2",
+      "chor": "6",
+      "mantissa": 2,
+      "exponent": 0
+    },
+    {
+      "formula": "linear",
+      "current": "1",
+      "target": "2",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "linear",
+      "current": "1",
+      "target": "10",
+      "chor": "0",
+      "mantissa": 5.4,
+      "exponent": 1
+    },
+    {
+      "formula": "linear",
+      "current": "1",
+      "target": "10",
+      "chor": "1",
+      "mantissa": 5.2,
+      "exponent": 1
+    },
+    {
+      "formula": "linear",
+      "current": "1",
+      "target": "10",
+      "chor": "6",
+      "mantissa": 4,
+      "exponent": 1
+    },
+    {
+      "formula": "linear",
+      "current": "1",
+      "target": "10",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "linear",
+      "current": "10",
+      "target": "11",
+      "chor": "0",
+      "mantissa": 1.2,
+      "exponent": 1
+    },
+    {
+      "formula": "linear",
+      "current": "10",
+      "target": "11",
+      "chor": "1",
+      "mantissa": 1.1,
+      "exponent": 1
+    },
+    {
+      "formula": "linear",
+      "current": "10",
+      "target": "11",
+      "chor": "6",
+      "mantissa": 9,
+      "exponent": 0
+    },
+    {
+      "formula": "linear",
+      "current": "10",
+      "target": "11",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "linear",
+      "current": "99",
+      "target": "100",
+      "chor": "0",
+      "mantissa": 1,
+      "exponent": 2
+    },
+    {
+      "formula": "linear",
+      "current": "99",
+      "target": "100",
+      "chor": "1",
+      "mantissa": 9.5,
+      "exponent": 1
+    },
+    {
+      "formula": "linear",
+      "current": "99",
+      "target": "100",
+      "chor": "6",
+      "mantissa": 7.4,
+      "exponent": 1
+    },
+    {
+      "formula": "linear",
+      "current": "99",
+      "target": "100",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "linear",
+      "current": "9999",
+      "target": "10000",
+      "chor": "0",
+      "mantissa": 1,
+      "exponent": 4
+    },
+    {
+      "formula": "linear",
+      "current": "9999",
+      "target": "10000",
+      "chor": "1",
+      "mantissa": 9.5,
+      "exponent": 3
+    },
+    {
+      "formula": "linear",
+      "current": "9999",
+      "target": "10000",
+      "chor": "6",
+      "mantissa": 7.351,
+      "exponent": 3
+    },
+    {
+      "formula": "linear",
+      "current": "9999",
+      "target": "10000",
+      "chor": "150",
+      "mantissa": 5,
+      "exponent": 0
+    },
+    {
+      "formula": "linear",
+      "current": "1e9",
+      "target": "1000000004",
+      "chor": "0",
+      "mantissa": 4.000000154,
+      "exponent": 9
+    },
+    {
+      "formula": "linear",
+      "current": "1e9",
+      "target": "1000000004",
+      "chor": "1",
+      "mantissa": 3.800000146,
+      "exponent": 9
+    },
+    {
+      "formula": "linear",
+      "current": "1e9",
+      "target": "1000000004",
+      "chor": "6",
+      "mantissa": 2.940367676,
+      "exponent": 9
+    },
+    {
+      "formula": "linear",
+      "current": "1e9",
+      "target": "1000000004",
+      "chor": "150",
+      "mantissa": 1.82222,
+      "exponent": 6
+    },
+    {
+      "formula": "linear",
+      "current": "1e20",
+      "target": "2e20",
+      "chor": "0",
+      "mantissa": 1.5,
+      "exponent": 40
+    },
+    {
+      "formula": "linear",
+      "current": "1e20",
+      "target": "2e20",
+      "chor": "1",
+      "mantissa": 1.425,
+      "exponent": 40
+    },
+    {
+      "formula": "linear",
+      "current": "1e20",
+      "target": "2e20",
+      "chor": "6",
+      "mantissa": 1.1026378359374998,
+      "exponent": 40
+    },
+    {
+      "formula": "linear",
+      "current": "1e20",
+      "target": "2e20",
+      "chor": "150",
+      "mantissa": 6.833324617254277,
+      "exponent": 36
+    },
+    {
+      "formula": "linear",
+      "current": "1e20",
+      "target": "2e31",
+      "chor": "0",
+      "mantissa": 2,
+      "exponent": 62
+    },
+    {
+      "formula": "linear",
+      "current": "1e20",
+      "target": "2e31",
+      "chor": "1",
+      "mantissa": 1.9,
+      "exponent": 62
+    },
+    {
+      "formula": "linear",
+      "current": "1e20",
+      "target": "2e31",
+      "chor": "6",
+      "mantissa": 1.4701837812499998,
+      "exponent": 62
+    },
+    {
+      "formula": "linear",
+      "current": "1e20",
+      "target": "2e31",
+      "chor": "150",
+      "mantissa": 9.11109948967237,
+      "exponent": 58
+    },
+    {
+      "formula": "exponential",
+      "current": "1",
+      "target": "2",
+      "chor": "0",
+      "mantissa": 4,
+      "exponent": 0
+    },
+    {
+      "formula": "exponential",
+      "current": "1",
+      "target": "2",
+      "chor": "1",
+      "mantissa": 4,
+      "exponent": 0
+    },
+    {
+      "formula": "exponential",
+      "current": "1",
+      "target": "2",
+      "chor": "6",
+      "mantissa": 3,
+      "exponent": 0
+    },
+    {
+      "formula": "exponential",
+      "current": "1",
+      "target": "2",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "exponential",
+      "current": "5",
+      "target": "10",
+      "chor": "0",
+      "mantissa": 1.985,
+      "exponent": 3
+    },
+    {
+      "formula": "exponential",
+      "current": "5",
+      "target": "10",
+      "chor": "1",
+      "mantissa": 1.885,
+      "exponent": 3
+    },
+    {
+      "formula": "exponential",
+      "current": "5",
+      "target": "10",
+      "chor": "6",
+      "mantissa": 1.459,
+      "exponent": 3
+    },
+    {
+      "formula": "exponential",
+      "current": "5",
+      "target": "10",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0
+    },
+    {
+      "formula": "exponential",
+      "current": "40",
+      "target": "41",
+      "chor": "0",
+      "mantissa": 2.199023255553,
+      "exponent": 12
+    },
+    {
+      "formula": "exponential",
+      "current": "40",
+      "target": "41",
+      "chor": "1",
+      "mantissa": 2.089072092775,
+      "exponent": 12
+    },
+    {
+      "formula": "exponential",
+      "current": "40",
+      "target": "41",
+      "chor": "6",
+      "mantissa": 1.616484162453,
+      "exponent": 12
+    },
+    {
+      "formula": "exponential",
+      "current": "40",
+      "target": "41",
+      "chor": "150",
+      "mantissa": 1.001775984,
+      "exponent": 9
+    },
+    {
+      "formula": "exponential",
+      "current": "49",
+      "target": "50",
+      "chor": "0",
+      "mantissa": 1.1258999068426254,
+      "exponent": 15
+    },
+    {
+      "formula": "exponential",
+      "current": "49",
+      "target": "50",
+      "chor": "1",
+      "mantissa": 1.0696049115004942,
+      "exponent": 15
+    },
+    {
+      "formula": "exponential",
+      "current": "49",
+      "target": "50",
+      "chor": "6",
+      "mantissa": 8.27639891175457,
+      "exponent": 14
+    },
+    {
+      "formula": "exponential",
+      "current": "49",
+      "target": "50",
+      "chor": "150",
+      "mantissa": 5.12909303333,
+      "exponent": 11
+    },
+    {
+      "formula": "exponential",
+      "current": "100",
+      "target": "101",
+      "chor": "0",
+      "mantissa": 2.5353012004564657,
+      "exponent": 30
+    },
+    {
+      "formula": "exponential",
+      "current": "100",
+      "target": "101",
+      "chor": "1",
+      "mantissa": 2.4085361404336423,
+      "exponent": 30
+    },
+    {
+      "formula": "exponential",
+      "current": "100",
+      "target": "101",
+      "chor": "6",
+      "mantissa": 1.8636793527473752,
+      "exponent": 30
+    },
+    {
+      "formula": "exponential",
+      "current": "100",
+      "target": "101",
+      "chor": "150",
+      "mantissa": 1.1549690736822327,
+      "exponent": 27
+    },
+    {
+      "formula": "exponential",
+      "current": "1598",
+      "target": "1599",
+      "chor": "0",
+      "mantissa": 2.223120823854803,
+      "exponent": 481
+    },
+    {
+      "formula": "exponential",
+      "current": "1598",
+      "target": "1599",
+      "chor": "1",
+      "mantissa": 2.1119647826620627,
+      "exponent": 481
+    },
+    {
+      "formula": "exponential",
+      "current": "1598",
+      "target": "1599",
+      "chor": "6",
+      "mantissa": 1.6341980894952346,
+      "exponent": 481
+    },
+    {
+      "formula": "exponential",
+      "current": "1598",
+      "target": "1599",
+      "chor": "150",
+      "mantissa": 1.0127537501851755,
+      "exponent": 478
+    },
+    {
+      "formula": "exponential",
+      "current": "5000",
+      "target": "5001",
+      "chor": "0",
+      "mantissa": 2.8249340642792493,
+      "exponent": 1505
+    },
+    {
+      "formula": "exponential",
+      "current": "5000",
+      "target": "5001",
+      "chor": "1",
+      "mantissa": 2.683687361065287,
+      "exponent": 1505
+    },
+    {
+      "formula": "exponential",
+      "current": "5000",
+      "target": "5001",
+      "chor": "6",
+      "mantissa": 2.0765861222019986,
+      "exponent": 1505
+    },
+    {
+      "formula": "exponential",
+      "current": "5000",
+      "target": "5001",
+      "chor": "150",
+      "mantissa": 1.286912765570638,
+      "exponent": 1502
+    },
+    {
+      "formula": "exponential",
+      "current": "18714",
+      "target": "18715",
+      "chor": "0",
+      "mantissa": 5.975425710612907,
+      "exponent": 5633
+    },
+    {
+      "formula": "exponential",
+      "current": "18714",
+      "target": "18715",
+      "chor": "1",
+      "mantissa": 5.676654425082261,
+      "exponent": 5633
+    },
+    {
+      "formula": "exponential",
+      "current": "18714",
+      "target": "18715",
+      "chor": "6",
+      "mantissa": 4.392486982903675,
+      "exponent": 5633
+    },
+    {
+      "formula": "exponential",
+      "current": "18714",
+      "target": "18715",
+      "chor": "150",
+      "mantissa": 2.72213490712702,
+      "exponent": 5630
+    }
+  ]
+}

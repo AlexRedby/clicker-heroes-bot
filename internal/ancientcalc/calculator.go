@@ -211,6 +211,77 @@ func ancientCostSum(formula string, level *big.Float) *big.Float {
 	panic("unsupported allocation cost formula")
 }
 
+// Bound the official 6144 client's price, including its binary64
+// operations and the addends it drops beyond a ten-exponent gap. Allocation
+// stays at 384 bits; these prices deliberately include a rounding allowance.
+func ancientPrice(formula string, old, target, multiplier *big.Float) (*big.Float, error) {
+	// These small integer operations and their decimal alignment stay exact.
+	if multiplier.Cmp(aConst("1")) == 0 && ((formula == "one" && target.Cmp(aConst("10")) <= 0) || (formula == "linear" && target.Cmp(aConst("4")) <= 0)) {
+		return aSub(ancientCostSum(formula, target), ancientCostSum(formula, old)), nil
+	}
+	if formula == "exponential" && target.Cmp(aConst("4000000")) > 0 {
+		return nil, errors.New("Ancient exponential cost exceeds supported exponent range")
+	}
+	interval := func(level *big.Float) (*big.Float, *big.Float) {
+		if formula != "polynomial1_5" {
+			sum := ancientCostSum(formula, level)
+			error := aMul(sum, aConst("2e-13"))
+			if formula == "linear" && level.Cmp(aConst("1e9")) >= 0 {
+				error = aAdd(error, aMul(level, aConst("0.5")))
+			}
+			if formula == "exponential" {
+				// The client uses 2^(x+1)-2; its power's weighted roundoff
+				// grows with x, and subtraction can discard the two.
+				sum = aSub(sum, aConst("1"))
+				error = aMul(aMul(aAdd(sum, aConst("2")), aAdd(level, aConst("1"))), aConst("2e-13"))
+				if level.Cmp(aConst("32")) >= 0 {
+					error = aAdd(error, aConst("2"))
+				}
+			}
+			return aSub(sum, error), aAdd(sum, error)
+		}
+		y := aAdd(level, aConst("1"))
+		root := aNew().Sqrt(y)
+		power := aMul(y, root)
+		sum := aSub(aAdd(aSub(aMul(aMul(y, power), aConst("0.4")), aMul(power, aConst("0.5"))), aMul(root, aConst("0.125"))), aDiv(aConst("0.00052"), power))
+		// More than 1,000 binary64 unit roundoffs cover input conversion,
+		// the formula's operations, normalization and integer ceiling.
+		error := aAdd(aMul(sum, aConst("2e-13")), aConst("0.001"))
+		if level.Cmp(aConst("10000")) >= 0 {
+			error = aAdd(error, aMul(root, aConst("0.125")))
+		}
+		if level.Cmp(aConst("1e9")) >= 0 {
+			// Dropping x+1's one changes the sum by at most y^(3/2);
+			// dropping the subtracted term changes it by 0.5*y^(3/2).
+			error = aAdd(error, aMul(power, aConst("1.5")))
+		}
+		lower := aSub(sum, error)
+		// The client's Ceiling is a no-op once the exponent reaches 15.
+		lower = aRound(lower, aAdd(sum, error).Cmp(aConst("1e15")) < 0)
+		return lower, aRound(aAdd(sum, error), true)
+	}
+	lowOld, highOld := interval(old)
+	lowTarget, highTarget := interval(target)
+	if lowTarget.Cmp(highOld) <= 0 {
+		return nil, errors.New("Ancient purchase is below supported client precision")
+	}
+	// Cover normalized endpoint representations and range subtraction too.
+	rangeCost := aSub(highTarget, lowOld)
+	if highTarget.Cmp(aMul(lowOld, aConst("1e10"))) >= 0 {
+		// The subtraction can discard the entire old endpoint.
+		rangeCost = highTarget
+	}
+	rangeCost = aAdd(rangeCost, aMul(aAdd(highTarget, highOld), aConst("2e-13")))
+	// Percent5 computes 1 - (100 * (1 - 0.95^level)) * 0.01. Its
+	// absolute binary64 error is bounded even when the power is tiny.
+	discount := multiplier
+	if multiplier.Cmp(aConst("1")) < 0 {
+		discount = aMin(aConst("1"), aAdd(multiplier, aConst("1e-13")))
+	}
+	cost := aRound(aMul(rangeCost, discount), true)
+	return aRound(aMul(cost, aConst("1.0000000000002")), true), nil
+}
+
 // Calculate decodes an exported save and plans purchases for an Active build.
 func Calculate(ctx context.Context, exported []byte, reserve string, skillRate float64, beyond8k bool) (Plan, error) {
 	save, err := decodeAncientSave(ctx, exported)
@@ -221,6 +292,33 @@ func Calculate(ctx context.Context, exported []byte, reserve string, skillRate f
 }
 
 func planAncients(ctx context.Context, save ancientSave, reserve string, skillRate float64, beyond8k bool) (Plan, error) {
+	if err := ctx.Err(); err != nil {
+		return Plan{}, err
+	}
+	wallet, err := aInput(string(save.HeroSouls), "Hero Souls", false)
+	if err != nil {
+		return Plan{}, err
+	}
+	// AddSouls rounds the balance after subtraction. Allow its half-unit
+	// rounding, normalization and save-export error, using the initial wallet.
+	loss := aMax(aConst("1"), aMul(wallet, aConst("2e-13")))
+	if wallet.Cmp(aConst("10")) < 0 {
+		if _, accuracy := wallet.Int(nil); accuracy == big.Exact {
+			loss = aConst("0") // These integer balances and charges stay exact.
+		}
+	}
+	return planAncientsWithPrice(ctx, save, reserve, skillRate, beyond8k, func(formula string, old, target, multiplier *big.Float) (*big.Float, error) {
+		cost, err := ancientPrice(formula, old, target, multiplier)
+		if err != nil {
+			return nil, err
+		}
+		return aRound(aAdd(cost, loss), true), nil
+	})
+}
+
+// Keep allocation separate from pricing so frozen legacy allocations and actual
+// client budgets can be checked with independent price policies.
+func planAncientsWithPrice(ctx context.Context, save ancientSave, reserve string, skillRate float64, beyond8k bool, price func(string, *big.Float, *big.Float, *big.Float) (*big.Float, error)) (Plan, error) {
 	p := Plan{Rows: []Purchase{}, Owned: []Level{}}
 	if err := ctx.Err(); err != nil {
 		return p, err
@@ -378,12 +476,22 @@ func planAncients(ctx context.Context, save ancientSave, reserve string, skillRa
 				continue
 			}
 			target := aMax(old, aRound(goal, true))
+			if def.ID != -1 && def.Formula != "exponential" && target.Cmp(aConst("1e9")) >= 0 && aSub(target, old).Cmp(aMax(aConst("4"), aMul(old, aConst("1e-10")))) < 0 {
+				// ponytail: skip unresolved client increments; interval pricing
+				// can support them once its endpoint errors are correlated.
+				target = old
+			}
 			targets[def.ID] = target
 			cost := aConst("0")
 			if target.Cmp(old) > 0 {
-				cost = aSub(ancientCostSum(def.Formula, target), ancientCostSum(def.Formula, old))
-				if def.ID != -1 {
-					cost = aRound(aMul(cost, multiplier), true)
+				if def.ID == -1 {
+					cost = aSub(target, old)
+				} else {
+					var e error
+					cost, e = price(def.Formula, old, target, multiplier)
+					if e != nil {
+						return nil, e
+					}
 				}
 			}
 			costs[def.ID] = cost
@@ -417,7 +525,7 @@ func planAncients(ctx context.Context, save ancientSave, reserve string, skillRa
 		if err != nil {
 			return p, err
 		}
-		if spent.Cmp(available) < 0 {
+		if spent.Cmp(available) <= 0 {
 			left = mid
 		} else {
 			right = mid

@@ -1,0 +1,647 @@
+{
+  "source": "Official 1.0e12-6144 Polynomial1_5PartialSum / GetAncientCostModifier / BigNumber leaves",
+  "wasm_sha256": "b0a8aa726c336abc9b98a11549cc45da9bec76803a0888752abd7f0fe21456db",
+  "leaf_sha256": "eb382d6fb3a93161f8fbfd616dfa978b8608409ef15ecaf85282b9367a84d3da",
+  "cases": [
+    {
+      "current": "1",
+      "target": "5",
+      "chor": "0",
+      "mantissa": 2.7,
+      "exponent": 1,
+      "collapsed": false
+    },
+    {
+      "current": "1",
+      "target": "5",
+      "chor": "1",
+      "mantissa": 2.6,
+      "exponent": 1,
+      "collapsed": false
+    },
+    {
+      "current": "1",
+      "target": "5",
+      "chor": "6",
+      "mantissa": 2,
+      "exponent": 1,
+      "collapsed": false
+    },
+    {
+      "current": "1",
+      "target": "5",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0,
+      "collapsed": false
+    },
+    {
+      "current": "1",
+      "target": "10",
+      "chor": "0",
+      "mantissa": 1.41,
+      "exponent": 2,
+      "collapsed": false
+    },
+    {
+      "current": "1",
+      "target": "10",
+      "chor": "1",
+      "mantissa": 1.34,
+      "exponent": 2,
+      "collapsed": false
+    },
+    {
+      "current": "1",
+      "target": "10",
+      "chor": "6",
+      "mantissa": 1.04,
+      "exponent": 2,
+      "collapsed": false
+    },
+    {
+      "current": "1",
+      "target": "10",
+      "chor": "150",
+      "mantissa": 1,
+      "exponent": 0,
+      "collapsed": false
+    },
+    {
+      "current": "1598",
+      "target": "1599",
+      "chor": "0",
+      "mantissa": 6.3942,
+      "exponent": 4,
+      "collapsed": false
+    },
+    {
+      "current": "1598",
+      "target": "1599",
+      "chor": "1",
+      "mantissa": 6.0744,
+      "exponent": 4,
+      "collapsed": false
+    },
+    {
+      "current": "1598",
+      "target": "1599",
+      "chor": "6",
+      "mantissa": 4.7003,
+      "exponent": 4,
+      "collapsed": false
+    },
+    {
+      "current": "1598",
+      "target": "1599",
+      "chor": "150",
+      "mantissa": 3,
+      "exponent": 1,
+      "collapsed": false
+    },
+    {
+      "current": "1599",
+      "target": "1600",
+      "chor": "0",
+      "mantissa": 6.3999,
+      "exponent": 4,
+      "collapsed": false
+    },
+    {
+      "current": "1599",
+      "target": "1600",
+      "chor": "1",
+      "mantissa": 6.08,
+      "exponent": 4,
+      "collapsed": false
+    },
+    {
+      "current": "1599",
+      "target": "1600",
+      "chor": "6",
+      "mantissa": 4.7046,
+      "exponent": 4,
+      "collapsed": false
+    },
+    {
+      "current": "1599",
+      "target": "1600",
+      "chor": "150",
+      "mantissa": 3,
+      "exponent": 1,
+      "collapsed": false
+    },
+    {
+      "current": "1600",
+      "target": "1601",
+      "chor": "0",
+      "mantissa": 6.4061,
+      "exponent": 4,
+      "collapsed": false
+    },
+    {
+      "current": "1600",
+      "target": "1601",
+      "chor": "1",
+      "mantissa": 6.0858,
+      "exponent": 4,
+      "collapsed": false
+    },
+    {
+      "current": "1600",
+      "target": "1601",
+      "chor": "6",
+      "mantissa": 4.7091,
+      "exponent": 4,
+      "collapsed": false
+    },
+    {
+      "current": "1600",
+      "target": "1601",
+      "chor": "150",
+      "mantissa": 3,
+      "exponent": 1,
+      "collapsed": false
+    },
+    {
+      "current": "6399",
+      "target": "6400",
+      "chor": "0",
+      "mantissa": 5.12001,
+      "exponent": 5,
+      "collapsed": false
+    },
+    {
+      "current": "6399",
+      "target": "6400",
+      "chor": "1",
+      "mantissa": 4.86401,
+      "exponent": 5,
+      "collapsed": false
+    },
+    {
+      "current": "6399",
+      "target": "6400",
+      "chor": "6",
+      "mantissa": 3.76368,
+      "exponent": 5,
+      "collapsed": false
+    },
+    {
+      "current": "6399",
+      "target": "6400",
+      "chor": "150",
+      "mantissa": 2.34,
+      "exponent": 2,
+      "collapsed": false
+    },
+    {
+      "current": "9999",
+      "target": "10000",
+      "chor": "0",
+      "mantissa": 1,
+      "exponent": 6,
+      "collapsed": false
+    },
+    {
+      "current": "9999",
+      "target": "10000",
+      "chor": "1",
+      "mantissa": 9.5,
+      "exponent": 5,
+      "collapsed": false
+    },
+    {
+      "current": "9999",
+      "target": "10000",
+      "chor": "6",
+      "mantissa": 7.35092,
+      "exponent": 5,
+      "collapsed": false
+    },
+    {
+      "current": "9999",
+      "target": "10000",
+      "chor": "150",
+      "mantissa": 4.56,
+      "exponent": 2,
+      "collapsed": false
+    },
+    {
+      "current": "99999",
+      "target": "100000",
+      "chor": "0",
+      "mantissa": 3.1622776,
+      "exponent": 7,
+      "collapsed": false
+    },
+    {
+      "current": "99999",
+      "target": "100000",
+      "chor": "1",
+      "mantissa": 3.0041638,
+      "exponent": 7,
+      "collapsed": false
+    },
+    {
+      "current": "99999",
+      "target": "100000",
+      "chor": "6",
+      "mantissa": 2.3245647,
+      "exponent": 7,
+      "collapsed": false
+    },
+    {
+      "current": "99999",
+      "target": "100000",
+      "chor": "150",
+      "mantissa": 1.4406,
+      "exponent": 4,
+      "collapsed": false
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "80000000000000000000000",
+      "chor": "0",
+      "mantissa": 2.055100869663649,
+      "exponent": 56,
+      "collapsed": false
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "80000000000000000000000",
+      "chor": "1",
+      "mantissa": 1.9523458261804667,
+      "exponent": 56,
+      "collapsed": false
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "80000000000000000000000",
+      "chor": "6",
+      "mantissa": 1.5106879837061333,
+      "exponent": 56,
+      "collapsed": false
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "80000000000000000000000",
+      "chor": "150",
+      "mantissa": 9.362114242408857,
+      "exponent": 52,
+      "collapsed": false
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "137797300000000000000000",
+      "chor": "0",
+      "mantissa": 2.300865632178609,
+      "exponent": 57,
+      "collapsed": false
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "137797300000000000000000",
+      "chor": "1",
+      "mantissa": 2.1858223505696786,
+      "exponent": 57,
+      "collapsed": false
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "137797300000000000000000",
+      "chor": "6",
+      "mantissa": 1.6913476676322596,
+      "exponent": 57,
+      "collapsed": false
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "137797300000000000000000",
+      "chor": "150",
+      "mantissa": 1.0481707843573609,
+      "exponent": 54,
+      "collapsed": false
+    },
+    {
+      "current": "1e50",
+      "target": "2e50",
+      "chor": "0",
+      "mantissa": 1.862741699796952,
+      "exponent": 125,
+      "collapsed": false
+    },
+    {
+      "current": "1e50",
+      "target": "2e50",
+      "chor": "1",
+      "mantissa": 1.7696046148071045,
+      "exponent": 125,
+      "collapsed": false
+    },
+    {
+      "current": "1e50",
+      "target": "2e50",
+      "chor": "6",
+      "mantissa": 1.3692863178497674,
+      "exponent": 125,
+      "collapsed": false
+    },
+    {
+      "current": "1e50",
+      "target": "2e50",
+      "chor": "150",
+      "mantissa": 8.485812475205725,
+      "exponent": 121,
+      "collapsed": false
+    },
+    {
+      "current": "1e100",
+      "target": "2e100",
+      "chor": "0",
+      "mantissa": 1.862741699796952,
+      "exponent": 250,
+      "collapsed": false
+    },
+    {
+      "current": "1e100",
+      "target": "2e100",
+      "chor": "1",
+      "mantissa": 1.7696046148071045,
+      "exponent": 250,
+      "collapsed": false
+    },
+    {
+      "current": "1e100",
+      "target": "2e100",
+      "chor": "6",
+      "mantissa": 1.3692863178497674,
+      "exponent": 250,
+      "collapsed": false
+    },
+    {
+      "current": "1e100",
+      "target": "2e100",
+      "chor": "150",
+      "mantissa": 8.485812475205725,
+      "exponent": 246,
+      "collapsed": false
+    },
+    {
+      "current": "1e399",
+      "target": "2e399",
+      "chor": "0",
+      "mantissa": 5.890506463931976,
+      "exponent": 997,
+      "collapsed": false
+    },
+    {
+      "current": "1e399",
+      "target": "2e399",
+      "chor": "1",
+      "mantissa": 5.595981140735377,
+      "exponent": 997,
+      "collapsed": false
+    },
+    {
+      "current": "1e399",
+      "target": "2e399",
+      "chor": "6",
+      "mantissa": 4.330063533310539,
+      "exponent": 997,
+      "collapsed": false
+    },
+    {
+      "current": "1e399",
+      "target": "2e399",
+      "chor": "150",
+      "mantissa": 2.683449521872121,
+      "exponent": 994,
+      "collapsed": false
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "70000000000000000000001",
+      "chor": "0",
+      "mantissa": 0,
+      "exponent": 0,
+      "collapsed": true
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "70000000000000000000001",
+      "chor": "1",
+      "mantissa": 0,
+      "exponent": 0,
+      "collapsed": true
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "70000000000000000000001",
+      "chor": "6",
+      "mantissa": 0,
+      "exponent": 0,
+      "collapsed": true
+    },
+    {
+      "current": "70000000000000000000000",
+      "target": "70000000000000000000001",
+      "chor": "150",
+      "mantissa": 0,
+      "exponent": 0,
+      "collapsed": true
+    },
+    {
+      "current": "1e20",
+      "target": "1e24",
+      "chor": "0",
+      "mantissa": 3.9999999996,
+      "exponent": 59,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "1e24",
+      "chor": "1",
+      "mantissa": 3.7999999996200002,
+      "exponent": 59,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "1e24",
+      "chor": "6",
+      "mantissa": 2.940367562205963,
+      "exponent": 59,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "1e24",
+      "chor": "150",
+      "mantissa": 1.8222198977522521,
+      "exponent": 56,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "2e24",
+      "chor": "0",
+      "mantissa": 2.262741699796952,
+      "exponent": 60,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "2e24",
+      "chor": "1",
+      "mantissa": 2.1496046148071044,
+      "exponent": 60,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "2e24",
+      "chor": "6",
+      "mantissa": 1.6633230740997675,
+      "exponent": 60,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "2e24",
+      "chor": "150",
+      "mantissa": 1.0308032373140201,
+      "exponent": 57,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "4e24",
+      "chor": "0",
+      "mantissa": 1.28,
+      "exponent": 61,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "4e24",
+      "chor": "1",
+      "mantissa": 1.216,
+      "exponent": 61,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "4e24",
+      "chor": "6",
+      "mantissa": 9.4091762,
+      "exponent": 60,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "4e24",
+      "chor": "150",
+      "mantissa": 5.8311036733903165,
+      "exponent": 57,
+      "collapsed": false
+    },
+    {
+      "current": "10000",
+      "target": "10004",
+      "chor": "0",
+      "mantissa": 4.001501,
+      "exponent": 6,
+      "collapsed": false
+    },
+    {
+      "current": "10000",
+      "target": "10004",
+      "chor": "150",
+      "mantissa": 1.823,
+      "exponent": 3,
+      "collapsed": false
+    },
+    {
+      "current": "1e9",
+      "target": "1000000004",
+      "chor": "0",
+      "mantissa": 1.26491108698446,
+      "exponent": 14,
+      "collapsed": false
+    },
+    {
+      "current": "1e9",
+      "target": "1000000004",
+      "chor": "150",
+      "mantissa": 5.7623653796,
+      "exponent": 10,
+      "collapsed": false
+    },
+    {
+      "current": "1e10",
+      "target": "10000000004",
+      "chor": "0",
+      "mantissa": 4.000000330961484,
+      "exponent": 15,
+      "collapsed": false
+    },
+    {
+      "current": "1e10",
+      "target": "10000000004",
+      "chor": "150",
+      "mantissa": 1.822220048706,
+      "exponent": 12,
+      "collapsed": false
+    },
+    {
+      "current": "1e11",
+      "target": "100000000010",
+      "chor": "0",
+      "mantissa": 3.1622771068384736,
+      "exponent": 17,
+      "collapsed": false
+    },
+    {
+      "current": "1e11",
+      "target": "100000000010",
+      "chor": "150",
+      "mantissa": 1.44059106671594,
+      "exponent": 14,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "100000000010000000000",
+      "chor": "0",
+      "mantissa": 1.000000082740371,
+      "exponent": 40,
+      "collapsed": false
+    },
+    {
+      "current": "1e20",
+      "target": "100000000010000000000",
+      "chor": "150",
+      "mantissa": 4.55555012176406,
+      "exponent": 36,
+      "collapsed": false
+    },
+    {
+      "current": "1e30",
+      "target": "1000000000100000000000000000000",
+      "chor": "0",
+      "mantissa": 1.000000082740371,
+      "exponent": 65,
+      "collapsed": false
+    },
+    {
+      "current": "1e30",
+      "target": "1000000000100000000000000000000",
+      "chor": "150",
+      "mantissa": 4.55555012176406,
+      "exponent": 61,
+      "collapsed": false
+    }
+  ]
+}

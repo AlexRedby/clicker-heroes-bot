@@ -93,10 +93,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Native Ancient calculator review
 
-- Fix exact-budget allocations in `internal/ancientcalc/calculator.go`: search uses `spent < available` and rejects a fitting plan. Reproduction: Fragsworth=1, Morgulis=1, wallet=5, reserve=0, skill rate=0 returns no purchases; Fragsworth=2 and Morgulis=4 cost exactly 5. Add an independent regression, then rerun the frozen-reference cases and review intended output changes.
-- Verify the installed game's custom-quantity cost for Juggernaut/Solomon before treating `polynomial1_5` estimates as purchase budgets. The inherited cumulative approximation gives 143 at level 10 versus 146 for the sum of individually rounded level costs; a wallet=83 plan reports spending 82 but individually priced levels cost 84. Compare bulk pricing and Chor'gorloth rounding against the client or an observed purchase; keep the reserve safe without iterating through enormous levels.
-- Add independent allocation invariants and small-budget cases alongside reference parity: affordable exact fits, row quantity versus target delta, row costs versus total spending, and remaining souls versus reserve. Frozen outputs alone also preserve upstream mistakes.
-- Preserve context cancellation when `zlib.NewReader` fails in `internal/ancientcalc/save.go`; a canceled context currently becomes `invalid compressed save`. Add a decoder regression that covers cancellation during initialization.
+- Verify installed-binary identity and close the Hero Souls spending live gates below. Static web-client arithmetic checks do not establish native purchase acceptance.
 
 ## Prestige and later upgrades
 
