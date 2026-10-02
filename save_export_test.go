@@ -64,10 +64,7 @@ func TestSaveMenuRecognitionAndExclusiveExport(t *testing.T) {
 	if err := os.Chtimes(old, time.Now().Add(time.Hour), time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile("internal/ancientcalc/testdata/ancient-save.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
+	data := testIntegratedGildSave(t, true)
 	controls := &pauseControl{}
 	window, screen := "101:Clicker Heroes", main
 	var steps []exportStep
@@ -139,6 +136,9 @@ func TestSaveMenuRecognitionAndExclusiveExport(t *testing.T) {
 	}
 	if p.export.requested || p.export.active || p.ancient.plan == nil || p.ancient.plan.savePath != filepath.Join(dir, "clickerHeroSave-new.txt") {
 		t.Fatal("fresh plan not installed")
+	}
+	if p.ancient.plan.Gilds == nil || p.ancient.plan.GildError != "" || p.ancient.plan.Gilds.Cost != "160" || p.ancient.plan.Gilds.Reserve != "1.6" || p.ancient.plan.Gilds.SaveHash != p.ancient.plan.SaveHash {
+		t.Fatalf("fresh plan omitted gild preview: %+v error=%q", p.ancient.plan.Gilds, p.ancient.plan.GildError)
 	}
 	if len(steps) != 3 || steps[0] != exportOpenMenu || steps[1] != exportSave || steps[2] != exportCloseMenu {
 		t.Fatalf("click sequence %v", steps)

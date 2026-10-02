@@ -35,7 +35,7 @@ func main() {
 	ancientBeyond8k := flag.Bool("ancient-beyond8k", false, "best hero is levelled beyond 8000; changes calculator gold allocation")
 	ancientSave := flag.String("ancients-save", "", "exported save for one Ancient purchase batch before normal run actions")
 	exportDir := flag.String("export-dir", "", "folder where Save creates clickerHeroSave*.txt; export and buy Ancients at startup and after Ascension")
-	ancientPlanOutput := flag.String("ancient-plan-out", "artifacts/ancients-plan.json", "Ancient purchase plan output")
+	ancientPlanOutput := flag.String("ancient-plan-out", "artifacts/ancients-plan.json", "Ancient purchase plan and gild redistribution preview output")
 	x := flag.Int("x", 0, "screen X coordinate for click or optional monster clicks in run mode")
 	y := flag.Int("y", 0, "screen Y coordinate for click or optional monster clicks in run mode")
 	interval := flag.Duration("interval", 100*time.Millisecond, "time between optional monster clicks in run mode")

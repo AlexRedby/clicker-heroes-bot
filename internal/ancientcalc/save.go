@@ -107,23 +107,22 @@ func inflateAncientSave(ctx context.Context, input []byte, raw bool) ([]byte, er
 	}
 }
 
-func decodeAncientSave(ctx context.Context, exported []byte) (ancientSave, error) {
+func decodeSavePayload(ctx context.Context, exported []byte) ([]byte, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	var save ancientSave
 	if len(exported) == 0 || len(exported) > MaxSaveInput {
-		return save, errors.New("save must be non-empty and at most 4 MiB")
+		return nil, errors.New("save must be non-empty and at most 4 MiB")
 	}
 	select {
 	case <-ctx.Done():
-		return save, ctx.Err()
+		return nil, ctx.Err()
 	default:
 	}
 	text := strings.TrimSpace(string(exported))
 	text = strings.TrimSpace(strings.TrimPrefix(text, "\ufeff"))
 	if len(text) < 32 {
-		return save, errors.New("invalid save")
+		return nil, errors.New("invalid save")
 	}
 	header := text[:32]
 	var payload []byte
@@ -131,29 +130,29 @@ func decodeAncientSave(ctx context.Context, exported []byte) (ancientSave, error
 	case "7a990d405d2c6fb93aa8fbb0ec1a3b23", "7e8bb5a89f2842ac4af01b3b7e228592":
 		encoded := text[32:]
 		if !validBase64(encoded) {
-			return save, errors.New("invalid save base64")
+			return nil, errors.New("invalid save base64")
 		}
 		var decodeErr error
 		payload, decodeErr = decodeBase64(encoded)
 		if decodeErr != nil || len(payload) == 0 {
-			return save, errors.New("invalid save payload")
+			return nil, errors.New("invalid save payload")
 		}
 		var err error
 		payload, err = inflateAncientSave(ctx, payload, header[0] == '7' && header[1] == 'e')
 		if err != nil {
-			return save, err
+			return nil, err
 		}
 	default:
 		encoded := text
 		if strings.Contains(encoded, "ClickerHeroesAccountSO") {
 			if len(encoded) <= 54 {
-				return save, errors.New("invalid legacy save")
+				return nil, errors.New("invalid legacy save")
 			}
 			encoded = encoded[53 : len(encoded)-1]
 		} else if marker := strings.Index(encoded, "Fe12NAfA3R6z4k0z"); marker >= 0 {
 			prefix, checksum := encoded[:marker], encoded[marker+len("Fe12NAfA3R6z4k0z"):]
 			if len(prefix)%2 != 0 || len(checksum) != 32 {
-				return save, errors.New("invalid legacy save checksum")
+				return nil, errors.New("invalid legacy save checksum")
 			}
 			clean := make([]byte, len(prefix)/2)
 			for i := range clean {
@@ -161,20 +160,32 @@ func decodeAncientSave(ctx context.Context, exported []byte) (ancientSave, error
 			}
 			h := md5.Sum(append(clean, []byte("af0ik392jrmt0nsfdghy0")...))
 			if hex.EncodeToString(h[:]) != checksum {
-				return save, errors.New("invalid legacy save checksum")
+				return nil, errors.New("invalid legacy save checksum")
 			}
 			encoded = string(clean)
 		}
 		if !validBase64(encoded) {
-			return save, errors.New("invalid legacy save")
+			return nil, errors.New("invalid legacy save")
 		}
 		var decodeErr error
 		payload, decodeErr = decodeBase64(encoded)
 		if decodeErr != nil {
-			return save, errors.New("invalid legacy save")
+			return nil, errors.New("invalid legacy save")
 		}
 	}
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func decodeAncientSave(ctx context.Context, exported []byte) (ancientSave, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var save ancientSave
+	payload, err := decodeSavePayload(ctx, exported)
+	if err != nil {
 		return save, err
 	}
 	if err := json.Unmarshal(payload, &save); err != nil {
