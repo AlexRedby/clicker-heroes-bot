@@ -247,8 +247,8 @@ func TestPipelineGildBatchIsolationAndPause(t *testing.T) {
 			if !p.gild.active {
 				t.Fatal("transaction ended before the post-click settling interval")
 			}
-			for _, ch := range jobs {
-				if len(ch) != 0 {
+			for kind, ch := range jobs {
+				if analysisKind(kind) != fishAnalysis && len(ch) != 0 {
 					t.Fatal("background recognition ran during modal settling")
 				}
 			}

@@ -25,7 +25,7 @@ Ordinary capture waits 250 ms (or the shorter configured fish interval) after ca
 
 ## Analysis
 
-- **Fish:** one SIFT worker, scheduled by `-fish-interval`. Its result is shared by collection and hero interaction. Three completed negative observations rearm collection; a persistent visible fish can retry after five seconds.
+- **Fish:** one SIFT worker, scheduled by `-fish-interval` on every recognized game tab, including exclusive Ancient visits and pending confirmations. Covering dialogs, settings and Explorer disable fish input; opening them invalidates earlier fish frames. Slow OCR and export-file reads do not block this worker or its priority input. Three completed negative observations rearm collection; a persistent visible fish can retry after five seconds.
 - **Skills:** one recognition of all nine states per shared frame. Progression reuses the same frame's states; there is no duplicate strip analysis.
 - **Heroes:** only when due on Heroes. Gold, successor price and baseline level share one frame. At most two Tesseract executions run concurrently, each with one OpenMP thread and a three-second execution limit (`-ocr-timeout`). Purchase confirmation reads only row stability and level.
 - **Gild gifts:** an infrequent local icon check on a shared frame (`-gilds`, `-gild-interval`). Modal steps use local templates on later shared frames; they have no OCR or separate capture loop. Opening/advancing a gift invalidates all prior observations and actions.
@@ -41,7 +41,7 @@ Hero purchase and scrollbar actions require a sufficiently recent completed fish
 
 `Q down -> click -> Q up` is one transaction with guaranteed cleanup. Energize and its consumer retain their sequence; Reload waits for confirmed prerequisite casts. Native drag is never interrupted halfway.
 
-Confirmation is controller state, not a private capture/sleep loop. Later shared frames confirm increased hero level, skill cooldown, `x1`, scrollbar bottom or progression mode. Unreadable/no-op results use bounded attempts and the existing retry policies. A failed hero purchase waits for a fish observation at least as recent as its final confirmation frame before counting a failure. Diagnostic PNG encoding runs outside the coordinator with a bounded queue.
+Confirmation is controller state, not a private capture/sleep loop. Later shared frames confirm increased hero level, skill cooldown, `x1`, scrollbar bottom or progression mode. Unreadable/no-op results use bounded attempts and the existing retry policies. A failed hero purchase waits for a fish observation at least as recent as its final confirmation frame before counting a failure. Ancient/main-screen Ascension observations similarly wait for a same-or-later completed fish scan. Collection discards obscured observations and rereads controls while preserving the pending transaction; the actual visible-fish wait extends UI confirmation deadlines without repeating purchase inputs. Diagnostic PNG encoding runs outside the coordinator with a bounded queue.
 
 ## Measurement
 

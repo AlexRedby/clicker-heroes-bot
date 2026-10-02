@@ -115,9 +115,9 @@ func TestSaveMenuRecognitionAndExclusiveExport(t *testing.T) {
 		if i == 0 {
 			p.ascension = ascensionPlanner{highestZone: 110, wallZone: 110, fullCombatFailed: true, lastObservation: now, lastProgress: now}
 		}
-		// No background analyzer should run during this transaction.
+		// Fish remains active; unrelated analyzers wait for this transaction.
 		for kind, ch := range jobs {
-			if analysisKind(kind) != exportAnalysis && len(ch) > 0 {
+			if analysisKind(kind) != exportAnalysis && analysisKind(kind) != fishAnalysis && len(ch) > 0 {
 				t.Fatalf("background job %d", kind)
 			}
 		}

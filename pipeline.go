@@ -137,6 +137,8 @@ type gamePipeline struct {
 	controls                                            *pauseControl
 	frame                                               gameFrame
 	state                                               [analysisCount]observation
+	deferred                                            [analysisCount]observation
+	fishObstructedAt                                    time.Time
 	barriers                                            [analysisCount]uint64
 	queue                                               map[actionKind]gameAction
 	hero                                                heroRunner
@@ -276,6 +278,8 @@ func (p *gamePipeline) reset(generation uint64) {
 	p.layout++
 	p.queue = make(map[actionKind]gameAction)
 	p.state = [analysisCount]observation{}
+	p.deferred = [analysisCount]observation{}
+	p.fishObstructedAt = time.Time{}
 	p.barriers = [analysisCount]uint64{}
 	p.hero.interrupt()
 	p.gild.interrupt()
@@ -504,6 +508,8 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			}
 			p.queue = make(map[actionKind]gameAction)
 			p.state = [analysisCount]observation{}
+			p.deferred = [analysisCount]observation{}
+			p.fishObstructedAt = time.Time{}
 			p.hero.interrupt()
 			p.heroJobFrame = 0
 			p.skill.interrupt()
@@ -516,6 +522,11 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		p.mercenary.captured(p.frame, now)
 		// Slow capture must not consume its own interval and immediately repeat.
 		p.nextCapture = now.Add(time.Since(start) + min(250*time.Millisecond, p.options.fishInterval))
+		// Fish can cover controls on any tab; modal windows cover the fish.
+		if p.fishContext(c) && !now.Before(p.nextFish) {
+			replaceJob(jobs[fishAnalysis], analysisJob{frame: p.frame})
+			p.nextFish = now.Add(p.options.fishInterval)
+		}
 		if p.options.export != nil && p.export.requested {
 			if p.export.active && p.export.step == exportReadFile && p.export.jobFrame == 0 && c.window == p.export.window && c.known && !c.saveMenu {
 				jobCtx, cancel := context.WithDeadline(ctx, p.export.deadline)
@@ -527,12 +538,12 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		if c.saveMenu {
 			return nil
 		}
-		if p.ascension.active && (p.ascension.step == openAscension || p.ascension.step == waitAscensionReset || p.ascension.latest.frame.id == 0) && c.window != "!outside-game" && p.ascension.jobFrame == 0 && p.frame.id > p.ascension.lastInputFrame && !now.Before(p.ascension.nextRead) {
+		if p.ascension.active && p.deferred[ascensionAnalysis].frame.id == 0 && p.fishObstructedAt.IsZero() && !p.state[fishAnalysis].found && (p.ascension.step == openAscension || p.ascension.step == waitAscensionReset || p.ascension.latest.frame.id == 0) && c.window != "!outside-game" && p.ascension.jobFrame == 0 && p.frame.id > p.ascension.lastInputFrame && !now.Before(p.ascension.nextRead) {
 			p.ascension.jobFrame = p.frame.id
 			replaceJob(jobs[ascensionAnalysis], analysisJob{frame: p.frame})
 			p.ascension.nextRead = now.Add(time.Second)
 		}
-		if p.ancient.active && p.ancient.jobFrame == 0 && !now.Before(p.ancient.nextRead) && c.window != "!outside-game" {
+		if p.ancient.active && p.deferred[ancientAnalysis].frame.id == 0 && p.fishObstructedAt.IsZero() && !p.state[fishAnalysis].found && p.ancient.jobFrame == 0 && !now.Before(p.ancient.nextRead) && c.window != "!outside-game" {
 			p.ancient.jobFrame = p.frame.id
 			replaceJob(jobs[ancientAnalysis], analysisJob{frame: p.frame})
 			p.ancient.nextRead = now.Add(300 * time.Millisecond)
@@ -559,10 +570,6 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		// No clicks or hotkeys may reach controls hidden underneath a dialog.
 		if c.questDialog {
 			return nil
-		}
-		if !now.Before(p.nextFish) {
-			replaceJob(jobs[fishAnalysis], analysisJob{frame: p.frame})
-			p.nextFish = now.Add(p.options.fishInterval)
 		}
 		if p.options.progression && p.progression.pending != nil && !now.Before(p.nextProgression) {
 			replaceJob(jobs[progressionAnalysis], analysisJob{frame: p.frame, modeOnly: true})
@@ -660,17 +667,30 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		fmt.Println("save export: fresh plan ready")
 		return nil
 	}
-	if p.export.requested || p.frame.context.saveMenu {
+	if out.kind != fishAnalysis && (p.export.requested || p.frame.context.saveMenu) {
 		p.metrics.dropped++
 		return nil
 	}
-	if out.frame.layout != p.layout || p.frame.context.modal != noGildModal || p.gild.active || out.frame.id < p.barriers[out.kind] || out.frame.id <= p.state[out.kind].frame.id {
+	if out.frame.layout != p.layout || (out.kind != fishAnalysis && (p.frame.context.modal != noGildModal || p.gild.active)) || out.frame.id < p.barriers[out.kind] || out.frame.id <= p.state[out.kind].frame.id {
 		p.metrics.dropped++
 		return nil
 	}
-	if (p.frame.context.ancientDialog || p.ancient.active) && out.kind != ancientAnalysis {
+	if (p.frame.context.ancientDialog || p.ancient.active) && out.kind != ancientAnalysis && out.kind != fishAnalysis {
 		p.metrics.dropped++
 		return nil
+	}
+	// Do not fail a purchase/reset on pixels that a slower fish scan has not checked.
+	if p.readers.fish != nil && p.fishContext(out.frame.context) && (out.kind == ancientAnalysis || out.kind == ascensionAnalysis) {
+		fish := p.state[fishAnalysis]
+		if fish.found {
+			return nil
+		}
+		if !p.fishFresh(now) || fish.frame.id < out.frame.id {
+			if p.deferred[out.kind].frame.id == 0 {
+				p.deferred[out.kind] = out
+			}
+			return nil
+		}
 	}
 	if out.kind == ancientAnalysis {
 		p.ancient.observe(out.ancient, out.err, now)
@@ -681,7 +701,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		}
 		return nil
 	}
-	if (p.frame.context.ascension || p.ascension.active) && out.kind != ascensionAnalysis {
+	if (p.frame.context.ascension || p.ascension.active) && out.kind != ascensionAnalysis && out.kind != fishAnalysis {
 		p.metrics.dropped++
 		return nil
 	}
@@ -701,6 +721,9 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 				p.controls.pauseLocked("Ascension confirmed at zone 1; export a fresh save for Hero Souls spending and restart setup; press F8 when ready", false)
 			}
 		}
+		return nil
+	}
+	if out.kind == fishAnalysis && !p.fishContext(p.frame.context) {
 		return nil
 	}
 	if out.err != nil {
@@ -735,6 +758,15 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 	p.state[out.kind] = out
 	switch out.kind {
 	case fishAnalysis:
+		if out.found {
+			if p.fishObstructedAt.IsZero() {
+				p.fishObstructedAt = now
+			}
+			p.deferred = [analysisCount]observation{}
+		} else if !p.fishObstructedAt.IsZero() {
+			p.extendFishWait(now.Sub(p.fishObstructedAt))
+			p.fishObstructedAt = time.Time{}
+		}
 		if p.fish.shouldClick(out.point, out.found) {
 			p.enqueue(gameAction{kind: collectFish, frame: out.frame, point: out.point}, now)
 		} else {
@@ -746,6 +778,15 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			delete(p.queue, scrollHeroes)
 		}
 		p.hero.finishFailure(out, now)
+		for _, kind := range []analysisKind{ancientAnalysis, ascensionAnalysis} {
+			pending := p.deferred[kind]
+			if pending.frame.id != 0 && out.frame.id >= pending.frame.id {
+				p.deferred[kind] = observation{}
+				if err := p.applyObservation(ctx, pending, now); err != nil {
+					return err
+				}
+			}
+		}
 	case skillAnalysis:
 		p.skill.observeFrame(out.skills, out.frame.id, out.frame.generation, now)
 		if p.options.progression && p.progression.pending == nil && !now.Before(p.nextProgression) && p.progressionJobs != nil {
@@ -787,8 +828,26 @@ func (p *gamePipeline) fishFresh(now time.Time) bool {
 	fish := p.state[fishAnalysis]
 	return fish.frame.id > 0 && now.Sub(fish.frame.at) <= max(3*time.Second, fish.elapsed+p.options.fishInterval*2)
 }
+func (p *gamePipeline) fishContext(c gameContext) bool {
+	return c.known && c.window != "!outside-game" && !c.ancientDialog && !c.ascension && !c.saveMenu && !c.questDialog && c.modal == noGildModal
+}
+
+func (p *gamePipeline) extendFishWait(delay time.Duration) {
+	for _, deadline := range []*time.Time{&p.ancient.deadline, &p.ascension.deadline, &p.gild.deadline} {
+		if !deadline.IsZero() {
+			*deadline = deadline.Add(delay)
+		}
+	}
+	if p.export.step != exportReadFile && !p.export.deadline.IsZero() {
+		p.export.deadline = p.export.deadline.Add(delay)
+	}
+	if p.mercenary.pending != nil {
+		p.mercenary.pending.until = p.mercenary.pending.until.Add(delay)
+	}
+}
+
 func (p *gamePipeline) plan(now time.Time) {
-	if now.Before(p.settleUntil) {
+	if now.Before(p.settleUntil) || !p.fishObstructedAt.IsZero() || p.state[fishAnalysis].found {
 		return
 	}
 	if p.planExport(now) || p.planAncients(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
@@ -822,27 +881,19 @@ func (p *gamePipeline) plan(now time.Time) {
 }
 
 func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
-	// A tab click can open a modal before capture observes it. Do not send a
-	// previously queued hotkey/fish/monster click during that transition.
-	if p.mercenary.pending != nil && p.frame.id <= p.mercenary.pending.action.frame.id {
-		return gameAction{}, false
-	}
-	if p.ascension.active && p.frame.id <= p.ascension.lastInputFrame {
-		return gameAction{}, false
-	}
-	if p.ancient.pending != nil {
-		return gameAction{}, false
-	}
 	for kind := collectFish; kind <= clickMonster; kind++ {
 		action, ok := p.queue[kind]
 		if !ok {
 			continue
 		}
-		if action.frame.layout != p.layout || action.frame.generation != p.generation || (!p.frame.context.known && !(kind == handleExport && action.export.step == exportRestoreGame)) || ((p.frame.context.modal != noGildModal || p.gild.active) && kind != collectGilds) {
+		if kind != collectFish && ((p.mercenary.pending != nil && p.frame.id <= p.mercenary.pending.action.frame.id) || (p.ascension.active && p.frame.id <= p.ascension.lastInputFrame) || p.ancient.pending != nil) {
+			continue
+		}
+		if action.frame.layout != p.layout || action.frame.generation != p.generation || (!p.frame.context.known && !(kind == handleExport && action.export.step == exportRestoreGame)) || ((p.frame.context.modal != noGildModal || p.gild.active) && kind != collectGilds && kind != collectFish) {
 			delete(p.queue, kind)
 			continue
 		}
-		if (p.export.requested || p.frame.context.saveMenu) && kind != handleExport {
+		if (p.export.requested || p.frame.context.saveMenu) && kind != handleExport && kind != collectFish {
 			delete(p.queue, kind)
 			continue
 		}
@@ -850,8 +901,15 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if (p.ancient.active || p.frame.context.ancientDialog || (p.ancient.plan != nil && !p.ancient.finished)) && kind != handleAncient {
+		if (p.ancient.active || p.frame.context.ancientDialog || (p.ancient.plan != nil && !p.ancient.finished)) && kind != handleAncient && kind != collectFish {
 			delete(p.queue, kind)
+			continue
+		}
+		if kind == collectFish && !p.fishContext(p.frame.context) {
+			delete(p.queue, kind)
+			continue
+		}
+		if p.readers.fish != nil && p.fishContext(p.frame.context) && (kind == handleAncient || kind == handleAscension || kind == collectGilds || kind == handleMercenary || (kind == handleExport && action.export.step != exportRestoreGame)) && (!p.fishFresh(now) || p.state[fishAnalysis].found) {
 			continue
 		}
 		if kind == handleAncient && (p.ancient.blocked || !ancientActionStable(action, p.frame)) {
@@ -860,11 +918,11 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			p.ancient.nextRead = now
 			continue
 		}
-		if (p.ascension.active || p.frame.context.ascension) && kind != handleAscension {
+		if (p.ascension.active || p.frame.context.ascension) && kind != handleAscension && kind != collectFish {
 			delete(p.queue, kind)
 			continue
 		}
-		if p.frame.context.questDialog && kind != handleMercenary {
+		if p.frame.context.questDialog && kind != handleMercenary && kind != collectFish {
 			delete(p.queue, kind)
 			continue
 		}
@@ -964,6 +1022,9 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 	}
 	acted, err := p.controls.runClick(ctx, a.frame.generation, func() error {
 		if !(a.kind == handleExport && a.export.step == exportRestoreGame) && p.readers.window != nil && p.readers.window() != a.frame.context.window {
+			return errInputContext
+		}
+		if a.kind == collectFish && (!p.fishContext(p.frame.context) || a.frame.context != p.frame.context) {
 			return errInputContext
 		}
 		switch a.kind {
@@ -1080,10 +1141,14 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 	switch a.kind {
 	case handleExport:
 		p.export.sent(a, now)
+		invalidate(fishAnalysis)
+		p.nextFish = time.Time{}
 		p.queue = make(map[actionKind]gameAction)
 		p.state = [analysisCount]observation{}
 	case handleAncient:
 		p.ancient.sent(a, now)
+		invalidate(fishAnalysis)
+		p.nextFish = time.Time{}
 		p.barriers[ancientAnalysis] = p.frame.id + 1
 		p.queue = make(map[actionKind]gameAction)
 		p.state = [analysisCount]observation{}
@@ -1129,6 +1194,13 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		delete(p.queue, buyHero)
 		delete(p.queue, scrollHeroes)
 	case collectFish:
+		p.queue = make(map[actionKind]gameAction)
+		p.deferred = [analysisCount]observation{}
+		invalidate(ancientAnalysis)
+		invalidate(ascensionAnalysis)
+		p.ancient.latest = ancientObservation{}
+		p.ascension.latest = ascensionObservation{}
+		p.ancient.nextRead, p.ascension.nextRead, p.nextFish = time.Time{}, time.Time{}, time.Time{}
 		p.fish.recordClick(a.point)
 		invalidate(fishAnalysis)
 		invalidate(heroAnalysis)
