@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"image"
 	"image/color"
@@ -15,19 +14,12 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-//go:embed assets/ancient-controls.png
-var ancientControlsPNG []byte
-var ancientControlsImage decodedPNG
 var ancientLevelLabel = regexp.MustCompile(`(?i)^[li]v[li1]\s*`)
 
 func ancientControl(screen image.Image, which int) (image.Point, bool, error) {
 	regions := [...]image.Rectangle{image.Rect(475, 265, 805, 295), image.Rect(581, 370, 695, 420)}
-	refs := [...]image.Rectangle{image.Rect(0, 0, 660, 60), image.Rect(0, 60, 228, 160)}
-	atlas, err := ancientControlsImage.get(ancientControlsPNG)
-	if err != nil {
-		return image.Point{}, false, err
-	}
-	found, err := matchControl(screen, regions[which], atlas, refs[which])
+	names := [...]string{"ancients/quantity-title.png", "ancients/quantity-okay.png"}
+	found, err := matchControl(screen, regions[which], names[which])
 	r := controlRect(screen, regions[which])
 	return r.Min.Add(r.Size().Div(2)), found, err
 }

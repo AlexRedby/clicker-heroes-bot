@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"image"
 	"image/draw"
@@ -16,28 +15,20 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// References come from the user's full-screen game frames.
-//
-//go:embed assets/mercenary-title.png
-var mercenaryTitlePNG []byte
-
-//go:embed assets/mercenary-tab.png
-var mercenaryTabPNG []byte
-var mercenaryTitleImage, mercenaryTabImage decodedPNG
 var mercenaryTabScale struct {
 	sync.Mutex
 	size  image.Point
 	image image.Image
 }
 
-func mercenaryTemplate(screen image.Image, region image.Rectangle, reference *decodedPNG, data []byte, originalSize image.Point) bool {
+func mercenaryTemplate(screen image.Image, region image.Rectangle, name string, originalSize image.Point) bool {
 	if screen == nil || screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 {
 		return false
 	}
 	region = region.Intersect(screen.Bounds())
 	crop := image.NewRGBA(image.Rect(0, 0, region.Dx(), region.Dy()))
 	draw.Draw(crop, crop.Bounds(), screen, region.Min, draw.Src)
-	source, err := reference.get(data)
+	source, err := templateImage(name)
 	if err != nil {
 		return false
 	}
@@ -84,7 +75,7 @@ func mercenaryQuestDialog(screen image.Image) bool {
 	}
 	b := screen.Bounds()
 	// Match the specific title, not just a cream modal with purple text.
-	return mercenaryTemplate(screen, image.Rectangle{Min: mercenaryPoint(b, 278, 91), Max: mercenaryPoint(b, 722, 131)}, &mercenaryTitleImage, mercenaryTitlePNG, image.Pt(1105, 43))
+	return mercenaryTemplate(screen, image.Rectangle{Min: mercenaryPoint(b, 278, 91), Max: mercenaryPoint(b, 722, 131)}, "mercenaries/quest-title.png", image.Pt(1105, 43))
 }
 
 func mercenaryNotification(screen image.Image) bool {
@@ -92,7 +83,7 @@ func mercenaryNotification(screen image.Image) bool {
 		return false
 	}
 	b := screen.Bounds()
-	source, err := mercenaryTabImage.get(mercenaryTabPNG)
+	source, err := templateImage("mercenaries/tab.png")
 	if err != nil {
 		return false
 	}

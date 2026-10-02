@@ -1,13 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	_ "embed"
 	"fmt"
 	"image"
 	"image/draw"
-	"sync"
 
 	"gocv.io/x/gocv"
 )
@@ -30,26 +27,6 @@ func templateScore(scene, source gocv.Mat, size image.Point) (float32, error) {
 	_, score, _, _ := gocv.MinMaxLoc(result)
 	return score, nil
 }
-
-// Upper icon strips exclude changing cooldown text and outer glow.
-//
-//go:embed assets/skill-icons.png
-var skillIconsPNG []byte
-
-type decodedPNG struct {
-	once  sync.Once
-	image image.Image
-	err   error
-}
-
-func (p *decodedPNG) get(data []byte) (image.Image, error) {
-	p.once.Do(func() {
-		p.image, _, p.err = image.Decode(bytes.NewReader(data))
-	})
-	return p.image, p.err
-}
-
-var skillIconsImage decodedPNG
 
 func skillButton(screen image.Image, index int) image.Point {
 	b := screen.Bounds()
@@ -114,20 +91,6 @@ func readSkillStates(ctx context.Context, screen image.Image) ([9]skillState, er
 	if w < 500 || h < 500 {
 		return states, nil
 	}
-	atlasImage, err := skillIconsImage.get(skillIconsPNG)
-	if err != nil {
-		return states, fmt.Errorf("decode skill icons: %w", err)
-	}
-	atlasColor, err := gocv.ImageToMatRGB(atlasImage)
-	if err != nil {
-		return states, fmt.Errorf("convert skill icons: %w", err)
-	}
-	defer atlasColor.Close()
-	atlas := gocv.NewMat()
-	defer atlas.Close()
-	if err := gocv.CvtColor(atlasColor, &atlas, gocv.ColorBGRToGray); err != nil {
-		return states, fmt.Errorf("grayscale skill icons: %w", err)
-	}
 	for i := range states {
 		if err := ctx.Err(); err != nil {
 			return states, err
@@ -145,13 +108,25 @@ func readSkillStates(ctx context.Context, screen image.Image) ([9]skillState, er
 		region := image.Rect(center.X-w*17/1000, center.Y-h*29/1000, center.X+w*17/1000, center.Y-h*9/1000).Intersect(b)
 		crop := image.NewRGBA(image.Rect(0, 0, region.Dx(), region.Dy()))
 		draw.Draw(crop, crop.Bounds(), screen, region.Min, draw.Src)
+		// Each sample is the upper strip, excluding cooldown text and outer glow.
+		reference, err := templateImage(fmt.Sprintf("skills/skill-%02d.png", i+1))
+		if err != nil {
+			return states, err
+		}
 		color, err := gocv.ImageToMatRGB(crop)
 		if err != nil {
 			return states, err
 		}
-		gray := gocv.NewMat()
-		strip := atlas.Region(image.Rect(0, i*11, 64, (i+1)*11))
-		err = gocv.CvtColor(color, &gray, gocv.ColorBGRToGray)
+		stripColor, err := gocv.ImageToMatRGB(reference)
+		if err != nil {
+			color.Close()
+			return states, err
+		}
+		gray, strip := gocv.NewMat(), gocv.NewMat()
+		err = gocv.CvtColor(stripColor, &strip, gocv.ColorBGRToGray)
+		if err == nil {
+			err = gocv.CvtColor(color, &gray, gocv.ColorBGRToGray)
+		}
 		if err == nil {
 			var score float32
 			score, err = templateScore(gray, strip, image.Pt(max(1, w*64/2560), max(1, h*11/1440)))
@@ -167,6 +142,7 @@ func readSkillStates(ctx context.Context, screen image.Image) ([9]skillState, er
 				states[i].Known = score >= threshold
 			}
 		}
+		stripColor.Close()
 		strip.Close()
 		color.Close()
 		gray.Close()

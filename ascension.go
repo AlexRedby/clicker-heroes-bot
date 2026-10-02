@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"image"
 	"math"
@@ -14,9 +13,6 @@ import (
 	"clicker-heroes-bot/internal/ancientcalc"
 )
 
-//go:embed assets/ascension-controls.png
-var ascensionControlsPNG []byte
-var ascensionControlsImage decodedPNG
 var ascensionRewardLabel = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?(?:[eE][0-9]+)?)\s+Hero Souls?$`)
 
 const (
@@ -41,15 +37,8 @@ func ascensionControl(screen image.Image, control int) (image.Point, bool, error
 		image.Rect(485, 468, 625, 530),   // Yes; Quick Ascension is a different button below it.
 		image.Rect(655, 468, 796, 530),   // No.
 	}
-	references := [...]image.Rectangle{
-		image.Rect(0, 0, 28, 32), image.Rect(0, 56, 552, 100),
-		image.Rect(0, 100, 280, 224), image.Rect(0, 224, 282, 348),
-	}
-	atlas, err := ascensionControlsImage.get(ascensionControlsPNG)
-	if err != nil {
-		return image.Point{}, false, err
-	}
-	found, err := matchControl(screen, regions[control], atlas, references[control])
+	names := [...]string{"ascension/spiral.png", "ascension/title.png", "ascension/confirm.png", "ascension/cancel.png"}
+	found, err := matchControl(screen, regions[control], names[control])
 	r := controlRect(screen, regions[control])
 	return r.Min.Add(r.Size().Div(2)), found, err
 }

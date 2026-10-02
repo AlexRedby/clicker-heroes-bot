@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"image"
 	"image/draw"
@@ -15,8 +14,6 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-//go:embed assets/progression-icons.png
-var progressionIconsPNG []byte
 var zoneLabel = regexp.MustCompile(`(?i)[li]v[li]\s*([0-9]+)\s*$`)
 
 func progressionMode(screen image.Image) (known, enabled bool, err error) {
@@ -34,18 +31,16 @@ func progressionMode(screen image.Image) (known, enabled bool, err error) {
 		return false, false, err
 	}
 	defer scene.Close()
-	atlasImage, err := progressionIconsImage.get(progressionIconsPNG)
-	if err != nil {
-		return false, false, err
-	}
-	atlas, err := gocv.ImageToMatRGB(atlasImage)
-	if err != nil {
-		return false, false, fmt.Errorf("convert progression icons: %w", err)
-	}
-	defer atlas.Close()
 	var scores [2]float32
-	for i := range scores {
-		icon := atlas.Region(image.Rect(i*48, 0, (i+1)*48, 48))
+	for i, name := range []string{"progression/enabled.png", "progression/disabled.png"} {
+		reference, err := templateImage(name)
+		if err != nil {
+			return false, false, err
+		}
+		icon, err := gocv.ImageToMatRGB(reference)
+		if err != nil {
+			return false, false, fmt.Errorf("convert progression icon: %w", err)
+		}
 		scores[i], err = templateScore(scene, icon, image.Pt(max(1, w*48/2560), max(1, h*48/1440)))
 		icon.Close()
 		if err != nil {
@@ -56,8 +51,6 @@ func progressionMode(screen image.Image) (known, enabled bool, err error) {
 	margin := math.Abs(float64(scores[0] - scores[1]))
 	return best >= 0.85 && margin >= 0.1, scores[0] > scores[1], nil
 }
-
-var progressionIconsImage decodedPNG
 
 func progressionBuffs(states [9]skillState) uint8 {
 	var buffs uint8

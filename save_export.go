@@ -2,25 +2,16 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"image"
 	"time"
 )
 
-//go:embed assets/save-controls.png
-var saveControlsPNG []byte
-var saveControlsImage decodedPNG
-
 func saveControl(screen image.Image, which int) (image.Point, bool, error) {
 	// Icon patches stay inside the opaque artwork, excluding surrounding scenery.
 	regions := [...]image.Rectangle{image.Rect(290, 192, 449, 216), image.Rect(1006, 137, 1034, 165), image.Rect(1233, 17, 1255, 39)}
-	refs := [...]image.Rectangle{image.Rect(0, 0, 318, 48), image.Rect(0, 48, 56, 104), image.Rect(0, 104, 44, 148)}
-	atlas, err := saveControlsImage.get(saveControlsPNG)
-	if err != nil {
-		return image.Point{}, false, err
-	}
-	found, err := matchControl(screen, regions[which], atlas, refs[which])
+	names := [...]string{"ui/save.png", "ui/menu-close.png", "ui/settings.png"}
+	found, err := matchControl(screen, regions[which], names[which])
 	r := controlRect(screen, regions[which])
 	return r.Min.Add(r.Size().Div(2)), found, err
 }

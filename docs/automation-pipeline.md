@@ -31,7 +31,7 @@ Ordinary capture waits 250 ms (or the shorter configured fish interval) after ca
 - **Gild gifts:** an infrequent local icon check on a shared frame (`-gilds`, `-gild-interval`). Modal steps use local templates on later shared frames; they have no OCR or separate capture loop. Opening/advancing a gift invalidates all prior observations and actions.
 - **Progression:** zone and conditional damage OCR every two seconds, using shared combat buffs. An `A` confirmation checks only the boot icon and can proceed independently of the skill worker.
 
-Decoded icon atlases are cached as immutable Go images. Native OpenCV matrices remain local to each call and are closed. OCR is not repeated while a recognized decision waits for fish analysis. Decisions retain their source frame and expire by age or dependent input/context changes; there is no persistent cross-decision OCR cache.
+Named PNG templates under `assets/` are embedded in the executable and decoded once into immutable Go images. Each file contains only its recognition sample; screen regions and click points remain in the feature code. Native OpenCV matrices remain local to each call and are closed. OCR is not repeated while a recognized decision waits for fish analysis. Decisions retain their source frame and expire by age or dependent input/context changes; there is no persistent cross-decision OCR cache.
 
 ## Input and confirmation
 
