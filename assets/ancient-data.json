@@ -1,0 +1,166 @@
+{
+  "ancients": [
+    {
+      "id": 3,
+      "name": "Solomon",
+      "formula": "polynomial1_5"
+    },
+    {
+      "id": 4,
+      "name": "Libertas",
+      "formula": "linear"
+    },
+    {
+      "id": 5,
+      "name": "Siyalatas",
+      "formula": "linear"
+    },
+    {
+      "id": 6,
+      "name": "Khrysos",
+      "formula": "quadratic"
+    },
+    {
+      "id": 7,
+      "name": "Thusia",
+      "formula": "quadratic"
+    },
+    {
+      "id": 8,
+      "name": "Mammon",
+      "formula": "linear"
+    },
+    {
+      "id": 9,
+      "name": "Mimzee",
+      "formula": "linear"
+    },
+    {
+      "id": 10,
+      "name": "Pluto",
+      "formula": "linear"
+    },
+    {
+      "id": 11,
+      "name": "Dogcog",
+      "formula": "exponential"
+    },
+    {
+      "id": 12,
+      "name": "Fortuna",
+      "formula": "exponential"
+    },
+    {
+      "id": 13,
+      "name": "Atman",
+      "formula": "exponential"
+    },
+    {
+      "id": 14,
+      "name": "Dora",
+      "formula": "exponential"
+    },
+    {
+      "id": 15,
+      "name": "Bhaal",
+      "formula": "linear"
+    },
+    {
+      "id": 16,
+      "name": "Morgulis",
+      "formula": "one"
+    },
+    {
+      "id": 17,
+      "name": "Chronos",
+      "formula": "exponential"
+    },
+    {
+      "id": 18,
+      "name": "Bubos",
+      "formula": "exponential"
+    },
+    {
+      "id": 19,
+      "name": "Fragsworth",
+      "formula": "linear"
+    },
+    {
+      "id": 20,
+      "name": "Vaagur",
+      "formula": "exponential"
+    },
+    {
+      "id": 21,
+      "name": "Kumawakamaru",
+      "formula": "exponential"
+    },
+    {
+      "id": 22,
+      "name": "Chawedo",
+      "formula": "exponential"
+    },
+    {
+      "id": 23,
+      "name": "Hecatoncheir",
+      "formula": "exponential"
+    },
+    {
+      "id": 24,
+      "name": "Berserker",
+      "formula": "exponential"
+    },
+    {
+      "id": 25,
+      "name": "Sniperino",
+      "formula": "exponential"
+    },
+    {
+      "id": 26,
+      "name": "Kleptos",
+      "formula": "exponential"
+    },
+    {
+      "id": 27,
+      "name": "Energon",
+      "formula": "exponential"
+    },
+    {
+      "id": 28,
+      "name": "Argaiv",
+      "formula": "linear"
+    },
+    {
+      "id": 29,
+      "name": "Juggernaut",
+      "formula": "polynomial1_5"
+    },
+    {
+      "id": 30,
+      "name": "Iris",
+      "formula": "quadratic"
+    },
+    {
+      "id": 31,
+      "name": "Revolc",
+      "formula": "exponential"
+    },
+    {
+      "id": 32,
+      "name": "Nogardnit",
+      "formula": "polynomial1_5"
+    }
+  ],
+  "outsiders": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ]
+}

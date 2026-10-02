@@ -3,6 +3,7 @@ module clicker-heroes-bot
 go 1.27.1
 
 require (
+	github.com/ALTree/bigfloat v0.3.0
 	github.com/go-vgo/robotgo v1.1.0
 	github.com/robotn/gohook v0.42.3
 	gocv.io/x/gocv v0.43.0

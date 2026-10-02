@@ -11,11 +11,7 @@ Fish detection uses GoCV 0.43.0 with native OpenCV 4.13. Install OpenCV before b
 
 Hero leveling, automatic progression, Ascension and Ancient purchases additionally require the `tesseract` executable with English OCR data in `PATH`. Enable **Always use scientific notation** in the game's settings so gold, prices and damage use the same readable format.
 
-Ancient calculations additionally require Node.js 18+ and npm. From the project directory, install the pinned calculator dependencies once:
-
-```sh
-npm ci --prefix tools/ancients --ignore-scripts
-```
+Ancient calculations run inside the Go application. The game data is embedded in the binary; no additional runtime or project-directory files are required for the calculator.
 
 ## Run
 
@@ -74,7 +70,7 @@ Export a fresh save using the game settings. Preview an Active-build allocation 
 go run . -mode ancients-plan -save "path/to/clickerHeroSave.txt"
 ```
 
-The bot runs the [MIT Ancient calculator](https://github.com/tomcur/ClickerHeroesCalculator) locally. It uses saved Ancient/Outsider levels and current Hero Souls, excludes pending Ascension rewards, and retains the calculator's soul bank plus a 1% reserve. `-ancient-reserve` accepts a percentage or an absolute scientific value; `-ancient-skill-rate` sets the skill-Ancient allocation from 0 to 1 (default 1). Set `-ancient-beyond8k` if your best hero is levelled beyond 8000, matching the calculator's Wepwawet setting. Large quantities stay decimal strings. The preview is saved to `artifacts/ancients-plan.json`; the exported save is read only.
+The bot includes a Go port of the [MIT Ancient calculator](https://github.com/tomcur/ClickerHeroesCalculator). It uses saved Ancient/Outsider levels and current Hero Souls, excludes pending Ascension rewards, and retains the calculator's soul bank plus a 1% reserve. `-ancient-reserve` accepts a percentage or an absolute scientific value; `-ancient-skill-rate` sets the skill-Ancient allocation from 0 to 1 (default 1). Set `-ancient-beyond8k` if your best hero is levelled beyond 8000, matching the calculator's Wepwawet setting. Large quantities stay decimal strings. Allocation uses 384-bit arithmetic, the reference Active formulas and search, and rounded-down 15-digit purchase inputs. The native regression suite compares plans against frozen reference results, including a `1e1000` soul budget. The preview is saved to `artifacts/ancients-plan.json`; the exported save is read only.
 
 Run one purchase batch before ordinary automation:
 
@@ -99,8 +95,6 @@ The [game hotkey reference](docs/hotkeys.md) records keyboard actions, target ta
 ## Check the project
 
 ```sh
-npm ci --prefix tools/ancients --ignore-scripts
-node tools/ancients/plan.test.cjs
 go fmt ./...
 go test ./...
 go build .

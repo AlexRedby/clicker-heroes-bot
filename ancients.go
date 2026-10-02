@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,9 +9,9 @@ import (
 	"fmt"
 	"github.com/go-vgo/robotgo"
 	"image"
+	"io"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -48,8 +47,8 @@ type ancientPlan struct {
 
 var ancientDecimal = regexp.MustCompile(`^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]{1,5})?$`)
 
-// Plans retain Decimal's original strings. Big floats only validate the budget;
-// the hero OCR log10 representation cannot retain integer purchase quantities.
+// Plans keep decimal strings; the hero OCR log10 representation cannot
+// retain integer purchase quantities.
 func ancientValue(s string) (*big.Float, error) {
 	if len(s) > 10000 || !ancientDecimal.MatchString(s) {
 		return nil, errors.New("invalid Ancient quantity")
@@ -132,56 +131,33 @@ func calculateAncients(ctx context.Context, savePath, reserve string, skillRate 
 	if !(skillRate >= 0 && skillRate <= 1) {
 		return plan, errors.New("-ancient-skill-rate must be between 0 and 1")
 	}
-	info, err := os.Stat(savePath)
+	file, err := os.Open(savePath)
+	if err != nil {
+		return plan, fmt.Errorf("read exported save: %w", err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
 	if err != nil {
 		return plan, fmt.Errorf("read exported save: %w", err)
 	}
 	if !info.Mode().IsRegular() || info.Size() == 0 || info.Size() > 4<<20 {
 		return plan, errors.New("exported save must be a nonempty regular file no larger than 4 MiB")
 	}
-	save, err := os.ReadFile(savePath)
+	save, err := io.ReadAll(io.LimitReader(file, maxAncientSaveInput+1))
 	if err != nil {
 		return plan, fmt.Errorf("read exported save: %w", err)
 	}
-	request, err := json.Marshal(struct {
-		Save      string  `json:"save"`
-		Reserve   string  `json:"reserve"`
-		SkillRate float64 `json:"skillRate"`
-		Beyond8k  bool    `json:"beyond8k"`
-	}{string(save), reserve, skillRate, beyond8k})
-	if err != nil {
-		return plan, err
-	}
-	script := filepath.Join("tools", "ancients", "plan.cjs")
-	if _, err := os.Stat(script); err != nil {
-		return plan, errors.New("run from the project directory containing tools/ancients/plan.cjs")
-	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "node", script)
-	cmd.Stdin = bytes.NewReader(request)
-	var stderr cappedBuffer
-	stderr.n = 2048
-	cmd.Stderr = &stderr
-	output, err := cmd.Output()
+	decoded, err := decodeAncientSave(ctx, save)
 	if err != nil {
-		if ctx.Err() != nil {
-			return plan, fmt.Errorf("Ancient calculator: %w", ctx.Err())
-		}
-		if strings.Contains(stderr.b.String(), "Cannot find module") {
-			return plan, errors.New("Ancient calculator dependencies missing; run npm ci --prefix tools/ancients")
-		}
-		return plan, fmt.Errorf("Ancient calculator: %w: %s", err, strings.TrimSpace(stderr.b.String()))
-	}
-	if len(output) > 1<<20 {
-		return plan, errors.New("Ancient calculator output exceeds 1 MiB")
-	}
-	if err := json.Unmarshal(output, &plan); err != nil {
-		return plan, fmt.Errorf("decode Ancient plan: %w", err)
-	}
-	if err := plan.validate(); err != nil {
 		return plan, err
 	}
+	plan, err = planAncients(ctx, decoded, reserve, skillRate, beyond8k)
+	if err != nil {
+		return plan, fmt.Errorf("Ancient calculator: %w", err)
+	}
+
 	sum := sha256.Sum256(save)
 	plan.SaveHash = hex.EncodeToString(sum[:])
 	plan.CreatedAt = time.Now().UTC()

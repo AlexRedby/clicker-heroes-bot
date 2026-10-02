@@ -1,0 +1,2435 @@
+{
+  "source": "tomcur/ClickerHeroesCalculator 1c35f5598f210c689a618a7e46a14769f7bf9a39 with decimal.js 10.4.3, precision 100",
+  "cases": [
+    {
+      "name": "small",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bY/PCsIwDIffJech7XT+2QOIR3GC4K2s0RVmK03rZezdTSdIB7uUpt/3S5MBbHzdnO/1BQkDQb0roEPvGhd7rkDiFrKXRrXePEyLemJVYubZIYWjsYY61Hdn8YyeDIWkCCHYUbY1aMPU4uqC6n+ISfDKUotWM4Y6+Ih/m78fZvcqHT1+MMU3HKY3o1M2rYCxAHnIPSmWRFkms9znZrUkrlcVjCO7LgYymhdLkVlR5k1Esscv",
+        "reserve": "100",
+        "skillRate": 1,
+        "beyond8k": false
+      },
+      "expected": {
+        "souls": "1000000",
+        "reserve": "100",
+        "spent": "499072",
+        "invested": "15.5",
+        "remaining": "500928",
+        "ascensions": 7,
+        "rows": [
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "current": "10",
+            "target": "706",
+            "quantity": "696",
+            "cost": "249516"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "current": "5",
+            "target": "706",
+            "quantity": "701",
+            "cost": "249556"
+          }
+        ],
+        "owned": [
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "4"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "10"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "5"
+          }
+        ]
+      }
+    },
+    {
+      "name": "small-percent",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bY/PCsIwDIffJech7XT+2QOIR3GC4K2s0RVmK03rZezdTSdIB7uUpt/3S5MBbHzdnO/1BQkDQb0roEPvGhd7rkDiFrKXRrXePEyLemJVYubZIYWjsYY61Hdn8YyeDIWkCCHYUbY1aMPU4uqC6n+ISfDKUotWM4Y6+Ih/m78fZvcqHT1+MMU3HKY3o1M2rYCxAHnIPSmWRFkms9znZrUkrlcVjCO7LgYymhdLkVlR5k1Esscv",
+        "reserve": "1%",
+        "skillRate": 1,
+        "beyond8k": false
+      },
+      "expected": {
+        "souls": "1000000",
+        "reserve": "10000",
+        "spent": "494842",
+        "invested": "15.5",
+        "remaining": "505158",
+        "ascensions": 7,
+        "rows": [
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "current": "10",
+            "target": "703",
+            "quantity": "693",
+            "cost": "247401"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "current": "5",
+            "target": "703",
+            "quantity": "698",
+            "cost": "247441"
+          }
+        ],
+        "owned": [
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "4"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "10"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "5"
+          }
+        ]
+      }
+    },
+    {
+      "name": "discount",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bY/PCsIwDIffJech3bT+2QOIR3GC4K200RVmK03nZezdTSdIB7uUpt/3S5MBXP+6+dCZCxJGgnpXQIvBN77vuIISt5C9NEoH+7AazcRkYvbZIsWjdZZaNHfv8IyBLMWkCCHYUU5bdHFqcfVRdT/EJAblSKMzjKGOoce/zd8Ps7tMR4cfTPENh+nN6JRNK2AsoDzkXimWxLJKZrXPTbkkrlcSxpFd30eyhhdLkVlR5U3WyR6/",
+        "reserve": "100",
+        "skillRate": 1,
+        "beyond8k": false
+      },
+      "expected": {
+        "souls": "1000000",
+        "reserve": "100",
+        "spent": "461228",
+        "invested": "15.5",
+        "remaining": "538772",
+        "ascensions": 7,
+        "rows": [
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "current": "10",
+            "target": "733",
+            "quantity": "723",
+            "cost": "230597"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "current": "5",
+            "target": "733",
+            "quantity": "728",
+            "cost": "230631"
+          }
+        ],
+        "owned": [
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "4"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "10"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "5"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zero-wallet",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bY/BCgIhEIbfxfMSuiXVPkB0jDYIuolOrbBpONpl8d0bC8KFvYg/3/fP6MRcel59GM0ZECKybtuwAYLvfRopMc6q3Csd7N1qMEQEyMLsYwCMB+ssDmBu3sEJAlqMReG89JXTFlz8jrj4qMYfIhKDcqjBGcKsiyHB36bl0+wuyzHCG0p9Q2V8ETrO3pobJva1J/iSKNpitrvalEvieiVZzuT6FNEa+lipzEJbD+HFzh8=",
+        "reserve": "0",
+        "skillRate": 1,
+        "beyond8k": false
+      },
+      "expected": {
+        "souls": "0",
+        "reserve": "0",
+        "spent": "0",
+        "invested": "15.5",
+        "remaining": "0",
+        "ascensions": 7,
+        "rows": [],
+        "owned": [
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "4"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "10"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "5"
+          }
+        ]
+      }
+    },
+    {
+      "name": "all-reserved",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bY/PCsIwDIffJech7XT+2QOIR3GC4K2s0RVmK03rZezdTSdIB7uUpt/3S5MBbHzdnO/1BQkDQb0roEPvGhd7rkDiFrKXRrXePEyLemJVYubZIYWjsYY61Hdn8YyeDIWkCCHYUbY1aMPU4uqC6n+ISfDKUotWM4Y6+Ih/m78fZvcqHT1+MMU3HKY3o1M2rYCxAHnIPSmWRFkms9znZrUkrlcVjCO7LgYymhdLkVlR5k1Esscv",
+        "reserve": "100%",
+        "skillRate": 1,
+        "beyond8k": false
+      },
+      "expected": {
+        "souls": "1000000",
+        "reserve": "1000000",
+        "spent": "0",
+        "invested": "15.5",
+        "remaining": "1000000",
+        "ascensions": 7,
+        "rows": [],
+        "owned": [
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "4"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "10"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "5"
+          }
+        ]
+      }
+    },
+    {
+      "name": "full",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bZLNSsUwEIXfJesinfw2fQDX4hUEd6UdvYGaQpO6kfvuJrkqmZJN6Xw5M3MOzDfzx+frtq/LMwaMgY1WdOyK+3bZjjWVDB6MUlKJAaTtYUA1sEpwmebdvbsZlyLl3Ciuso4bI1HzrHUfVwzx0XkXrri8bR6fcA8uRDaCkcJ2bPKzQx/LxJctTisbBfQdi/vkw4x+SY9sjPuB/9pk7Zv8y/xZ8QtTM+PIB3brmKqh+IVDC9oWhL5JoaagbIGcQHlXCgK1LFBSCAWqln3QNZWoTKGGDtAFDi1TtjWVk1TAi5TTULIvkIbSokDR2MRPoe7tJBSIEp9ruqi45zSSvM+kkf7ck0wGk8dEBbUvVIHEvi3SW+LbEYNb0g3mZ1LUU/q8rKp1nljVIgN5aqgTg0qgTgsygTqpOl0jnA5RnG9QJP+3Hw==",
+        "reserve": "1%",
+        "skillRate": 1,
+        "beyond8k": false
+      },
+      "expected": {
+        "souls": "1.7554538149018e+58",
+        "reserve": "1.7554538149018e+56",
+        "spent": "1.7378992758318929877034934823643062636767319834134917674854e+58",
+        "invested": "",
+        "remaining": "1.75545390699070122965065176356937363232680165865082325146e+56",
+        "ascensions": 93,
+        "rows": [
+          {
+            "id": 8,
+            "name": "Mammon",
+            "current": "3e+28",
+            "target": "7.7743113216767373184718704918e+28",
+            "quantity": "4.77431132167673e+28",
+            "cost": "1.890653274647380571673808901420410502496798687109046204923e+57"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "current": "3e+28",
+            "target": "7.7743113216767373184718704918e+28",
+            "quantity": "4.77431132167673e+28",
+            "cost": "1.890653274647380571673808901420410502496798687109046204923e+57"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "current": "3e+28",
+            "target": "7.7743113216767373184718704918e+28",
+            "quantity": "4.77431132167673e+28",
+            "cost": "1.890653274647380571673808901420410502496798687109046204923e+57"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "current": "159",
+            "target": "185",
+            "quantity": "26",
+            "cost": "7.209760177426924245244614471534080244268501097083071811e+55"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "current": "148",
+            "target": "184",
+            "quantity": "36",
+            "cost": "3.6048801423779042992365628262422339703314904871019436342e+55"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "current": "164",
+            "target": "184",
+            "quantity": "20",
+            "cost": "3.6048767045487566507368168616363406745288322529315423624e+55"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "current": "161",
+            "target": "184",
+            "quantity": "23",
+            "cost": "3.6048797126951615146350305275302957390669818490293144007e+55"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "current": "2e+28",
+            "target": "8.3955845806444247499696225613e+28",
+            "quantity": "6.39558458064442e+28",
+            "cost": "2.443660107836858491285830625466288805537602064128656026129e+57"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "current": "4e+57",
+            "target": "7.048584045075442138804592054651418006132114713878197225769e+57",
+            "quantity": "3.04858404507544e+57",
+            "cost": "2.240989409423716982571661250885564187464824048554104924658e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "current": "166",
+            "target": "178",
+            "quantity": "12",
+            "cost": "5.63125006990521745598255348388081541604389502925576749e+53"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "current": "159",
+            "target": "181",
+            "quantity": "22",
+            "cost": "4.506099103699951024740535719074663412309057740554897995e+54"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "current": "2e+28",
+            "target": "8.3955845806444247499696225613e+28",
+            "quantity": "6.39558458064442e+28",
+            "cost": "2.443660107836858491285830625466288805537602064128656026129e+57"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "current": "129",
+            "target": "178",
+            "quantity": "49",
+            "cost": "5.63262522254743094675646289918424465621697131709617518e+53"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "current": "140",
+            "target": "186",
+            "quantity": "46",
+            "cost": "1.44195205697212439241986507408692296072954824169177761295e+56"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "current": "163",
+            "target": "178",
+            "quantity": "15",
+            "cost": "5.63245332846716301526801984146284123130373346836458282e+53"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "current": "159",
+            "target": "178",
+            "quantity": "19",
+            "cost": "5.63261447916742358124375194292471968870460468788808488e+53"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "current": "160",
+            "target": "178",
+            "quantity": "18",
+            "cost": "5.63260373578740621017870313616059445821121327325318474e+53"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "current": "134",
+            "target": "178",
+            "quantity": "44",
+            "cost": "5.63262522254712077463398953354163650380520296886507018e+53"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "current": "146",
+            "target": "178",
+            "quantity": "32",
+            "cost": "5.63262522123599319628205941072317547031732063970381572e+53"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "current": "149",
+            "target": "178",
+            "quantity": "29",
+            "cost": "5.63262521205585890409487003796348932815259239996963062e+53"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "current": "1e+28",
+            "target": "8.3955845806444247499696225613e+28",
+            "quantity": "7.39558458064442e+28",
+            "cost": "2.553923891430608491285830625469964264990727064128656026129e+57"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "current": "7e+22",
+            "target": "1.37797314249403025352589e+23",
+            "quantity": "6.7797314249403025352589e+22",
+            "cost": "1.691348203428174486810653661067944448303671039718075044504e+57"
+          }
+        ],
+        "owned": [
+          {
+            "id": 4,
+            "name": "Libertas",
+            "level": "2e+28"
+          },
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "3e+28"
+          },
+          {
+            "id": 8,
+            "name": "Mammon",
+            "level": "3e+28"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "level": "3e+28"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "level": "3e+28"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "level": "159"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "level": "148"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "level": "164"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "level": "161"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "level": "2e+28"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "level": "4e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "level": "166"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "level": "159"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "2e+28"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "level": "129"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "level": "140"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "level": "163"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "level": "159"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "level": "160"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "level": "134"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "level": "146"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "level": "149"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "1e+28"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "level": "7e+22"
+          },
+          {
+            "id": 31,
+            "name": "Revolc",
+            "level": "135"
+          },
+          {
+            "id": 32,
+            "name": "Nogardnit",
+            "level": "9e+22"
+          }
+        ]
+      }
+    },
+    {
+      "name": "full-beyond8k",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bZLNSsUwEIXfJesinfw2fQDX4hUEd6UdvYGaQpO6kfvuJrkqmZJN6Xw5M3MOzDfzx+frtq/LMwaMgY1WdOyK+3bZjjWVDB6MUlKJAaTtYUA1sEpwmebdvbsZlyLl3Ciuso4bI1HzrHUfVwzx0XkXrri8bR6fcA8uRDaCkcJ2bPKzQx/LxJctTisbBfQdi/vkw4x+SY9sjPuB/9pk7Zv8y/xZ8QtTM+PIB3brmKqh+IVDC9oWhL5JoaagbIGcQHlXCgK1LFBSCAWqln3QNZWoTKGGDtAFDi1TtjWVk1TAi5TTULIvkIbSokDR2MRPoe7tJBSIEp9ruqi45zSSvM+kkf7ck0wGk8dEBbUvVIHEvi3SW+LbEYNb0g3mZ1LUU/q8rKp1nljVIgN5aqgTg0qgTgsygTqpOl0jnA5RnG9QJP+3Hw==",
+        "reserve": "1%",
+        "skillRate": 1,
+        "beyond8k": true
+      },
+      "expected": {
+        "souls": "1.7554538149018e+58",
+        "reserve": "1.7554538149018e+56",
+        "spent": "1.7378992762053414404956138081637319692588840746115985128156e+58",
+        "invested": "",
+        "remaining": "1.75545386964585595043861918362680307411159253884014871844e+56",
+        "ascensions": 93,
+        "rows": [
+          {
+            "id": 8,
+            "name": "Mammon",
+            "current": "3e+28",
+            "target": "7.6190373923107255917145530178e+28",
+            "quantity": "4.61903739231072e+28",
+            "cost": "1.802802966885414279630790728960520052875091475731233030016e+57"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "current": "3e+28",
+            "target": "7.6190373923107255917145530178e+28",
+            "quantity": "4.61903739231072e+28",
+            "cost": "1.802802966885414279630790728960520052875091475731233030016e+57"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "current": "3e+28",
+            "target": "7.6190373923107255917145530178e+28",
+            "quantity": "4.61903739231072e+28",
+            "cost": "1.802802966885414279630790728960520052875091475731233030016e+57"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "current": "159",
+            "target": "185",
+            "quantity": "26",
+            "cost": "7.209760177426924245244614471534080244268501097083071811e+55"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "current": "148",
+            "target": "184",
+            "quantity": "36",
+            "cost": "3.6048801423779042992365628262422339703314904871019436342e+55"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "current": "164",
+            "target": "185",
+            "quantity": "21",
+            "cost": "7.2097568469791188602144493414372014228155497585462527686e+55"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "current": "161",
+            "target": "184",
+            "quantity": "23",
+            "cost": "3.6048797126951615146350305275302957390669818490293144007e+55"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "current": "2e+28",
+            "target": "8.4188258478571553499608320638e+28",
+            "quantity": "6.41882584785715e+28",
+            "cost": "2.458023369888386990178310465405453180333567537822860665223e+57"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "current": "4e+57",
+            "target": "7.087662865654775064002388212665806256507695678722616727044e+57",
+            "quantity": "3.08766286565477e+57",
+            "cost": "2.269715933526773980356620930763722092386195726334350914831e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "current": "166",
+            "target": "178",
+            "quantity": "12",
+            "cost": "5.63125006990521745598255348388081541604389502925576749e+53"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "current": "159",
+            "target": "181",
+            "quantity": "22",
+            "cost": "4.506099103699951024740535719074663412309057740554897995e+54"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "current": "2e+28",
+            "target": "8.4188258478571553499608320638e+28",
+            "quantity": "6.41882584785715e+28",
+            "cost": "2.458023369888386990178310465405453180333567537822860665223e+57"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "current": "129",
+            "target": "178",
+            "quantity": "49",
+            "cost": "5.63262522254743094675646289918424465621697131709617518e+53"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "current": "140",
+            "target": "187",
+            "quantity": "47",
+            "cost": "2.88390411394426927621091806600726726004423524393766177542e+56"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "current": "163",
+            "target": "178",
+            "quantity": "15",
+            "cost": "5.63245332846716301526801984146284123130373346836458282e+53"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "current": "159",
+            "target": "178",
+            "quantity": "19",
+            "cost": "5.63261447916742358124375194292471968870460468788808488e+53"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "current": "160",
+            "target": "178",
+            "quantity": "18",
+            "cost": "5.63260373578740621017870313616059445821121327325318474e+53"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "current": "134",
+            "target": "178",
+            "quantity": "44",
+            "cost": "5.63262522254712077463398953354163650380520296886507018e+53"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "current": "146",
+            "target": "178",
+            "quantity": "32",
+            "cost": "5.63262522123599319628205941072317547031732063970381572e+53"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "current": "149",
+            "target": "178",
+            "quantity": "29",
+            "cost": "5.63262521205585890409487003796348932815259239996963062e+53"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "current": "1e+28",
+            "target": "8.4188258478571553499608320638e+28",
+            "quantity": "7.41882584785715e+28",
+            "cost": "2.568287153482136990178310465409128639786692537822860665223e+57"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "current": "7e+22",
+            "target": "1.38102398293378065753565e+23",
+            "quantity": "6.8102398293378065753565e+22",
+            "cost": "1.702838813069397285924630612756178786266709611688986594763e+57"
+          }
+        ],
+        "owned": [
+          {
+            "id": 4,
+            "name": "Libertas",
+            "level": "2e+28"
+          },
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "3e+28"
+          },
+          {
+            "id": 8,
+            "name": "Mammon",
+            "level": "3e+28"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "level": "3e+28"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "level": "3e+28"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "level": "159"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "level": "148"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "level": "164"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "level": "161"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "level": "2e+28"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "level": "4e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "level": "166"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "level": "159"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "2e+28"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "level": "129"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "level": "140"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "level": "163"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "level": "159"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "level": "160"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "level": "134"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "level": "146"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "level": "149"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "1e+28"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "level": "7e+22"
+          },
+          {
+            "id": 31,
+            "name": "Revolc",
+            "level": "135"
+          },
+          {
+            "id": 32,
+            "name": "Nogardnit",
+            "level": "9e+22"
+          }
+        ]
+      }
+    },
+    {
+      "name": "full-half-skills",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bZLNSsUwEIXfJesinfw2fQDX4hUEd6UdvYGaQpO6kfvuJrkqmZJN6Xw5M3MOzDfzx+frtq/LMwaMgY1WdOyK+3bZjjWVDB6MUlKJAaTtYUA1sEpwmebdvbsZlyLl3Ciuso4bI1HzrHUfVwzx0XkXrri8bR6fcA8uRDaCkcJ2bPKzQx/LxJctTisbBfQdi/vkw4x+SY9sjPuB/9pk7Zv8y/xZ8QtTM+PIB3brmKqh+IVDC9oWhL5JoaagbIGcQHlXCgK1LFBSCAWqln3QNZWoTKGGDtAFDi1TtjWVk1TAi5TTULIvkIbSokDR2MRPoe7tJBSIEp9ruqi45zSSvM+kkf7ck0wGk8dEBbUvVIHEvi3SW+LbEYNb0g3mZ1LUU/q8rKp1nljVIgN5aqgTg0qgTgsygTqpOl0jnA5RnG9QJP+3Hw==",
+        "reserve": "1e20",
+        "skillRate": 0.5,
+        "beyond8k": false
+      },
+      "expected": {
+        "souls": "1.7554538149018e+58",
+        "reserve": "100000000000000000000",
+        "spent": "1.7554538140445508513265706614626660114364126698767417670534e+58",
+        "invested": "",
+        "remaining": "8.572491486734293385373339885635873301232582329466e+48",
+        "ascensions": 93,
+        "rows": [
+          {
+            "id": 8,
+            "name": "Mammon",
+            "current": "3e+28",
+            "target": "7.8063675054198476399032380659e+28",
+            "quantity": "4.80636750541984e+28",
+            "cost": "1.90901061796579935743709635034814596754846057427232039876e+57"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "current": "3e+28",
+            "target": "7.8063675054198476399032380659e+28",
+            "quantity": "4.80636750541984e+28",
+            "cost": "1.90901061796579935743709635034814596754846057427232039876e+57"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "current": "3e+28",
+            "target": "7.8063675054198476399032380659e+28",
+            "quantity": "4.80636750541984e+28",
+            "cost": "1.90901061796579935743709635034814596754846057427232039876e+57"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "current": "159",
+            "target": "185",
+            "quantity": "26",
+            "cost": "7.209760177426924245244614471534080244268501097083071811e+55"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "current": "148",
+            "target": "184",
+            "quantity": "36",
+            "cost": "3.6048801423779042992365628262422339703314904871019436342e+55"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "current": "164",
+            "target": "184",
+            "quantity": "20",
+            "cost": "3.6048767045487566507368168616363406745288322529315423624e+55"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "current": "161",
+            "target": "184",
+            "quantity": "23",
+            "cost": "3.6048797126951615146350305275302957390669818490293144007e+55"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "current": "2e+28",
+            "target": "8.4302024896542631100466933756e+28",
+            "quantity": "6.43020248965426e+28",
+            "cost": "2.465068687573689359745458007333820923732283286823193031734e+57"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "current": "4e+57",
+            "target": "7.106831401657293611898109101957383534307508850332492267536e+57",
+            "quantity": "3.10683140165729e+57",
+            "cost": "2.283806568897378719490916014620373950412351230924831900812e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "current": "166",
+            "target": "178",
+            "quantity": "12",
+            "cost": "5.63125006990521745598255348388081541604389502925576749e+53"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "current": "159",
+            "target": "181",
+            "quantity": "22",
+            "cost": "4.506099103699951024740535719074663412309057740554897995e+54"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "current": "2e+28",
+            "target": "8.4302024896542631100466933756e+28",
+            "quantity": "6.43020248965426e+28",
+            "cost": "2.465068687573689359745458007333820923732283286823193031734e+57"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "current": "129",
+            "target": "174",
+            "quantity": "45",
+            "cost": "3.5203907640920505396696219635095254446884997098087673e+52"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "current": "140",
+            "target": "186",
+            "quantity": "46",
+            "cost": "1.44195205697212439241986507408692296072954824169177761295e+56"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "current": "163",
+            "target": "174",
+            "quantity": "11",
+            "cost": "3.5186718232893712247851913862954911955561212224928438e+52"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "current": "159",
+            "target": "174",
+            "quantity": "15",
+            "cost": "3.5202833302919768845425124009142757695648334177278643e+52"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "current": "160",
+            "target": "174",
+            "quantity": "14",
+            "cost": "3.5201758964918031738920243332730234646309192713788629e+52"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "current": "134",
+            "target": "174",
+            "quantity": "40",
+            "cost": "3.5203907640889488184448883070834439205708162274977173e+52"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "current": "146",
+            "target": "174",
+            "quantity": "28",
+            "cost": "3.5203907509776730349255870788988335856919929358851727e+52"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "current": "149",
+            "target": "174",
+            "quantity": "25",
+            "cost": "3.5203906591763301130536933513019721640447105385433217e+52"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "current": "1e+28",
+            "target": "8.4302024896542631100466933756e+28",
+            "quantity": "7.43020248965426e+28",
+            "cost": "2.575332471167439359745458007337496383185408286823193031734e+57"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "current": "7e+22",
+            "target": "1.38251676052167538376745e+23",
+            "quantity": "6.8251676052167538376745e+22",
+            "cost": "1.708475067217639181578378846422912717692145077348695174618e+57"
+          }
+        ],
+        "owned": [
+          {
+            "id": 4,
+            "name": "Libertas",
+            "level": "2e+28"
+          },
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "3e+28"
+          },
+          {
+            "id": 8,
+            "name": "Mammon",
+            "level": "3e+28"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "level": "3e+28"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "level": "3e+28"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "level": "159"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "level": "148"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "level": "164"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "level": "161"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "level": "2e+28"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "level": "4e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "level": "166"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "level": "159"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "2e+28"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "level": "129"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "level": "140"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "level": "163"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "level": "159"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "level": "160"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "level": "134"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "level": "146"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "level": "149"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "1e+28"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "level": "7e+22"
+          },
+          {
+            "id": 31,
+            "name": "Revolc",
+            "level": "135"
+          },
+          {
+            "id": 32,
+            "name": "Nogardnit",
+            "level": "9e+22"
+          }
+        ]
+      }
+    },
+    {
+      "name": "full-no-skills",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bZLNSsUwEIXfJesinfw2fQDX4hUEd6UdvYGaQpO6kfvuJrkqmZJN6Xw5M3MOzDfzx+frtq/LMwaMgY1WdOyK+3bZjjWVDB6MUlKJAaTtYUA1sEpwmebdvbsZlyLl3Ciuso4bI1HzrHUfVwzx0XkXrri8bR6fcA8uRDaCkcJ2bPKzQx/LxJctTisbBfQdi/vkw4x+SY9sjPuB/9pk7Zv8y/xZ8QtTM+PIB3brmKqh+IVDC9oWhL5JoaagbIGcQHlXCgK1LFBSCAWqln3QNZWoTKGGDtAFDi1TtjWVk1TAi5TTULIvkIbSokDR2MRPoe7tJBSIEp9ruqi45zSSvM+kkf7ck0wGk8dEBbUvVIHEvi3SW+LbEYNb0g3mZ1LUU/q8rKp1nljVIgN5aqgTg0qgTgsygTqpOl0jnA5RnG9QJP+3Hw==",
+        "reserve": "0",
+        "skillRate": 0,
+        "beyond8k": false
+      },
+      "expected": {
+        "souls": "1.7554538149018e+58",
+        "reserve": "0",
+        "spent": "1.755453814207684145807991430739803132287263339922624855554e+58",
+        "invested": "",
+        "remaining": "6.94115854192008569260196867712736660077375144446e+48",
+        "ascensions": 93,
+        "rows": [
+          {
+            "id": 8,
+            "name": "Mammon",
+            "current": "3e+28",
+            "target": "7.8064114833225787043371010419e+28",
+            "quantity": "4.80641148332257e+28",
+            "cost": "1.909035854305366910706985416325125916243460317581033060721e+57"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "current": "3e+28",
+            "target": "7.8064114833225787043371010419e+28",
+            "quantity": "4.80641148332257e+28",
+            "cost": "1.909035854305366910706985416325125916243460317581033060721e+57"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "current": "3e+28",
+            "target": "7.8064114833225787043371010419e+28",
+            "quantity": "4.80641148332257e+28",
+            "cost": "1.909035854305366910706985416325125916243460317581033060721e+57"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "current": "159",
+            "target": "185",
+            "quantity": "26",
+            "cost": "7.209760177426924245244614471534080244268501097083071811e+55"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "current": "148",
+            "target": "184",
+            "quantity": "36",
+            "cost": "3.6048801423779042992365628262422339703314904871019436342e+55"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "current": "164",
+            "target": "184",
+            "quantity": "20",
+            "cost": "3.6048767045487566507368168616363406745288322529315423624e+55"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "current": "161",
+            "target": "184",
+            "quantity": "23",
+            "cost": "3.6048797126951615146350305275302957390669818490293144007e+55"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "current": "2e+28",
+            "target": "8.4302499819898258146188996132e+28",
+            "quantity": "6.43024998198982e+28",
+            "cost": "2.465098118531019422942432693490727085497189002417600964526e+57"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "current": "4e+57",
+            "target": "7.106911475883945847174833111612638292162298702081910961424e+57",
+            "quantity": "3.10691147588394e+57",
+            "cost": "2.283865430812038845884865386934185924829855272259375552247e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "current": "166",
+            "target": "178",
+            "quantity": "12",
+            "cost": "5.63125006990521745598255348388081541604389502925576749e+53"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "current": "159",
+            "target": "181",
+            "quantity": "22",
+            "cost": "4.506099103699951024740535719074663412309057740554897995e+54"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "current": "2e+28",
+            "target": "8.4302499819898258146188996132e+28",
+            "quantity": "6.43024998198982e+28",
+            "cost": "2.465098118531019422942432693490727085497189002417600964526e+57"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "current": "140",
+            "target": "186",
+            "quantity": "46",
+            "cost": "1.44195205697212439241986507408692296072954824169177761295e+56"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "current": "1e+28",
+            "target": "8.4302499819898258146188996132e+28",
+            "quantity": "7.43024998198982e+28",
+            "cost": "2.575361902124769422942432693494402544950314002417600964526e+57"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "current": "7e+22",
+            "target": "1.38252299134832542787291e+23",
+            "quantity": "6.8252299134832542787291e+22",
+            "cost": "1.70849861198350323213593904566702638605887883869685396943e+57"
+          }
+        ],
+        "owned": [
+          {
+            "id": 4,
+            "name": "Libertas",
+            "level": "2e+28"
+          },
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "3e+28"
+          },
+          {
+            "id": 8,
+            "name": "Mammon",
+            "level": "3e+28"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "level": "3e+28"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "level": "3e+28"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "level": "159"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "level": "148"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "level": "164"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "level": "161"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "level": "2e+28"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "level": "4e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "level": "166"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "level": "159"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "2e+28"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "level": "129"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "level": "140"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "level": "163"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "level": "159"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "level": "160"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "level": "134"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "level": "146"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "level": "149"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "1e+28"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "level": "7e+22"
+          },
+          {
+            "id": 31,
+            "name": "Revolc",
+            "level": "135"
+          },
+          {
+            "id": 32,
+            "name": "Nogardnit",
+            "level": "9e+22"
+          }
+        ]
+      }
+    },
+    {
+      "name": "full-pretrans",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bZJNasQwDIXv4nUokX/jHKDr0ikUuguJpmNIHYg93Qxz99qetljBmxB9fpLeA92Yv369b/u6vGLAGNhoRccuuG+n7bqmksGTUUoqMYC0PQyoBlYJTtO8u7ObcSlSzo3iKuu4MRI1z1r3ecEQn5134YLLx+bxBffgQmQjGClsxyY/O/SxTHzb4rSyUUDfsbhPPszol/TIxvO0BvwXJ2838i/zZ8VvTN2MIx/YvWOqhuIXDi1oWxD6JoWagrIFcgLlQykI1LJASSEUqFr2QddUojKFGjpAFzi0TNnWVE5SAS9STkPJvkAaSosCRWMTP4R6tJNQIEp8rumi4p7TSPIxk0b6c08yGUweExXUvlAFEvu2SO+Jb9cY3JKOMD+Top7S52VVrfPEqhYZyENDnRhUAnVakAnUSdXhGuFwiOJ4gyL5v/8A",
+        "reserve": "1%",
+        "skillRate": 1,
+        "beyond8k": false
+      },
+      "expected": {
+        "souls": "1.7554538149018e+58",
+        "reserve": "1.7554538149018e+56",
+        "spent": "1.7378992762957708540081879437104201975277051027829732019083e+58",
+        "invested": "",
+        "remaining": "1.75545386060291459918120562895798024722948972170267980917e+56",
+        "ascensions": 93,
+        "rows": [
+          {
+            "id": 8,
+            "name": "Mammon",
+            "current": "3e+28",
+            "target": "7.806546369374839268045387492e+28",
+            "quantity": "4.80654636937483e+28",
+            "cost": "1.90911325838795866956903984294729530816181908110114885968e+57"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "current": "3e+28",
+            "target": "7.806546369374839268045387492e+28",
+            "quantity": "4.80654636937483e+28",
+            "cost": "1.90911325838795866956903984294729530816181908110114885968e+57"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "current": "3e+28",
+            "target": "7.806546369374839268045387492e+28",
+            "quantity": "4.80654636937483e+28",
+            "cost": "1.90911325838795866956903984294729530816181908110114885968e+57"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "current": "159",
+            "target": "185",
+            "quantity": "26",
+            "cost": "7.209760177426924245244614471534080244268501097083071811e+55"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "current": "148",
+            "target": "184",
+            "quantity": "36",
+            "cost": "3.6048801423779042992365628262422339703314904871019436342e+55"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "current": "161",
+            "target": "184",
+            "quantity": "23",
+            "cost": "3.6048797126951615146350305275302957390669818490293144007e+55"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "current": "2e+28",
+            "target": "8.4303956472730445659237445917e+28",
+            "quantity": "6.43039564727304e+28",
+            "cost": "2.465188388209228211132486323699623798285193881040769342901e+57"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "current": "4e+57",
+            "target": "7.107157076956029604907563521459543076607696229169499970889e+57",
+            "quantity": "3.10715707695602e+57",
+            "cost": "2.284045970168456422264972647351978279632180632525891007187e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "current": "166",
+            "target": "178",
+            "quantity": "12",
+            "cost": "5.63125006990521745598255348388081541604389502925576749e+53"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "current": "159",
+            "target": "181",
+            "quantity": "22",
+            "cost": "4.506099103699951024740535719074663412309057740554897995e+54"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "current": "2e+28",
+            "target": "8.4303956472730445659237445917e+28",
+            "quantity": "6.43039564727304e+28",
+            "cost": "2.465188388209228211132486323699623798285193881040769342901e+57"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "current": "129",
+            "target": "178",
+            "quantity": "49",
+            "cost": "5.63262522254743094675646289918424465621697131709617518e+53"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "current": "163",
+            "target": "178",
+            "quantity": "15",
+            "cost": "5.63245332846716301526801984146284123130373346836458282e+53"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "current": "159",
+            "target": "178",
+            "quantity": "19",
+            "cost": "5.63261447916742358124375194292471968870460468788808488e+53"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "current": "160",
+            "target": "178",
+            "quantity": "18",
+            "cost": "5.63260373578740621017870313616059445821121327325318474e+53"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "current": "134",
+            "target": "178",
+            "quantity": "44",
+            "cost": "5.63262522254712077463398953354163650380520296886507018e+53"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "current": "146",
+            "target": "178",
+            "quantity": "32",
+            "cost": "5.63262522123599319628205941072317547031732063970381572e+53"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "current": "149",
+            "target": "178",
+            "quantity": "29",
+            "cost": "5.63262521205585890409487003796348932815259239996963062e+53"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "current": "1e+28",
+            "target": "8.4303956472730445659237445917e+28",
+            "quantity": "7.43039564727304e+28",
+            "cost": "2.575452171802978211132486323703299257738318881040769342901e+57"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "current": "7e+22",
+            "target": "1.38254210207510596687052e+23",
+            "quantity": "6.8254210207510596687052e+22",
+            "cost": "1.708570827726070262687981634807066002226452163426948576536e+57"
+          }
+        ],
+        "owned": [
+          {
+            "id": 4,
+            "name": "Libertas",
+            "level": "2e+28"
+          },
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "3e+28"
+          },
+          {
+            "id": 8,
+            "name": "Mammon",
+            "level": "3e+28"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "level": "3e+28"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "level": "3e+28"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "level": "159"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "level": "148"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "level": "164"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "level": "161"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "level": "2e+28"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "level": "4e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "level": "166"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "level": "159"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "2e+28"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "level": "129"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "level": "140"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "level": "163"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "level": "159"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "level": "160"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "level": "134"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "level": "146"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "level": "149"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "1e+28"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "level": "7e+22"
+          },
+          {
+            "id": 31,
+            "name": "Revolc",
+            "level": "135"
+          },
+          {
+            "id": 32,
+            "name": "Nogardnit",
+            "level": "9e+22"
+          }
+        ]
+      }
+    },
+    {
+      "name": "full-no-morgulis",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bZLRaoUwDIbfpdcyTNJa9QF2PXYGg92JZjsFV8HW3Yzz7qs922jEGzFf/yT/D/lWfvt8XdZ5eubAMai+o0pdeV0uyzanUsGDNUYbakF3NbRsWlUILsO4unc38pSliNag2XVoreYGd637uHKIj867cOXpbfH8xGtwIaoerKauUoMfHfuYJ74scZhVT1BXKq6DDyP7KT2qPq4b/2uTtW/xr/fPzF+cmhUytupWKVNC+oXtGezOINSnFEoKpssQBdR3JQnY6Ay1hJChObMPTUnrjKzsbjJszxx1ZyNRRALMUpSJdN6EMlFDGdLJJjwkureLREA5OzZyUXaPMpK+z5SR/tyLTJaTx0RJ2ieTobDfZekt8WWLwU3pAPdnUZRT6n1ZUTf7xKKmHehDQ5kYTAJlWtAJlEnN4RThcIV0PEBK/m8/",
+        "reserve": "1%",
+        "skillRate": 1,
+        "beyond8k": false
+      },
+      "expected": {
+        "souls": "1.7554538149018e+58",
+        "reserve": "1.7554538149018e+56",
+        "spent": "1.1768203877708760618688330954319699866840844974170871782178e+58",
+        "invested": "",
+        "remaining": "5.786334271309239381311669045680300133159155025829128217822e+57",
+        "ascensions": 93,
+        "rows": [
+          {
+            "id": 8,
+            "name": "Mammon",
+            "current": "3e+28",
+            "target": "6.9362214559420171036891392365e+28",
+            "quantity": "3.93622145594201e+28",
+            "cost": "1.437515124639731569467553987428562007033520945278503152758e+57"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "current": "3e+28",
+            "target": "6.9362214559420171036891392365e+28",
+            "quantity": "3.93622145594201e+28",
+            "cost": "1.437515124639731569467553987428562007033520945278503152758e+57"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "current": "3e+28",
+            "target": "6.9362214559420171036891392365e+28",
+            "quantity": "3.93622145594201e+28",
+            "cost": "1.437515124639731569467553987428562007033520945278503152758e+57"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "current": "159",
+            "target": "185",
+            "quantity": "26",
+            "cost": "7.209760177426924245244614471534080244268501097083071811e+55"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "current": "148",
+            "target": "184",
+            "quantity": "36",
+            "cost": "3.6048801423779042992365628262422339703314904871019436342e+55"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "current": "164",
+            "target": "184",
+            "quantity": "20",
+            "cost": "3.6048767045487566507368168616363406745288322529315423624e+55"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "current": "161",
+            "target": "184",
+            "quantity": "23",
+            "cost": "3.6048797126951615146350305275302957390669818490293144007e+55"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "current": "2e+28",
+            "target": "7.4905199308229126389731525232e+28",
+            "quantity": "5.49051993082291e+28",
+            "cost": "1.915204325975151572134443398325822169434437815073066690974e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "current": "166",
+            "target": "177",
+            "quantity": "11",
+            "cost": "2.81493745863149697982815310903639295644489697799427498e+53"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "current": "159",
+            "target": "181",
+            "quantity": "22",
+            "cost": "4.506099103699951024740535719074663412309057740554897995e+54"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "current": "2e+28",
+            "target": "7.4905199308229126389731525232e+28",
+            "quantity": "5.49051993082291e+28",
+            "cost": "1.915204325975151572134443398325822169434437815073066690974e+57"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "current": "129",
+            "target": "177",
+            "quantity": "48",
+            "cost": "2.81631261127371047060206252433982219661797326583468267e+53"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "current": "140",
+            "target": "186",
+            "quantity": "46",
+            "cost": "1.44195205697212439241986507408692296072954824169177761295e+56"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "current": "163",
+            "target": "177",
+            "quantity": "14",
+            "cost": "2.81614071719344253911361946661841877170473541710309032e+53"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "current": "159",
+            "target": "177",
+            "quantity": "18",
+            "cost": "2.81630186789370310508935156808029722910560663662659237e+53"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "current": "160",
+            "target": "177",
+            "quantity": "17",
+            "cost": "2.81629112451368573402430276131617199861221522199169224e+53"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "current": "134",
+            "target": "177",
+            "quantity": "43",
+            "cost": "2.81631261127340029847958915869721404420620491760357767e+53"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "current": "146",
+            "target": "177",
+            "quantity": "31",
+            "cost": "2.81631260996227272012765903587875301071832258844232321e+53"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "current": "149",
+            "target": "177",
+            "quantity": "28",
+            "cost": "2.81631260078213842794046966311906686855359434870813812e+53"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "current": "1e+28",
+            "target": "7.4905199308229126389731525232e+28",
+            "quantity": "6.49051993082291e+28",
+            "cost": "2.025468109568901572134443398329497628887562815073066690974e+57"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "current": "7e+22",
+            "target": "1.25779415187809172267349e+23",
+            "quantity": "5.5779415187809172267349e+22",
+            "cost": "1.268583577938808951489560986326966798509025399407540432451e+57"
+          }
+        ],
+        "owned": [
+          {
+            "id": 4,
+            "name": "Libertas",
+            "level": "2e+28"
+          },
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "3e+28"
+          },
+          {
+            "id": 8,
+            "name": "Mammon",
+            "level": "3e+28"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "level": "3e+28"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "level": "3e+28"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "level": "159"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "level": "148"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "level": "164"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "level": "161"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "level": "2e+28"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "level": "166"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "level": "159"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "2e+28"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "level": "129"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "level": "140"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "level": "163"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "level": "159"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "level": "160"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "level": "134"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "level": "146"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "level": "149"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "1e+28"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "level": "7e+22"
+          },
+          {
+            "id": 31,
+            "name": "Revolc",
+            "level": "135"
+          },
+          {
+            "id": 32,
+            "name": "Nogardnit",
+            "level": "9e+22"
+          }
+        ]
+      }
+    },
+    {
+      "name": "huge",
+      "input": {
+        "save": "7e8bb5a89f2842ac4af01b3b7e228592bZLNSsUwEIXfJesimfy2fQDX4hUEd6UdvYGaQpO6kfvuJrkqmZJN6XwzOXMOzDfzx+frtq/LMwaMgY2D7NgV9+2yHWsqGSBwzlkFL9O8u3c345LbD0JYLfTAoRfWKjQiz7qPK4b46LwLV1zeNo9PuAcXIhvBKjl0bPKzQx+L4ssWp5WNEnjH4j75MKNfUpONcT/wfzbZ+Sb/Kn9W/ML0mAkUPbt1TNdQ/sK+BYcWBN6kUFPQQ4GCQHWflAQaVaCiEArULftgaqpQ20ItFTAF9i1TQ0tVkFQgyqigoRQvkIYyskDZ2CROoe7PSSiQJb4wdFFxL2gkddekkf7ck0wWk8dEJbUvdYHE/lBGb4lvRwxuSTeY26SoVXheVtUmK1a1zECdHtSJQSdQpwWVQJ1Un64RTocozzcok//bDw==",
+        "reserve": "1%",
+        "skillRate": 1,
+        "beyond8k": false
+      },
+      "expected": {
+        "souls": "1e+1000",
+        "reserve": "1e+998",
+        "spent": "9.899999997334362385446979069316366676689259131193850276140448897417530518988174443157221555206022608e+999",
+        "invested": "",
+        "remaining": "1.00000002665637614553020930683633323310740868806149723859551102582469481011825556842778444793977392e+998",
+        "ascensions": 93,
+        "rows": [
+          {
+            "id": 8,
+            "name": "Mammon",
+            "current": "3e+28",
+            "target": "5.252260368020331532384225044062822183803805129494203203735448316136131645495114005704784459904340369e+499",
+            "quantity": "5.25226036802033e+499",
+            "cost": "1.013921028112315873023598314532023323408793658018112182617187500000000000000000000000000000000000006e+999"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "current": "3e+28",
+            "target": "5.252260368020331532384225044062822183803805129494203203735448316136131645495114005704784459904340369e+499",
+            "quantity": "5.25226036802033e+499",
+            "cost": "1.013921028112315873023598314532023323408793658018112182617187500000000000000000000000000000000000006e+999"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "current": "3e+28",
+            "target": "5.252260368020331532384225044062822183803805129494203203735448316136131645495114005704784459904340369e+499",
+            "quantity": "5.25226036802033e+499",
+            "cost": "1.013921028112315873023598314532023323408793658018112182617187500000000000000000000000000000000000006e+999"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "current": "159",
+            "target": "3268",
+            "quantity": "3109",
+            "cost": "8.578225474786730244725524013347811799006528848497564726880817580120365165054091687629396078520878276e+983"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "current": "148",
+            "target": "3301",
+            "quantity": "3153",
+            "cost": "7.368639574384615795174040426758303829979193338955515847519256719271765625496993173870740785095564046e+993"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "current": "164",
+            "target": "2880",
+            "quantity": "2716",
+            "cost": "1.360689832649258846794252368326528549167501785498485067384378307075115497129504150737500733890146796e+867"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "current": "161",
+            "target": "3303",
+            "quantity": "3142",
+            "cost": "2.947455829753846318069616170703321531991677335582206339007702687708706250198797269548296314038225619e+994"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "current": "2e+28",
+            "target": "5.671987438466880704518601559463090911235210722995899788051240082220444541571397414368017775274665625e+499",
+            "quantity": "5.67198743846688e+499",
+            "cost": "1.182448287896472756116320823593923705630004405975341796875000000000000000000000000000000000000000007e+999"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "current": "4e+57",
+            "target": "3.21714415021260868263661733574555090849803756390158258488134168430175640668733570958103643547455304e+999",
+            "quantity": "3.2171441502126e+999",
+            "cost": "2.364896575792945512232641647187847411260008811950683593750000000000000000000000000000000000000000013e+999"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "current": "166",
+            "target": "1101",
+            "quantity": "935",
+            "cost": "3.993896935008278111761638205860630632089582356686441825616714769260874821997376516257905615655781212e+331"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "current": "159",
+            "target": "3217",
+            "quantity": "3058",
+            "cost": "3.809497373013717267265187521973062966920821658555225009692798456893021514814852895915729326557332201e+968"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "current": "2e+28",
+            "target": "5.671987438466880704518601559463090911235210722995899788051240082220444541571397414368017775274665625e+499",
+            "quantity": "5.67198743846688e+499",
+            "cost": "1.182448287896472756116320823593923705630004405975341796875000000000000000000000000000000000000000007e+999"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "current": "129",
+            "target": "1440",
+            "quantity": "1311",
+            "cost": "4.472654830492419159434376388905532531066590463920773624924829400877976076181013769314403507816653482e+433"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "current": "140",
+            "target": "1498",
+            "quantity": "1358",
+            "cost": "1.289154984189600504117403543356567165422835641990745635538156194417461511866331124498366243904414813e+451"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "current": "163",
+            "target": "3159",
+            "quantity": "2996",
+            "cost": "1.321684904927774180128231652072237275644402707873168240669813930686725926144255460729832101828458494e+951"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "current": "159",
+            "target": "3159",
+            "quantity": "3000",
+            "cost": "1.321684904927774180128231652072237275644402707873168240669813930686725926144255460729832101828458494e+951"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "current": "160",
+            "target": "3159",
+            "quantity": "2999",
+            "cost": "1.321684904927774180128231652072237275644402707873168240669813930686725926144255460729832101828458494e+951"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "current": "134",
+            "target": "3159",
+            "quantity": "3025",
+            "cost": "1.321684904927774180128231652072237275644402707873168240669813930686725926144255460729832101828458494e+951"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "current": "146",
+            "target": "3159",
+            "quantity": "3013",
+            "cost": "1.321684904927774180128231652072237275644402707873168240669813930686725926144255460729832101828458494e+951"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "current": "149",
+            "target": "3159",
+            "quantity": "3010",
+            "cost": "1.321684904927774180128231652072237275644402707873168240669813930686725926144255460729832101828458494e+951"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "current": "1e+28",
+            "target": "5.671987438466880704518601559463090911235210722995899788051240082220444541571397414368017775274665625e+499",
+            "quantity": "5.67198743846688e+499",
+            "cost": "1.182448287896472756116320823593923705630004405975341796875000000000000000000000000000000000000000007e+999"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "current": "7e+22",
+            "target": "6.353136819496440156826044918082495103066585476995965873553187641724256688779082153643964895562164123e+399",
+            "quantity": "6.35313681949644e+399",
+            "cost": "9.459586303171782048930566588751389645040035247802734375000000000000000000000000000000000000000000053e+998"
+          }
+        ],
+        "owned": [
+          {
+            "id": 4,
+            "name": "Libertas",
+            "level": "2e+28"
+          },
+          {
+            "id": 5,
+            "name": "Siyalatas",
+            "level": "3e+28"
+          },
+          {
+            "id": 8,
+            "name": "Mammon",
+            "level": "3e+28"
+          },
+          {
+            "id": 9,
+            "name": "Mimzee",
+            "level": "3e+28"
+          },
+          {
+            "id": 10,
+            "name": "Pluto",
+            "level": "3e+28"
+          },
+          {
+            "id": 11,
+            "name": "Dogcog",
+            "level": "159"
+          },
+          {
+            "id": 12,
+            "name": "Fortuna",
+            "level": "148"
+          },
+          {
+            "id": 13,
+            "name": "Atman",
+            "level": "164"
+          },
+          {
+            "id": 14,
+            "name": "Dora",
+            "level": "161"
+          },
+          {
+            "id": 15,
+            "name": "Bhaal",
+            "level": "2e+28"
+          },
+          {
+            "id": 16,
+            "name": "Morgulis",
+            "level": "4e+57"
+          },
+          {
+            "id": 17,
+            "name": "Chronos",
+            "level": "166"
+          },
+          {
+            "id": 18,
+            "name": "Bubos",
+            "level": "159"
+          },
+          {
+            "id": 19,
+            "name": "Fragsworth",
+            "level": "2e+28"
+          },
+          {
+            "id": 20,
+            "name": "Vaagur",
+            "level": "129"
+          },
+          {
+            "id": 21,
+            "name": "Kumawakamaru",
+            "level": "140"
+          },
+          {
+            "id": 22,
+            "name": "Chawedo",
+            "level": "163"
+          },
+          {
+            "id": 23,
+            "name": "Hecatoncheir",
+            "level": "159"
+          },
+          {
+            "id": 24,
+            "name": "Berserker",
+            "level": "160"
+          },
+          {
+            "id": 25,
+            "name": "Sniperino",
+            "level": "134"
+          },
+          {
+            "id": 26,
+            "name": "Kleptos",
+            "level": "146"
+          },
+          {
+            "id": 27,
+            "name": "Energon",
+            "level": "149"
+          },
+          {
+            "id": 28,
+            "name": "Argaiv",
+            "level": "1e+28"
+          },
+          {
+            "id": 29,
+            "name": "Juggernaut",
+            "level": "7e+22"
+          },
+          {
+            "id": 31,
+            "name": "Revolc",
+            "level": "135"
+          },
+          {
+            "id": 32,
+            "name": "Nogardnit",
+            "level": "9e+22"
+          }
+        ]
+      }
+    }
+  ]
+}

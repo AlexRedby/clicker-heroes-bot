@@ -90,9 +90,6 @@ func TestAncientPlanBudget(t *testing.T) {
 }
 
 func TestAncientPlanExport(t *testing.T) {
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("Node.js is not installed")
-	}
 	plan, err := calculateAncients(context.Background(), "testdata/ancient-save.txt", "1%", 1, false)
 	if err != nil {
 		t.Fatal(err)
