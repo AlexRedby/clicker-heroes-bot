@@ -449,7 +449,7 @@ func planAncients(ctx context.Context, save ancientSave, reserve string, skillRa
 		}
 		quantity := aSub(target, old)
 		// Reuse the native input formatter on an integer, avoiding float text
-		// rounding before truncating the quantity to the field's 15 digits.
+		// rounding before truncating the quantity to the field's six digits.
 		integer, _ := quantity.Int(nil)
 		text, err := InputQuantity(integer.String())
 		if err != nil {

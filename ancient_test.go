@@ -8,7 +8,6 @@ import (
 	"github.com/go-vgo/robotgo"
 	xdraw "golang.org/x/image/draw"
 	"image"
-	"image/color"
 	"image/draw"
 	"image/png"
 	"os"
@@ -50,7 +49,7 @@ func TestAncientRealScreen(t *testing.T) {
 					t.Fatal("OK button not recognized", err)
 				}
 				out, err := readAncientObservation(context.Background(), gameFrame{image: img, context: gameContext{ancientDialog: true}})
-				if err != nil || !out.okay || out.quantity != "" {
+				if err != nil || !out.okay {
 					t.Fatalf("empty dialog: %+v %v", out, err)
 				}
 				return
@@ -95,9 +94,6 @@ func TestAncientPlanExport(t *testing.T) {
 		if err != nil || len(quantity) > 24 {
 			t.Fatalf("unusable quantity %q: %v", quantity, err)
 		}
-		if !ancientQuantityMatches(quantity, strings.ToUpper(quantity)) {
-			t.Fatal("equivalent exponent rejected")
-		}
 	}
 }
 
@@ -134,7 +130,7 @@ func TestAncientTransaction(t *testing.T) {
 	}
 	p.sent(a, now)
 	frame.id++
-	p.observe(ancientObservation{frame: frame, okay: true, quantity: "1e28"}, nil, now.Add(time.Second))
+	p.observe(ancientObservation{frame: frame, okay: true}, nil, now.Add(time.Second))
 	a, ok = p.action(frame, now.Add(time.Second))
 	if !ok || a.ancient.step != confirmAncientQuantity {
 		t.Fatal("quantity did not authorize confirmation")
@@ -249,30 +245,6 @@ func TestAncientHeldInputsReleaseOnFailure(t *testing.T) {
 	}
 }
 
-func TestAncientQuantityOCRAndStaleConfirmation(t *testing.T) {
-	requireAncientOCR(t)
-	screen := loadTestImage(t, "testdata/ancient-quantity.png")
-	typed := image.NewRGBA(screen.Bounds())
-	draw.Draw(typed, typed.Bounds(), screen, screen.Bounds().Min, draw.Src)
-	r := controlRect(screen, image.Rect(508, 325, 772, 350))
-	// Synthetic Arial text checks input-field OCR; the blank dialog is a real frame.
-	text := loadTestImage(t, "testdata/ancient-quantity-text.png")
-	draw.Draw(typed, r, text, text.Bounds().Min, draw.Src)
-	f := gameFrame{image: typed, context: gameContext{known: true, ancientDialog: true, bounds: screen.Bounds()}}
-	out, err := readAncientObservation(context.Background(), f)
-	if err != nil || !out.okay || !ancientQuantityMatches(out.quantity, "1.23456789012345e28") {
-		t.Fatalf("quantity OCR %q: %v", out.quantity, err)
-	}
-	a := gameAction{kind: handleAncient, frame: f, ancient: ancientCommand{step: confirmAncientQuantity}}
-	if !ancientActionStable(a, f) {
-		t.Fatal("unchanged field rejected")
-	}
-	f.image = screen
-	if ancientActionStable(a, f) {
-		t.Fatal("changed field retained confirmation")
-	}
-}
-
 func TestAncientHalfSizeScreen(t *testing.T) {
 	requireAncientOCR(t)
 	for _, name := range []string{"ascension-ancients.png", "ancient-quantity.png"} {
@@ -299,65 +271,62 @@ func TestAncientHalfSizeScreen(t *testing.T) {
 	}
 }
 
-func TestAncientRealFilledQuantityReachesOK(t *testing.T) {
-	requireAncientOCR(t)
-	original := loadTestImage(t, "testdata/ancient-quantity-filled.png")
-	for _, width := range []int{original.Bounds().Dx(), 1280} {
-		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			screen := image.NewRGBA(image.Rect(0, 0, width, width*original.Bounds().Dy()/original.Bounds().Dx()))
-			xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
-			c, err := recognizedGame(screen)
-			if err != nil || !c.ancientDialog {
-				t.Fatal("filled quantity dialog not recognized", c, err)
-			}
-			now := time.Now()
-			frame := gameFrame{id: 2, layout: 1, at: now, image: screen, context: c}
-			out, err := readAncientObservation(context.Background(), frame)
-			if err != nil || out.quantity != "20" || !out.okay {
-				t.Fatalf("blue quantity not read: %q, OK=%t, %v", out.quantity, out.okay, err)
-			}
-			plan := ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Atman", Current: "164", Target: "184", Quantity: "20"}}}}
-			p := newGamePipeline(&pauseControl{}, heroInput{click: func(point image.Point) error {
-				if !point.In(controlRect(screen, image.Rect(581, 370, 695, 420))) {
-					t.Fatal("clicked outside OK", point)
+func TestAncientFilledQuantityReachesOKWithoutOCR(t *testing.T) {
+	for _, tc := range []struct{ image, quantity string }{
+		{"ancient-quantity-filled.png", "20"},
+		{"ancient-quantity-scrolled.png", "4.5579e32"},
+	} {
+		original := loadTestImage(t, "testdata/"+tc.image)
+		for _, width := range []int{original.Bounds().Dx(), 1280} {
+			t.Run(tc.image+fmt.Sprint(width), func(t *testing.T) {
+				screen := image.NewRGBA(image.Rect(0, 0, width, width*original.Bounds().Dy()/original.Bounds().Dx()))
+				xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
+				c, err := recognizedGame(screen)
+				if err != nil || !c.ancientDialog {
+					t.Fatal("filled dialog not recognized", c, err)
 				}
-				return nil
-			}, move: func(image.Point) error { return nil }}, pipelineReaders{}, pipelineOptions{ancientPlan: &plan})
-			p.frame = frame
-			p.layout = frame.layout
-			p.ancient.active = true
-			p.ancient.started = true
-			p.ancient.selected = 0
-			p.ancient.quantity = "20"
-			p.ancient.target = "184"
-			p.ancient.done = map[int]bool{}
-			p.ancient.pending = &gameAction{frame: gameFrame{id: 1}, ancient: ancientCommand{step: fillAncientQuantity, quantity: "20"}}
-			p.ancient.observe(out, nil, now)
-			if p.ancient.pending != nil {
-				t.Fatal("typed quantity not confirmed")
-			}
-			p.planAncients(now)
-			a, ok := p.nextAction(now)
-			if !ok || a.ancient.step != confirmAncientQuantity {
-				t.Fatal("OK not scheduled", a.ancient.step, ok)
-			}
-			if acted, err := p.execute(context.Background(), a); err != nil || !acted {
-				t.Fatal("OK not executed", acted, err)
-			}
-			// A black blinking caret must not discard a confirmation for blue text.
-			changed := image.NewRGBA(screen.Bounds())
-			draw.Draw(changed, changed.Bounds(), screen, screen.Bounds().Min, draw.Src)
-			p.frame.image = changed
-			caret := controlRect(screen, image.Rect(662, 330, 663, 344))
-			draw.Draw(changed, caret, image.NewUniform(color.Black), image.Point{}, draw.Src)
-			if !ancientActionStable(a, p.frame) {
-				t.Fatal("caret blink invalidated unchanged blue quantity")
-			}
-			draw.Draw(changed, controlRect(screen, image.Rect(663, 330, 666, 344)), image.NewUniform(color.RGBA{B: 200, A: 255}), image.Point{}, draw.Src)
-			if ancientActionStable(a, p.frame) {
-				t.Fatal("changed blue quantity retained confirmation")
-			}
-		})
+				now := time.Now()
+				frame := gameFrame{id: 2, layout: 1, at: now, image: screen, context: c}
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel() // Reading a quantity dialog must not launch Tesseract.
+				out, err := readAncientObservation(ctx, frame)
+				if err != nil || !out.okay {
+					t.Fatal("dialog controls required OCR", err)
+				}
+				plan := ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Atman", Current: "164", Target: "184", Quantity: tc.quantity}}}}
+				p := newGamePipeline(&pauseControl{}, heroInput{click: func(point image.Point) error {
+					if !point.In(controlRect(screen, image.Rect(581, 370, 695, 420))) {
+						t.Fatal("clicked outside OK", point)
+					}
+					return nil
+				}, move: func(image.Point) error { return nil }}, pipelineReaders{}, pipelineOptions{ancientPlan: &plan})
+				p.frame, p.layout = frame, frame.layout
+				p.ancient.active, p.ancient.started = true, true
+				p.ancient.selected, p.ancient.quantity = 0, tc.quantity
+				p.ancient.sent(gameAction{frame: gameFrame{id: 1}, ancient: ancientCommand{step: fillAncientQuantity, quantity: tc.quantity}}, now)
+				p.ancient.observe(out, nil, now)
+				if p.ancient.pending != nil || !p.ancient.quantityEntered {
+					t.Fatal("completed entry did not advance")
+				}
+				p.planAncients(now.Add(199 * time.Millisecond))
+				if _, ok := p.nextAction(now.Add(199 * time.Millisecond)); ok {
+					t.Fatal("OK scheduled before entry settled")
+				}
+				p.planAncients(now.Add(200 * time.Millisecond))
+				a, ok := p.nextAction(now.Add(200 * time.Millisecond))
+				if !ok || a.ancient.step != confirmAncientQuantity {
+					t.Fatal("OK not scheduled", a.ancient.step, ok)
+				}
+				if acted, err := p.execute(context.Background(), a); err != nil || !acted {
+					t.Fatal("OK not executed", acted, err)
+				}
+				changed := frame
+				changed.image = loadTestImage(t, "testdata/ascension-ancients.png")
+				if ancientActionStable(a, changed) {
+					t.Fatal("OK accepted after dialog disappeared")
+				}
+			})
+		}
 	}
 }
 
@@ -376,7 +345,7 @@ func TestAncientBlockedResumeExplainsFailure(t *testing.T) {
 		t.Fatal("unconfirmed purchase not blocked")
 	}
 	message := controls.message()
-	if !strings.Contains(message, "stage=type quantity") || !strings.Contains(message, "expected quantity=\"20\"") || !strings.Contains(message, "restart") {
+	if !strings.Contains(message, "stage=type quantity") || !strings.Contains(message, "quantity=\"20\"") || !strings.Contains(message, "restart") {
 		t.Fatal("missing failure details", message)
 	}
 	generation := controls.snapshot()
@@ -412,9 +381,6 @@ func TestAncientDisplayPrecision(t *testing.T) {
 		if got := ancientDisplayMatches(tc.display, tc.exact); got != tc.matches {
 			t.Errorf("display=%q exact=%q: match=%t, want %t", tc.display, tc.exact, got, tc.matches)
 		}
-	}
-	if ancientQuantityMatches("6.556e65", "6.55659294544822e65") {
-		t.Fatal("typed purchase quantity must remain exact")
 	}
 }
 

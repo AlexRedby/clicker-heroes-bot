@@ -1,6 +1,9 @@
 package ancientcalc
 
-import "testing"
+import (
+	"math/big"
+	"testing"
+)
 
 func TestPlanValidate(t *testing.T) {
 	p := Plan{
@@ -30,11 +33,27 @@ func TestInputQuantity(t *testing.T) {
 		in, want string
 	}{
 		{"1", "1"},
-		{"123456789012345678", "1.23456789012345e17"},
+		{"123456", "123456"},
+		{"123456789012345678", "1.23456e17"},
+		{"100000000", "1e8"},
+		{"123450000", "1.2345e8"},
+		{"4.55790796093577e32", "4.5579e32"},
 	} {
 		got, err := InputQuantity(tc.in)
 		if err != nil || got != tc.want {
 			t.Fatalf("InputQuantity(%q) = %q, %v; want %q", tc.in, got, err, tc.want)
 		}
+		input, _ := new(big.Rat).SetString(tc.in)
+		formatted, _ := new(big.Rat).SetString(got)
+		if formatted.Cmp(input) > 0 {
+			t.Fatalf("InputQuantity(%q) increased quantity: %s > %s", tc.in, got, tc.in)
+		}
+	}
+}
+
+func TestInputQuantityTruncatesFractionBeforeFormatting(t *testing.T) {
+	got, err := InputQuantity("123456.9")
+	if err != nil || got != "123456" {
+		t.Fatalf("InputQuantity fractional value = %q, %v; want 123456", got, err)
 	}
 }

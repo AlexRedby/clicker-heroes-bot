@@ -82,7 +82,13 @@ func TestAncientCalculatorReference(t *testing.T) {
 				if q.Sign() <= 0 || q.Cmp(new(big.Rat).Sub(target, current)) > 0 {
 					t.Fatal("unsafe purchase quantity", row.Name)
 				}
-				compare(row.Name+" quantity", row.Quantity, old.Quantity)
+				wantQuantity, err := InputQuantity(old.Quantity)
+				if err != nil {
+					t.Fatalf("format reference quantity %q: %v", old.Quantity, err)
+				}
+				if row.Quantity != wantQuantity {
+					t.Errorf("%s quantity: %s != %s", row.Name, row.Quantity, wantQuantity)
+				}
 			}
 		})
 	}

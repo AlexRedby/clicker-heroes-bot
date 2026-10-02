@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -158,6 +157,7 @@ type ancientPlanner struct {
 	plan                               *ancientPlan
 	active, started, finished, blocked bool
 	budgetChecked, topChecked          bool
+	quantityEntered                    bool
 	done                               map[int]bool
 	latest                             ancientObservation
 	pending                            *gameAction
@@ -190,7 +190,7 @@ func (p *ancientPlanner) confirmationStatus() string {
 	if p.plan != nil && p.selected >= 0 && p.selected < len(p.plan.Rows) {
 		name = p.plan.Rows[p.selected].Name
 	}
-	return fmt.Sprintf("stage=%s, Ancient=%s, expected quantity=%q, read quantity=%q, dialog=%t, OK=%t, visible rows=%d", stage, name, p.quantity, p.latest.quantity, p.latest.frame.context.ancientDialog, p.latest.okay, len(p.latest.rows))
+	return fmt.Sprintf("stage=%s, Ancient=%s, quantity=%q, dialog=%t, OK=%t, visible rows=%d", stage, name, p.quantity, p.latest.frame.context.ancientDialog, p.latest.okay, len(p.latest.rows))
 }
 func (p *ancientPlanner) pauseReason() string {
 	return "Ancient batch blocked: " + p.failure + "; close the dialog, export a fresh save and restart before another batch"
@@ -261,9 +261,10 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 			return
 		}
 	case fillAncientQuantity:
-		if !out.frame.context.ancientDialog || !out.okay || !ancientQuantityMatches(out.quantity, p.quantity) {
+		if !out.frame.context.ancientDialog || !out.okay {
 			return
 		}
+		p.quantityEntered = true
 	case confirmAncientQuantity:
 		if !out.frame.context.ancients {
 			return
@@ -275,6 +276,7 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 				fmt.Printf("leveled Ancient %s by %s\n", name, p.quantity)
 				p.selected = -1
 				p.quantity = ""
+				p.quantityEntered = false
 				p.target = ""
 				p.pending = nil
 				p.deadline = time.Time{}
@@ -322,7 +324,7 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 			p.fail("unowned quantity dialog")
 			return gameAction{}, false
 		}
-		if p.latest.quantity == "" || !ancientQuantityMatches(p.latest.quantity, p.quantity) {
+		if !p.quantityEntered {
 			return makeAction(fillAncientQuantity, controlRect(frame.image, image.Rect(640, 338, 641, 339)).Min)
 		}
 		point, found, err := ancientControl(frame.image, 1)
@@ -383,6 +385,7 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 				return gameAction{}, false
 			}
 			p.selected = i
+			p.quantityEntered = false
 			return makeAction(openAncientQuantity, row.point)
 		}
 	}
@@ -417,12 +420,6 @@ func ancientActionStable(a gameAction, current gameFrame) bool {
 	if a.ancient.step == fillAncientQuantity || a.ancient.step == confirmAncientQuantity {
 		if !current.context.ancientDialog || !ancientQuantityDialog(current.image) {
 			return false
-		}
-		if a.ancient.step == confirmAncientQuantity {
-			before, after := ancientQuantityMask(a.frame.image), ancientQuantityMask(current.image)
-			if !bytes.Equal(before.Pix, after.Pix) {
-				return false
-			}
 		}
 		return true
 	}
@@ -479,16 +476,4 @@ func fillAncientCustom(ctx context.Context, input heroInput, quantity string) (e
 		return err
 	}
 	return input.typeText(quantity)
-}
-
-func ancientQuantityMatches(got, want string) bool {
-	if _, err := ancientcalc.Value(got); err != nil {
-		return false
-	}
-	a, ok := new(big.Rat).SetString(got)
-	if !ok {
-		return false
-	}
-	b, ok := new(big.Rat).SetString(want)
-	return ok && a.Cmp(b) == 0
 }

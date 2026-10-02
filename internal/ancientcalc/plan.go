@@ -2,9 +2,9 @@ package ancientcalc
 
 import (
 	"errors"
-	"fmt"
 	"math/big"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -111,8 +111,8 @@ func (p Plan) Validate() error {
 	return nil
 }
 
-// InputQuantity rounds down to fit the visible text field without increasing
-// calculator spending. The omitted digits are below the game's displayed precision.
+// InputQuantity truncates to six significant digits so the visible text field
+// never requests more levels than the calculator planned.
 func InputQuantity(quantity string) (string, error) {
 	if _, err := Value(quantity); err != nil {
 		return "", err
@@ -126,8 +126,12 @@ func InputQuantity(quantity string) (string, error) {
 		return "", errors.New("Ancient quantity is below one level")
 	}
 	digits := integer.String()
-	if len(digits) <= 15 {
+	if len(digits) <= 6 {
 		return digits, nil
 	}
-	return digits[:1] + "." + digits[1:15] + fmt.Sprint("e", len(digits)-1), nil
+	significant := strings.TrimRight(digits[:6], "0")
+	if len(significant) == 1 {
+		return significant + "e" + strconv.Itoa(len(digits)-1), nil
+	}
+	return significant[:1] + "." + significant[1:] + "e" + strconv.Itoa(len(digits)-1), nil
 }
