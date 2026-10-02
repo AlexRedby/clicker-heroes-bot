@@ -488,3 +488,62 @@ func TestAncientOrdinaryPurchaseWithoutDialog(t *testing.T) {
 		t.Fatal("stale plan repeated the purchase")
 	}
 }
+
+func TestAncientEnergonPurchaseConfirmation(t *testing.T) {
+	requireAncientOCR(t)
+	original := loadTestImage(t, "testdata/ancient-energon-leveled.png")
+	for _, width := range []int{original.Bounds().Dx(), 1280} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			screen := image.NewRGBA(image.Rect(0, 0, width, width*original.Bounds().Dy()/original.Bounds().Dx()))
+			xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
+			c, err := recognizedGame(screen)
+			if err != nil || !c.known || !c.ancients || c.ancientDialog {
+				t.Fatal("post-purchase context", c, err)
+			}
+			out, err := readAncientObservation(context.Background(), gameFrame{id: 2, image: screen, context: c})
+			if err != nil {
+				t.Fatal(err)
+			}
+			energon := -1
+			for i, row := range out.rows {
+				if row.name == "Energon" && row.level == "201" {
+					energon = i
+				}
+			}
+			if energon < 0 {
+				t.Fatal("Energon level 201 not recognized", out.rows)
+			}
+			plan := ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Energon", Current: "149", Target: "201", Quantity: "52"}}}}
+			p := ancientPlanner{plan: &plan, active: true, selected: 0, quantity: "52", target: "201", done: map[int]bool{}}
+			now := time.Now()
+			p.sent(gameAction{frame: gameFrame{id: 1}, ancient: ancientCommand{step: confirmAncientQuantity, quantity: "52"}}, now)
+			unchanged := out
+			unchanged.rows = append([]ancientScreenRow(nil), out.rows...)
+			unchanged.rows[energon].level = "149"
+			p.observe(unchanged, nil, now)
+			if p.pending == nil || p.done[0] {
+				t.Fatal("unchanged level confirmed")
+			}
+			if _, ok := p.action(out.frame, now.Add(time.Second)); ok {
+				t.Fatal("unconfirmed OK repeated")
+			}
+			out.frame.id++
+			p.observe(out, nil, now.Add(time.Second))
+			if p.pending != nil || !p.done[0] || p.blocked {
+				t.Fatal("successful Energon purchase not confirmed", p.failure)
+			}
+		})
+	}
+}
+
+func TestAncientLevelLabelPreservesDigits(t *testing.T) {
+	for _, tc := range []struct{ raw, want string }{
+		{"Lvl201", "201"}, {"LvIl201", "201"}, {"Lvi161", "161"},
+		{"vl185", "185"}, {"Lvl149", "149"}, {"Lvl1201", "1201"},
+		{"Lv1149", "149"}, {"Lvl1.000e28", "1.000e28"},
+	} {
+		if got := ancientLevelLabel.ReplaceAllString(tc.raw, ""); got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.raw, got, tc.want)
+		}
+	}
+}

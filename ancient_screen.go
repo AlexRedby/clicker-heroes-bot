@@ -10,7 +10,7 @@ import (
 	"clicker-heroes-bot/internal/ancientcalc"
 )
 
-var ancientLevelLabel = regexp.MustCompile(`(?i)^[li]?v[li1]\s*`)
+var ancientLevelLabel = regexp.MustCompile(`(?i)^[li]?v[li1][li]*\s*`)
 
 func ancientControl(screen image.Image, which int) (image.Point, bool, error) {
 	regions := [...]image.Rectangle{image.Rect(475, 265, 805, 295), image.Rect(581, 370, 695, 420)}
