@@ -14,9 +14,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"clicker-heroes-bot/internal/ancientcalc"
 
 	"github.com/go-vgo/robotgo"
 	hook "github.com/robotn/gohook"
@@ -31,6 +34,7 @@ func main() {
 	ancientSkillRate := flag.Float64("ancient-skill-rate", 1, "calculator allocation to skill Ancients, from 0 to 1")
 	ancientBeyond8k := flag.Bool("ancient-beyond8k", false, "best hero is levelled beyond 8000; changes calculator gold allocation")
 	ancientSave := flag.String("ancients-save", "", "exported save for one Ancient purchase batch before normal run actions")
+	exportDir := flag.String("export-dir", "", "folder where Save creates clickerHeroSave*.txt; export and buy Ancients at startup and after Ascension")
 	ancientPlanOutput := flag.String("ancient-plan-out", "artifacts/ancients-plan.json", "Ancient purchase plan output")
 	x := flag.Int("x", 0, "screen X coordinate for click or optional monster clicks in run mode")
 	y := flag.Int("y", 0, "screen Y coordinate for click or optional monster clicks in run mode")
@@ -98,6 +102,26 @@ func main() {
 	case "click":
 		err = clickAt(context.Background(), *x, *y)
 	case "run":
+		var export *saveExportOptions
+		if *exportDir != "" {
+			if *ancientSave != "" {
+				err = errors.New("use either -export-dir or -ancients-save")
+				break
+			}
+			if _, e := snapshotExports(*exportDir); e != nil {
+				err = fmt.Errorf("export directory: %w", e)
+				break
+			}
+			if _, e := ancientcalc.Value(strings.TrimSuffix(*ancientReserve, "%")); e != nil {
+				err = fmt.Errorf("soul reserve: %w", e)
+				break
+			}
+			if !(*ancientSkillRate >= 0 && *ancientSkillRate <= 1) {
+				err = errors.New("-ancient-skill-rate must be between 0 and 1")
+				break
+			}
+			export = &saveExportOptions{dir: *exportDir, reserve: *ancientReserve, skillRate: *ancientSkillRate, beyond8k: *ancientBeyond8k, planOutput: *ancientPlanOutput}
+		}
 		var plan *ancientPlan
 		if *ancientSave != "" {
 			value, e := calculateAncients(context.Background(), *ancientSave, *ancientReserve, *ancientSkillRate, *ancientBeyond8k)
@@ -125,7 +149,7 @@ func main() {
 			break
 		}
 
-		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall, *ascensionMinGain, capital, plan)
+		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall, *ascensionMinGain, capital, plan, export)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -256,6 +280,7 @@ type heroInput struct {
 	keyTap       func(string) error
 	keyToggle    func(string, string) error
 	typeText     func(string) error
+	focus        func(string) error
 }
 
 type pauseControl struct {
@@ -378,7 +403,7 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.misses = 0
 }
 
-func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration, ascensionMinGain, ascensionCapital float64, ancientPlan *ancientPlan) error {
+func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration, ascensionMinGain, ascensionCapital float64, ancientPlan *ancientPlan, export *saveExportOptions) error {
 	if ascension && (!progression || ascensionStall <= 0 || ascensionMinGain <= 0 || math.IsNaN(ascensionMinGain) || math.IsInf(ascensionMinGain, 0)) {
 		return errors.New("-ascension requires -progression, positive -ascension-stall and finite positive -ascension-min-gain")
 	}
@@ -405,13 +430,14 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	if duration > 0 {
 		ctx, cancel = context.WithTimeout(interrupt, duration)
 	}
-	if heroLevels || progression || mercenaries || ancientPlan != nil {
+	if heroLevels || progression || mercenaries || ancientPlan != nil || export != nil {
 		if err := checkHeroOCR(ctx); err != nil {
 			cancel()
 			return err
 		}
 	}
 	input := heroInput{
+		focus:        focusGameWindow,
 		capture:      func() (image.Image, error) { return robotgo.CaptureImg() },
 		monsterClick: func(p image.Point) error { return clickAt(ctx, p.X, p.Y) },
 		move:         moveAt,
@@ -471,7 +497,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	pipeline := newGamePipeline(&controls, input, pipelineReaders{
 		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation, ascensionEconomy: readAscensionEconomy, ancients: readAncientObservation,
 		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: foregroundGameWindow,
-	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall, ascensionMinGain: ascensionMinGain, ascensionCapital: ascensionCapital, ancientPlan: ancientPlan,
+	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall, ascensionMinGain: ascensionMinGain, ascensionCapital: ascensionCapital, ancientPlan: ancientPlan, export: export,
 		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval})
 	err = pipeline.run(ctx)
 	fmt.Printf("stopped after %d actions\n", pipeline.metrics.actions)
@@ -491,4 +517,13 @@ func foregroundGameWindow() string {
 		return "!outside-game"
 	}
 	return fmt.Sprintf("%d:%s", pid, title)
+}
+
+func focusGameWindow(window string) error {
+	pidText, _, ok := strings.Cut(window, ":")
+	pid, err := strconv.Atoi(pidText)
+	if !ok || err != nil || pid <= 0 {
+		return errors.New("game process identity unavailable; focus the game and retry")
+	}
+	return robotgo.ActivePid(pid)
 }

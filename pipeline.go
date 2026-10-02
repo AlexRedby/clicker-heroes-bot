@@ -21,6 +21,7 @@ const (
 	mercenaryAnalysis
 	ascensionAnalysis
 	ancientAnalysis
+	exportAnalysis
 	analysisCount
 )
 
@@ -34,6 +35,7 @@ const (
 	handleMercenary
 	handleAscension
 	handleAncient
+	handleExport
 	parkPointer
 	selectQuantity
 	scrollHeroes
@@ -42,10 +44,10 @@ const (
 )
 
 type gameContext struct {
-	known, heroes, mercenaries, questDialog, ascension, ancients, ancientDialog bool
-	modal                                                                       gildModal
-	window                                                                      string
-	bounds                                                                      image.Rectangle
+	known, heroes, mercenaries, questDialog, ascension, ancients, ancientDialog, saveMenu bool
+	modal                                                                                 gildModal
+	window                                                                                string
+	bounds                                                                                image.Rectangle
 }
 type gameFrame struct {
 	id, generation, layout uint64
@@ -55,6 +57,7 @@ type gameFrame struct {
 }
 type analysisJob struct {
 	frame      gameFrame
+	export     *exportJob
 	heroBefore *heroObservation
 	modeOnly   bool
 	economy    bool
@@ -72,6 +75,7 @@ type observation struct {
 	mercenary   mercenaryObservation
 	ascension   ascensionObservation
 	ancient     ancientObservation
+	exportPlan  *ancientPlan
 	err         error
 }
 type gameAction struct {
@@ -85,6 +89,7 @@ type gameAction struct {
 	mercenary     mercenaryCommand
 	ascension     ascensionStep
 	ancient       ancientCommand
+	export        *exportCommand
 	queuedAt      time.Time
 }
 type actionResult struct {
@@ -111,6 +116,7 @@ type pipelineOptions struct {
 	ascensionStall                                                      time.Duration
 	ascensionMinGain, ascensionCapital                                  float64
 	ancientPlan                                                         *ancientPlan
+	export                                                              *saveExportOptions
 	monsterPoint                                                        image.Point
 	fishInterval, clickInterval, gildInterval                           time.Duration
 }
@@ -136,6 +142,7 @@ type gamePipeline struct {
 	progression                                         progressionPlanner
 	ascension                                           ascensionPlanner
 	ancient                                             ancientPlanner
+	export                                              saveExporter
 	mercenary                                           mercenaryPlanner
 	fish                                                fishClickTracker
 	gild                                                gildCollector
@@ -155,6 +162,7 @@ type gamePipeline struct {
 func newGamePipeline(controls *pauseControl, input heroInput, readers pipelineReaders, options pipelineOptions) *gamePipeline {
 	p := &gamePipeline{controls: controls, input: input, readers: readers, options: options, hero: heroRunner{enabled: options.heroes}, queue: make(map[actionKind]gameAction), diagnostics: make(chan heroAttempt, 1)}
 	p.ancient.plan = options.ancientPlan
+	p.export.requested = options.export != nil
 	p.hero.onFailure = func(a heroAttempt) {
 		select {
 		case p.diagnostics <- a:
@@ -171,6 +179,10 @@ func recognizedGame(screen image.Image) (gameContext, error) {
 		return c, errors.New("capture returned no image")
 	}
 	c.bounds = screen.Bounds()
+	if saveMenu(screen) {
+		c.known, c.saveMenu = true, true
+		return c, nil
+	}
 	if ancientQuantityDialog(screen) {
 		c.known, c.ancientDialog = true, true
 		return c, nil
@@ -192,8 +204,10 @@ func recognizedGame(screen image.Image) (gameContext, error) {
 		return c, err
 	}
 	known, _, err := progressionMode(screen)
-	c.known = known
-	c.heroes = known && heroTabSelected(screen)
+	// Immediately after Ascension the progression control can still be locked.
+	// The selected Heroes tab and quantity bar remain valid HUD anchors.
+	c.known = known || heroQuantityBarPresent(screen)
+	c.heroes = c.known && heroTabSelected(screen)
 	c.mercenaries = known && mercenaryTabSelected(screen)
 	c.ancients = known && ancientTabSelected(screen)
 	return c, err
@@ -221,6 +235,8 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 		}
 	case ancientAnalysis:
 		out.ancient, out.err = p.readers.ancients(ctx, job.frame)
+	case exportAnalysis:
+		out.exportPlan, out.err = readExportPlan(*job.export)
 	}
 	out.elapsed = time.Since(start)
 	return out
@@ -250,6 +266,7 @@ func (p *gamePipeline) reset(generation uint64) {
 		p.progression = progressionPlanner{}
 	}
 	p.ancient.interrupt()
+	p.export.interrupt()
 	p.ascension.interrupt()
 	p.generation = generation
 	p.layout++
@@ -272,7 +289,7 @@ func (p *gamePipeline) reset(generation uint64) {
 func (p *gamePipeline) run(ctx context.Context) error {
 	workerCtx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
-	defer func() { cancel(); close(p.diagnostics); wg.Wait() }()
+	defer func() { cancel(); p.export.interrupt(); close(p.diagnostics); wg.Wait() }()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -338,6 +355,10 @@ func (p *gamePipeline) run(ctx context.Context) error {
 		case done := <-actionDone:
 			p.busy = false
 			if done.err != nil {
+				if done.action.kind == handleExport {
+					p.exportFailed(done.err)
+					continue
+				}
 				return done.err
 			}
 			if done.acted {
@@ -400,7 +421,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	if p.readers.window != nil {
 		c.window = p.readers.window()
 		if c.window == "!outside-game" {
-			c.ancients, c.ancientDialog = false, false
+			c.ancients, c.ancientDialog, c.saveMenu = false, false, false
 			c.known, c.heroes, c.mercenaries, c.questDialog, c.ascension, c.modal = false, false, false, false, false, noGildModal
 		}
 		if c.window == "" && !p.focusFallback {
@@ -415,7 +436,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.ancient.interrupt()
 			p.controls.pauseLocked(p.ancient.pauseReason(), true)
 		}
-		if c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.bounds != old.bounds || c.window != old.window {
+		if c.saveMenu != old.saveMenu || c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.bounds != old.bounds || c.window != old.window {
 			if c.bounds != old.bounds || c.window != old.window || !p.mercenary.expects(c, now) {
 				p.mercenary.interrupt()
 			}
@@ -448,6 +469,17 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		p.mercenary.captured(p.frame, now)
 		// Slow capture must not consume its own interval and immediately repeat.
 		p.nextCapture = now.Add(time.Since(start) + min(250*time.Millisecond, p.options.fishInterval))
+		if p.options.export != nil && p.export.requested {
+			if p.export.active && p.export.step == exportReadFile && p.export.jobFrame == 0 && c.window == p.export.window && c.known && !c.saveMenu {
+				jobCtx, cancel := context.WithDeadline(ctx, p.export.deadline)
+				p.export.cancel, p.export.jobFrame = cancel, p.frame.id
+				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before}})
+			}
+			return nil
+		}
+		if c.saveMenu {
+			return nil
+		}
 		if p.ascension.active && (p.ascension.step == openAscension || p.ascension.step == waitAscensionReset || p.ascension.latest.frame.id == 0) && c.window != "!outside-game" && p.ascension.jobFrame == 0 && p.frame.id > p.ascension.lastInputFrame && !now.Before(p.ascension.nextRead) {
 			p.ascension.jobFrame = p.frame.id
 			replaceJob(jobs[ascensionAnalysis], analysisJob{frame: p.frame})
@@ -526,6 +558,44 @@ func (p *gamePipeline) accept(ctx context.Context, out observation, now time.Tim
 }
 
 func (p *gamePipeline) applyObservation(ctx context.Context, out observation, now time.Time) error {
+	if out.kind == exportAnalysis {
+		if !p.export.active || p.export.step != exportReadFile || out.frame.id != p.export.jobFrame {
+			p.metrics.dropped++
+			return nil
+		}
+		p.export.jobFrame = 0
+		if out.err != nil || p.frame.context.window != p.export.window || !p.frame.context.known || p.frame.context.saveMenu {
+			reason := out.err
+			if reason == nil {
+				reason = errors.New("game context changed while reading export")
+			}
+			// applyObservation owns the pause mutex.
+			p.export.interrupt()
+			p.controls.pauseLocked(fmt.Sprintf("save export failed: %v; focus the game and press F8 to retry", reason), false)
+			return nil
+		}
+		if err := writeAncientPlan(p.options.export.planOutput, *out.exportPlan); err != nil {
+			p.export.interrupt()
+			p.controls.pauseLocked("save export plan output failed: "+err.Error(), false)
+			return nil
+		}
+		capital, err := ascensionSoulCapital(out.exportPlan)
+		if err != nil {
+			return err
+		}
+		p.options.ascensionCapital = capital
+		p.ancient = ancientPlanner{plan: out.exportPlan}
+		p.export.interrupt()
+		p.export.requested = false
+		p.queue = make(map[actionKind]gameAction)
+		p.state = [analysisCount]observation{}
+		fmt.Println("save export: fresh plan ready")
+		return nil
+	}
+	if p.export.requested || p.frame.context.saveMenu {
+		p.metrics.dropped++
+		return nil
+	}
 	if out.frame.layout != p.layout || p.frame.context.modal != noGildModal || p.gild.active || out.frame.id < p.barriers[out.kind] || out.frame.id <= p.state[out.kind].frame.id {
 		p.metrics.dropped++
 		return nil
@@ -552,7 +622,14 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.progression = progressionPlanner{}
 			p.hero.failures, p.hero.enabled = 0, p.options.heroes
 			// accept() already owns the pause-control mutex.
-			p.controls.pauseLocked("Ascension confirmed at zone 1; export a fresh save for Hero Souls spending and restart setup; press F8 when ready", false)
+			if p.options.export != nil {
+				p.ancient = ancientPlanner{}
+				p.export.requested = true
+				p.queue = make(map[actionKind]gameAction)
+				fmt.Println("Ascension confirmed at zone 1; requesting fresh save export")
+			} else {
+				p.controls.pauseLocked("Ascension confirmed at zone 1; export a fresh save for Hero Souls spending and restart setup; press F8 when ready", false)
+			}
 		}
 		return nil
 	}
@@ -637,7 +714,7 @@ func (p *gamePipeline) plan(now time.Time) {
 	if now.Before(p.settleUntil) {
 		return
 	}
-	if p.planAncients(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
+	if p.planExport(now) || p.planAncients(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
 		return
 	}
 	if p.options.mercenaries {
@@ -684,7 +761,15 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 		if !ok {
 			continue
 		}
-		if action.frame.layout != p.layout || action.frame.generation != p.generation || !p.frame.context.known || ((p.frame.context.modal != noGildModal || p.gild.active) && kind != collectGilds) {
+		if action.frame.layout != p.layout || action.frame.generation != p.generation || (!p.frame.context.known && !(kind == handleExport && action.export.step == exportRestoreGame)) || ((p.frame.context.modal != noGildModal || p.gild.active) && kind != collectGilds) {
+			delete(p.queue, kind)
+			continue
+		}
+		if (p.export.requested || p.frame.context.saveMenu) && kind != handleExport {
+			delete(p.queue, kind)
+			continue
+		}
+		if kind == handleExport && (!p.export.active || action.export.step != p.export.step || (action.export.step != exportRestoreGame && action.frame.context != p.frame.context)) {
 			delete(p.queue, kind)
 			continue
 		}
@@ -797,10 +882,22 @@ var errInputContext = errors.New("input context changed")
 
 func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) {
 	acted, err := p.controls.runClick(ctx, a.frame.generation, func() error {
-		if p.readers.window != nil && p.readers.window() != a.frame.context.window {
+		if !(a.kind == handleExport && a.export.step == exportRestoreGame) && p.readers.window != nil && p.readers.window() != a.frame.context.window {
 			return errInputContext
 		}
 		switch a.kind {
+		case handleExport:
+			if a.export.step == exportRestoreGame {
+				return p.input.focus(a.export.window)
+			}
+			if a.export.step == exportSave {
+				before, err := snapshotExports(p.options.export.dir)
+				if err != nil {
+					return err
+				}
+				a.export.before = before
+			}
+			return p.input.click(a.point)
 		case handleAncient:
 			switch a.ancient.step {
 			case scrollAncients:
@@ -897,6 +994,10 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 	}
 	invalidate := func(kind analysisKind) { p.barriers[kind] = p.frame.id + 1; p.state[kind] = observation{} }
 	switch a.kind {
+	case handleExport:
+		p.export.sent(a, now)
+		p.queue = make(map[actionKind]gameAction)
+		p.state = [analysisCount]observation{}
 	case handleAncient:
 		p.ancient.sent(a, now)
 		p.barriers[ancientAnalysis] = p.frame.id + 1
@@ -985,6 +1086,9 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		}
 	}
 	p.settleUntil = now.Add(150 * time.Millisecond)
+	if a.kind == handleExport {
+		p.settleUntil = now.Add(500 * time.Millisecond)
+	}
 	if a.kind == buyHero || a.kind == scrollHeroes || a.kind == parkPointer || a.kind == handleMercenary {
 		p.settleUntil = now.Add(200 * time.Millisecond)
 	}
@@ -993,7 +1097,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 
 func (m pipelineMetrics) String() string {
 	parts := []string{fmt.Sprintf("captures=%d capture=%s actions=%d input=%s queue=%s stale=%d", m.captures, m.captureTime, m.actions, m.inputTime, m.queueTime, m.dropped)}
-	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients"} {
+	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export"} {
 		parts = append(parts, fmt.Sprintf("%s=%d/%s", name, m.counts[i], m.elapsed[i]))
 	}
 	return strings.Join(parts, " ")

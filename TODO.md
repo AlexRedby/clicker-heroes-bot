@@ -39,10 +39,6 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 - Verify the live `-mercenaries` loop: notification, saved visible-row plan, paired Collect/Start Quest clicks, offer selection, fixed Okay after 300 ms, faster scrolling to the fifth mercenary, returning to Heroes and F8 interruption/resume alongside fish and skills. Supplied screenshots and regression tests cover initial roster/offer OCR, four/five-mercenary sweeps without intermediate roster OCR, unreadable offers, interruptions and transient context recovery; native timing still needs a running game on the target device.
 - Capture real death and free-recruitment screens; verify that Revive/Bury remain untouched and recruitment quests are recognized before relying on automatic roster replenishment. Unsupported layouts must end the visit without ruby spending.
 
-## Ancient purchase recovery and automatic export
-
-- After those fixes pass, implement automatic fresh save export as a separate exclusive UI transaction using the supplied menu and export screens. Decode in memory, avoid Import/Reset/Recover controls, preserve F8 cancellation and integrate acquisition with Ancient planning at startup and after Ascension. Gate: screenshot recognition, stale/failed export and pipeline isolation tests; retain post-reset bootstrap work until implemented.
-
 ## Native Ancient calculator review
 
 - Fix exact-budget allocations in `internal/ancientcalc/calculator.go`: search uses `spent < available` and rejects a fitting plan. Reproduction: Fragsworth=1, Morgulis=1, wallet=5, reserve=0, skill rate=0 returns no purchases; Fragsworth=2 and Morgulis=4 cost exactly 5. Add an independent regression, then rerun the frozen-reference cases and review intended output changes.
@@ -62,7 +58,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 ### Hero Souls spending
 
 - Verify one live `-ancients-save` batch with a fresh export, expanded Ancient cards, V custom quantity, actual text entry, visible level confirmation, scrolling through all planned rows and return to Heroes. Include F8 and a missed input; obtain real filled-quantity and post-purchase frames if OCR needs calibration. Supplied frames and regressions cover recognition, budget protection, transaction ownership, stale input and interruption.
-- Acquire a fresh exported state after each confirmed Ascension and integrate spending only after live validation. The current command runs one batch from a user export and then pauses; repeated unattended resets still require initial hero buying, Amenhotep unlock and Auto Clicker setup. Consider gild transfers and relics after that loop works.
+- Verify live `-export-dir` acquisition on Windows: menu -> Save -> delayed Explorer foreground -> original game focus -> menu close -> fresh file -> Ancient batch. Check the configured export folder and filename, F8 during acquisition, a failed Save, blocked OK and the same sequence after Ascension. Automated regressions cover menu recognition, stale/partial exports, cancellation and queue isolation. Initial hero buying, Amenhotep unlock and Auto Clicker setup still gate unattended restart; consider gild transfers and relics after that loop works.
 
 ### Transcension
 

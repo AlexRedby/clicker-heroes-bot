@@ -52,22 +52,25 @@ func calculateAncients(ctx context.Context, savePath, reserve string, skillRate 
 	if err != nil {
 		return plan, fmt.Errorf("read exported save: %w", err)
 	}
+	return calculateAncientData(ctx, save, savePath, reserve, skillRate, beyond8k)
+}
+
+func calculateAncientData(ctx context.Context, save []byte, savePath, reserve string, skillRate float64, beyond8k bool) (ancientPlan, error) {
+	var plan ancientPlan
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	var err error
 	plan.Plan, err = ancientcalc.Calculate(ctx, save, reserve, skillRate, beyond8k)
 	if err != nil {
 		return plan, fmt.Errorf("Ancient calculator: %w", err)
 	}
-
 	sum := sha256.Sum256(save)
 	plan.SaveHash = hex.EncodeToString(sum[:])
 	plan.CreatedAt = time.Now().UTC()
 	plan.savePath, err = filepath.Abs(savePath)
-	if err != nil {
-		return plan, err
-	}
-	return plan, nil
+	return plan, err
 }
+
 func writeAncientPlan(path string, plan ancientPlan) error {
 	if plan.savePath != "" {
 		output, err := filepath.Abs(path)
