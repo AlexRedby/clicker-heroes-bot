@@ -134,7 +134,8 @@ func readAncientObservation(ctx context.Context, frame gameFrame) (ancientObserv
 	}
 	out.souls = match[1]
 	for _, point := range ancientButtons(screen) {
-		raw, err := readGameText(ctx, screen, ancientLevelRegion(screen, point), max(1, 2560/screen.Bounds().Dx()), 7, 0, "0123456789.eElLvViI")
+		// Preserve thin level digits even in full-resolution captures.
+		raw, err := readGameText(ctx, screen, ancientLevelRegion(screen, point), max(2, 2560/screen.Bounds().Dx()), 7, 0, "0123456789.eElLvViI")
 		if err != nil {
 			return out, err
 		}

@@ -658,3 +658,56 @@ func TestAncientLevelLabelPreservesDigits(t *testing.T) {
 		}
 	}
 }
+
+func TestAncientKumawakamaruPurchaseConfirmation(t *testing.T) {
+	requireAncientOCR(t)
+	screen := loadTestImage(t, "testdata/ancient-kumawakamaru-leveled.png")
+	c, err := recognizedGame(screen)
+	if err != nil || !c.known || !c.ancients || c.ancientDialog {
+		t.Fatal("post-purchase context", c, err)
+	}
+	out, err := readAncientObservation(context.Background(), gameFrame{id: 2, image: screen, context: c})
+	if err != nil || out.souls != "4.165e65" {
+		t.Fatal("post-purchase wallet", out.souls, err)
+	}
+	selected := -1
+	for i, row := range out.rows {
+		if row.name == "Kumawakamaru" && row.level == "211" {
+			selected = i
+		}
+	}
+	if selected < 0 {
+		t.Fatal("Kumawakamaru level 211 with relic marker not recognized", out.rows)
+	}
+	plan := ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Kumawakamaru", Current: "140", Target: "211", Quantity: "71"}}}}
+	p := ancientPlanner{plan: &plan, active: true, started: true, selected: 0, quantity: "71", target: "211", done: map[int]bool{}, budgetChecked: true, topChecked: true}
+	now := time.Now()
+	p.sent(gameAction{frame: gameFrame{id: 1}, ancient: ancientCommand{step: confirmAncientQuantity, quantity: "71"}}, now)
+	for _, level := range []string{"140", "141", "212", "211 (*)", "missing", "stale"} {
+		unconfirmed := out
+		unconfirmed.rows = append([]ancientScreenRow(nil), out.rows...)
+		switch level {
+		case "missing":
+			unconfirmed.rows = nil
+		case "stale":
+			unconfirmed.frame.id = 1
+		default:
+			unconfirmed.rows[selected].level = level
+		}
+		p.observe(unconfirmed, nil, now)
+		if p.pending == nil || p.done[0] || p.blocked {
+			t.Fatal("unverified purchase confirmed", level, p.failure)
+		}
+		if _, ok := p.action(out.frame, now.Add(time.Second)); ok {
+			t.Fatal("unconfirmed OK repeated", level)
+		}
+	}
+	out.frame.id++
+	p.observe(out, nil, now.Add(time.Second))
+	if p.pending != nil || !p.done[0] || p.blocked || p.selected != -1 || p.quantity != "" || !p.deadline.IsZero() {
+		t.Fatal("successful Kumawakamaru purchase not confirmed", p.failure)
+	}
+	if a, ok := p.action(out.frame, now.Add(time.Second)); !ok || a.ancient.step != returnAncientHeroes {
+		t.Fatal("confirmed purchase repeated instead of returning to Heroes", a, ok)
+	}
+}
