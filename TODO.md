@@ -1,16 +1,10 @@
 # TODO
 
-## Ready-agent integration
-
-- Integrate the committed Relics preview, Ancient budget/cancellation fixes and measured SIFT/OCR changes into the shared executable.
-- Expose the existing Transcension preview through the main executable and fresh Ancient plan, without enabling reset or Outsider purchases.
-- Run integrated OpenCV 4.13/Tesseract tests, vet/build and a focused review; reconcile unfinished evidence gates, then push to origin/main.
-
 ## Unattended Ascension milestone
 
 Integration is waiting for real post-reset Heroes/ordinary-upgrade and existing Auto Clicker frames, plus Relics/junk-blocker evidence. The user cannot supply them yet and requested stopping dependent work. Keep reset/purchase completion pauses until the missing UI is verified.
 
-- Integrate the existing read-only relic export/preflight without installing an Ancient spending plan; block reset on nonempty or unknown junk with a specific reason. Equipment/salvage UI still requires real evidence.
+- Recognize the native relic-junk blocker and block reset on nonempty or unknown junk with a specific reason. The integrated export preflight is advisory; equipment/salvage UI still requires real evidence.
 - Connect bootstrap to shared observations and serialized input: identify support hero rows, buy only missing levels/ordinary skill unlocks, and preserve the latest-hero policy. Never purchase the Ascension upgrade as an ordinary upgrade.
 - Replace reset/Ancient completion pauses with a fresh-export -> confirmed spending -> Heroes bootstrap -> progression handoff; no stale spending-plan replay after F8 or failed input.
 - Add bounded failure/recovery handling and runnable regressions for two consecutive cycles, no-purchase plans, F8/context changes, unavailable gold, fish obstruction and missing UI evidence.
@@ -28,24 +22,24 @@ Integration is waiting for real post-reset Heroes/ordinary-upgrade and existing 
 
 Goal: complete the unattended active-play loop using the existing shared capture, bounded analyzers and serialized input queue. Independent feature work is planned in its own chat; the unattended Ascension milestone is now approved for implementation. Keep working strategies simple: the latest hero, saving for the next hero, native hotkeys/input where available, and no ruby spending.
 
-### Independent planning streams
+### Remaining independent gates
 
 | ID | Scope and deliverable | Priority | Completion gate |
 | --- | --- | --- | --- |
 | R1 | Ascension restart and hero bootstrap: short lists without a scrollbar, first hero purchases, hero skill/upgrades unlocks including Amenhotep, optional Buy Available Upgrades, existing Auto Clicker target setup, and the last hero without a successor. | First | A plan with ordered startup states and verified UI evidence; no regression to the ordinary latest-hero strategy; F8 and missing-input cases specified. Buy Available Upgrades remains optional when the user already assigns an Auto Clicker to it. |
-| R2 | Ancient calculator correctness: exact-budget fits, independent allocation/cost/reserve invariants, Juggernaut/Solomon bulk-cost evidence and decoder cancellation propagation. | First | Concrete reproductions and proposed fixes; distinguish frozen-reference parity from independent correctness; six-digit downward purchase input remains safe. |
+| R2 | Validate conservative Ancient price bounds in the installed game. | First | Compare Juggernaut/Solomon bulk purchases and Chor'gorloth discount/balance rounding to fresh before/after exports; preserve the reserve. |
 | R3 | Relic management: recognize the inventory/full-junk blocker, determine how equipment and junk handling fit before Ascension, and propose a minimal active-build policy. | First | Verified screens or exact missing-input list; explicit equipment and discard policy; unknown items are not silently destroyed. |
 | R4 | Gild redistribution: choose a good target consistent with latest-hero progression, calculate transfer cost from current save/state, and plan UI application. | Next | Keep earned gift opening separate; account for soul costs and reserves; no ruby spending and no repeated transfers to the same target. |
 | R5 | Combat and boss recovery: validate active/ready skill states, Energize/Reload waves, variable cooldowns, failed-boss retry and the Ascension handoff. | First | Concrete remaining gaps and fixture/live scenarios; reuse current skill/progression/Ascension policies rather than replacing them without evidence. |
-| R6 | Capture and fish performance: measure capture, SIFT, OCR and queue delays, then propose only demonstrated reductions in repeated work or latency. | First | Reproducible baseline and quality-preserving experiments over real, rotated, small and scrollbar-overlap fish; no performance win inferred from fewer detections. |
+| R6 | Native Windows capture, SIFT, OCR and queue measurement with the integrated changes. | First | Collect p50/p95 timing and timeout rate, with real, rotated, small and scrollbar-overlap fish; no win inferred from fewer detections. |
 | R7 | Windowed game and display scaling: locate the game viewport, map screenshot coordinates to input, and plan focus/permission handling across Windows/macOS. | Later | Native coordinate evidence; correct ROI translation, unknown-window behavior and F8; full-screen behavior remains supported. |
 | R8 | Transcension and Outsiders: validate the read-only preview against the installed UI and implement gated native stages. | Later | Match reward, TP, costs and respec semantics to UI; automated reset waits for the complete Ascension loop and an explicit enabled mode. |
 | R9 | Mercenary recovery and recruitment in the existing mercenary chat: current quest loop validation, dead/missing mercenaries and free recruitment. | Parallel | Preserve saved roster plans and the fixed Okay delay; unsupported screens do not spend rubies; no duplicate quest implementation. |
 
 ### Integration sequence (owned by the main chat)
 
-1. Accept R1/R2/R3/R5 plans and close the corresponding live gates below. Keep R6 measurement independent from gameplay decisions.
-2. Implement ready feature slices in isolated worktrees. Feature chats own feature files; the main chat coordinates changes to main.go, pipeline.go, shared context/assets and root TODO.md so parallel work does not overwrite them.
+1. Close the bootstrap/relic native UI gates below and validate the integrated combat/Ancient changes. Keep R6 measurement independent from gameplay decisions.
+2. Implement the remaining bootstrap and native relic interactions in isolated worktrees; coordinate shared main.go/pipeline.go changes in the main chat.
 3. Replace the intentional pauses after reset and the Ancient batch with explicit bootstrap handoffs only after bootstrap, export/spending, required unlocks and relic blocking are reliable. A failed purchase must not be replayed from a stale plan.
 4. Verify two complete consecutive cycles: combat wall -> confirmed Ascension -> zone 1 -> fresh export -> Ancient purchases -> bootstrap/upgrades -> existing Auto Clicker targets -> automatic progression. Include F8 during transitions, missed input, fish over controls, Explorer focus restoration and unsupported dialogs. Code/fixture checks do not establish native game acceptance.
 5. Add R4 when the repeated loop works. R7 remains independent platform work. Enable R8 automation only after the loop and recommendation/Outsider preview are accepted.
@@ -88,8 +82,11 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Mercenaries
 
-- Verify the live `-mercenaries` loop: notification, saved visible-row plan, paired Collect/Start Quest clicks, offer selection, fixed Okay after 300 ms, faster scrolling to the fifth mercenary, returning to Heroes and F8 interruption/resume alongside fish and skills. Supplied screenshots and regression tests cover initial roster/offer OCR, four/five-mercenary sweeps without intermediate roster OCR, unreadable offers, interruptions and transient context recovery; native timing still needs a running game on the target device.
-- Capture real death and free-recruitment screens; verify that Revive/Bury remain untouched and recruitment quests are recognized before relying on automatic roster replenishment. Unsupported layouts must end the visit without ruby spending.
+- Run the existing `-mercenaries` loop on the target device before changing its timing: four/five completed quests, mixed Collect/Start Quest/running rows, animated notification, paired Collect/Start clicks, fixed Okay after 300 ms, one bounded scroll sweep and return to Heroes. Include F8 during the Okay delay/scroll, fish between rows and unreadable offers; capture frames/logs for any failure. Preserve the saved visible-row plan without intermediate roster OCR or countdown confirmation.
+- Obtain verified game frames for dead cards with Revive/Bury, an actually vacant slot, an all-dead/empty roster, a free recruitment offer, its completed reward, any completion dialog and the new mercenary's Start Quest row. Existing reviewed Mercenary fixtures/Downloads cover ordinary quests, not these transitions. Do not infer a vacancy from a dead card or from the number of rows visible in one viewport.
+- After those frames are available, extend the existing reader/planner to skip dead cards explicitly, track verified vacancies and recruitment already in flight, and choose free recruitment only for an available slot. Specify a bounded return to Heroes when no living mercenary or verified free action is available. Keep Revive, Bury, paid Hire and Reroll outside automatic actions; unknown layouts must not spend rubies.
+- After the recruitment-completion UI is verified, handle its reward separately from the ordinary same-position Collect/Start pair. Rebuild the saved row plan only when recruitment changes the roster or opens a new UI state, then reuse the existing quest-selection loop for the new mercenary.
+- Gate replenishment on real-frame OCR/planner regressions for dead/vacant/full rosters, recruitment already in flight, interrupted completion and unknown dialogs, followed by one native free-recruitment cycle. Until the missing frames and native run are available, leave further Mercenary production changes pending.
 
 ## Native Ancient calculator review
 
@@ -113,5 +110,5 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ### Transcension
 
-- Match the fresh `cmd/transcendence-plan` preview to the installed game's reward/TP display, Outsider costs and respec/refund semantics. Capture the Transcension/Outsiders tab, reward confirmation, respec controls, one small purchase before/after, immediate manual-reset HUD/export and first-run Ancient summon controls.
+- Match the fresh `-mode transcension-plan` preview to the installed game's reward/TP display, Outsider costs and respec/refund semantics. Capture the Transcension/Outsiders tab, reward confirmation, respec controls, one small purchase before/after, immediate manual-reset HUD/export and first-run Ancient summon controls.
 - Enable native Transcension and Outsider spending only after two complete consecutive Ascension/restart cycles, a confirmed combat wall and active-play timing evidence, verified reset recovery and an explicit enabled mode. The current preview is informational; save timestamps do not establish a reset decision.

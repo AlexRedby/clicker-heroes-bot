@@ -1,6 +1,6 @@
 # Clicker Heroes bot
 
-Go bot for a running Clicker Heroes game. It can take a screenshot, make one click, and watch for the clickable orange fish. In `run` mode, it checks the screen for fish repeatedly (once per second by default) and clicks a detected fish. Monster auto-clicks are optional.
+Go bot for a running Clicker Heroes game. A single `run` handles fish collection, hero levels, active skills, progression, earned gild gifts, mercenary quests, Ascension and fresh-save Ancient purchases. Features other than fish are opt-in; monster clicks are optional. Relic equipment, gild redistribution and Transcension/Outsider allocation remain read-only suggestions.
 
 ## Requirements
 
@@ -13,13 +13,40 @@ Hero leveling, automatic progression, Ascension and Ancient purchases additional
 
 Ancient calculations run inside the Go application. The game data is embedded in the binary; no additional runtime or project-directory files are required for the calculator.
 
-An informational Transcension preview runs independently of the desktop bot:
+An informational Transcension preview is available in the same executable:
 
 ```sh
-go run ./cmd/transcendence-plan -save "path/to/fresh-save.txt" -out artifacts/transcension-plan.json
+go run . -mode transcension-plan -save "path/to/fresh-save.txt" -out artifacts/transcension-plan.json
 ```
 
-It reports estimated Ancient Souls/TP, closed Ascension history, affordable Outsider additions and a separate ideal allocation that may require respec. The active allocation supports fewer than 21000 total AS; higher budgets still get state and reward estimates. Gains, TP and respec behavior need comparison with the installed game's UI. Save history does not establish active-play time or a combat wall, so the preview cannot authorize a reset. It preserves the save and makes no game input; omit `-out` to print JSON. This command needs Go only, without OpenCV, Tesseract or a JavaScript runtime.
+It reports estimated Ancient Souls/TP, closed Ascension history, affordable Outsider additions and a separate ideal allocation that may require respec. The active allocation supports fewer than 21000 total AS; higher budgets still get state and reward estimates. Gains, TP and respec behavior need comparison with the installed game's UI. Save history does not establish active-play time or a combat wall, so the preview cannot authorize a reset. It preserves the save and makes no game input; omit `-out` to print JSON. Fresh Ancient plans also include this preview, so `run -export-dir` reports it automatically without another process. Pure calculator tests in `internal/ancientcalc` need Go only; the main executable requires OpenCV.
+
+## Integrated run and game checks
+
+Update the checkout on the computer running the game, then launch:
+
+```powershell
+git switch main
+git pull --ff-only
+go run . -mode run -hero-levels -skills -progression -gilds -mercenaries -ascension -export-dir "C:\path\to\save-folder" -stats
+```
+
+Replace the export folder with the existing folder opened by the game's Save action. Keep the game in English, enable **Always use scientific notation**, open Heroes and focus the game before pressing F8. The run has no time limit or startup delay. It uses your existing game Auto Clickers; optional bot monster clicks require `-x/-y`. Add `-windowed` only for the optional windowed mode.
+
+1. The first F8 starts Save export and a fresh Ancient plan, including gild/Transcension previews and an advisory relic report. Confirm the stages reach `save export: fresh plan ready` and `leveled Ancient ...` when the plan contains purchases. The batch returns to Heroes and pauses; prepare heroes/Auto Clickers if needed, then press F8 again.
+2. Confirm the bot scrolls to the latest hero, logs `leveled hero ...`, collects visible fish, uses skill hotkeys and enables/retries progression. Mercenaries and earned gifts run when their notifications/checks are due. Test F8 pause/resume while the game has focus.
+3. At a confirmed combat wall with meaningful soul gain, Ascension checks relics through a fresh export, then evaluates and confirms its own reward dialog. After zone 1 it exports and buys Ancients, then pauses for manual startup setup. Fully unattended bootstrap is not enabled yet.
+4. Stop with Ctrl+C and retain the final `pipeline:` counters, relevant action/error logs and `artifacts/*failure*.png`. Native Windows timing and game behavior still need these live checks; passing fixture tests is not native acceptance.
+
+To finish the paused restart work, provide full-resolution frames of Heroes immediately after Ascension (first hires, short list, ordinary upgrade buttons/ownership including Amenhotep), the owned Auto Clicker pool and current target assignments, and Relics inventory/junk plus the Ascension junk blocker if it appears. A fresh Save export from that state helps connect IDs, levels and unlocked upgrades to the UI. No extra reset is needed solely for screenshots.
+
+Relic recommendations are also available without game input:
+
+```sh
+go run . -mode relics-plan -save "path/to/fresh-save.txt"
+```
+
+With `-export-dir`, relics are inspected at startup, after Ascension and before an automatic reset. The report never equips or salvages items and does not prove that the junk pile is empty; an unknown blocker still pauses the transition. Actual gild transfers, relic management, Transcension and Outsider purchases await their native UI evidence and do not run automatically.
 
 ## Run
 
@@ -82,7 +109,7 @@ Export a fresh save using the game settings. Preview an Active-build allocation 
 go run . -mode ancients-plan -save "path/to/clickerHeroSave.txt"
 ```
 
-The bot includes a Go port of the [MIT Ancient calculator](https://github.com/tomcur/ClickerHeroesCalculator). It uses saved Ancient/Outsider levels and current Hero Souls, excludes pending Ascension rewards, and retains the calculator's soul bank plus a 1% reserve. `-ancient-reserve` accepts a percentage or an absolute scientific value; `-ancient-skill-rate` sets the skill-Ancient allocation from 0 to 1 (default 1). Set `-ancient-beyond8k` if your best hero is levelled beyond 8000, matching the calculator's Wepwawet setting. Large quantities stay decimal strings. Allocation uses 384-bit arithmetic, the reference Active formulas and search, and purchase inputs truncated downward to six significant digits. The native regression suite compares plans against frozen reference results, including a `1e1000` soul budget. The preview is saved to `artifacts/ancients-plan.json`; the exported save is read only.
+The bot includes a Go port of the [MIT Ancient calculator](https://github.com/tomcur/ClickerHeroesCalculator). It uses saved Ancient/Outsider levels and current Hero Souls, excludes pending Ascension rewards, and retains the calculator's soul bank plus a 1% reserve. `-ancient-reserve` accepts a percentage or an absolute scientific value; `-ancient-skill-rate` sets the skill-Ancient allocation from 0 to 1 (default 1). Set `-ancient-beyond8k` if your best hero is levelled beyond 8000, matching the calculator's Wepwawet setting. Large quantities stay decimal strings. Allocation uses 384-bit arithmetic, the Active allocation formulas and search with conservative bounds for client purchase pricing and balance rounding, and purchase inputs truncated downward to six significant digits. The native suite checks frozen allocation formulas, independent client-price vectors and reserve invariants, including a `1e1000` soul budget. The preview is saved to `artifacts/ancients-plan.json`; the exported save is read only.
 
 Run one purchase batch before ordinary automation:
 
