@@ -117,9 +117,9 @@ func gildActionPoint(frame gameFrame) (image.Point, bool, error) {
 			return controlRect(frame.image, region).Min.Add(controlRect(frame.image, region).Size().Div(2)), found, err
 		}
 		// One or two pending gifts may have no Open All; finish via the visible close button.
-		region, reference = image.Rect(973, 106, 1016, 150), image.Rect(0, 221, 43, 265)
+		region, reference = image.Rect(982, 116, 1006, 140), image.Rect(0, 221, 24, 245)
 	case gildRosterModal:
-		region, reference = image.Rect(1128, 17, 1171, 61), image.Rect(0, 221, 43, 265)
+		region, reference = image.Rect(1137, 27, 1161, 51), image.Rect(0, 221, 24, 245)
 	default:
 		return image.Point{}, false, nil
 	}

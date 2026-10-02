@@ -36,13 +36,13 @@ func ascensionControl(screen image.Image, control int) (image.Point, bool, error
 		return image.Point{}, false, nil
 	}
 	regions := [...]image.Rectangle{
-		image.Rect(1232, 240, 1255, 268), // Right-hand World Ascension spiral.
+		image.Rect(1237, 247, 1251, 263), // Opaque center of the World Ascension spiral.
 		image.Rect(502, 108, 778, 130),   // Specific Ascension dialog title.
 		image.Rect(485, 468, 625, 530),   // Yes; Quick Ascension is a different button below it.
 		image.Rect(655, 468, 796, 530),   // No.
 	}
 	references := [...]image.Rectangle{
-		image.Rect(0, 0, 46, 56), image.Rect(0, 56, 552, 100),
+		image.Rect(0, 0, 28, 32), image.Rect(0, 56, 552, 100),
 		image.Rect(0, 100, 280, 224), image.Rect(0, 224, 282, 348),
 	}
 	atlas, err := ascensionControlsImage.get(ascensionControlsPNG)

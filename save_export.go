@@ -13,8 +13,9 @@ var saveControlsPNG []byte
 var saveControlsImage decodedPNG
 
 func saveControl(screen image.Image, which int) (image.Point, bool, error) {
-	regions := [...]image.Rectangle{image.Rect(290, 192, 449, 216), image.Rect(997, 133, 1042, 177), image.Rect(1225, 9, 1264, 48)}
-	refs := [...]image.Rectangle{image.Rect(0, 0, 318, 48), image.Rect(0, 48, 90, 136), image.Rect(0, 136, 78, 214)}
+	// Icon patches stay inside the opaque artwork, excluding surrounding scenery.
+	regions := [...]image.Rectangle{image.Rect(290, 192, 449, 216), image.Rect(1006, 137, 1034, 165), image.Rect(1233, 17, 1255, 39)}
+	refs := [...]image.Rectangle{image.Rect(0, 0, 318, 48), image.Rect(0, 48, 56, 104), image.Rect(0, 104, 44, 148)}
 	atlas, err := saveControlsImage.get(saveControlsPNG)
 	if err != nil {
 		return image.Point{}, false, err
