@@ -100,20 +100,39 @@ func TestSIFTFishAtScalesAndEdge(t *testing.T) {
 		name     string
 		height   int
 		position image.Point
+		rotated  bool
 	}{
-		{"small", 50, image.Pt(30, 30)},
-		{"large", 100, image.Pt(30, 30)},
+		{"small", 50, image.Pt(30, 30), false},
+		{"small-rotated", 50, image.Pt(30, 30), true},
+		{"large", 100, image.Pt(30, 30), false},
+		{"height-200", 200, image.Pt(1800, 600), false},
+		{"height-200-rotated", 200, image.Pt(1800, 600), true},
+		{"height-300", 300, image.Pt(1800, 600), false},
+		{"height-300-rotated", 300, image.Pt(1800, 600), true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			background := background
+			if test.height > 100 {
+				background = loadTestImage(t, "testdata/hero-scrollbar-before.png")
+			}
 			width := fish.Bounds().Dx() * test.height / fish.Bounds().Dy()
 			scaled := image.NewRGBA(image.Rect(0, 0, width, test.height))
 			xdraw.ApproxBiLinear.Scale(scaled, scaled.Bounds(), fish, fish.Bounds(), draw.Over, nil)
+			if test.rotated {
+				rotated := image.NewRGBA(image.Rect(0, 0, test.height, width))
+				for y := 0; y < test.height; y++ {
+					for x := 0; x < width; x++ {
+						rotated.Set(test.height-1-y, x, scaled.At(x, y))
+					}
+				}
+				scaled = rotated
+			}
 			screen := image.NewRGBA(background.Bounds())
 			draw.Draw(screen, screen.Bounds(), background, background.Bounds().Min, draw.Src)
 			draw.Draw(screen, scaled.Bounds().Add(test.position), scaled, image.Point{}, draw.Over)
 
 			point, found, err := detector.Find(screen)
-			expected := test.position.Add(image.Pt(width/2, test.height/2))
+			expected := test.position.Add(scaled.Bounds().Size().Div(2))
 			if err != nil || !found || math.Abs(float64(point.X-expected.X)) > 15 || math.Abs(float64(point.Y-expected.Y)) > 15 {
 				t.Fatalf("fish screen: point=%v found=%t err=%v, want near %v", point, found, err, expected)
 			}

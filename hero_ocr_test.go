@@ -171,6 +171,9 @@ func TestHeroEconomyOnUserScreens(t *testing.T) {
 		{"testdata/hero-gog-tooltip.png", 1.710, 226},
 		{"testdata/hero-economy-x1.png", 1.651, 449},
 		{"testdata/hero-tsuchi-x1.png", 8.465, 848},
+		{"testdata/hero-owned-disabled.png", 5.190, 372},
+		{"testdata/hero-scrollbar-before.png", 1.113, 560},
+		{"testdata/fish-over-scrollbar.png", 5.003, 562},
 	} {
 		screen := loadTestImage(t, tc.path)
 		gold, err := readHeroGold(ctx, screen)
@@ -272,7 +275,8 @@ func TestGoldTimeoutDoesNotRetryMask(t *testing.T) {
 	if err := os.WriteFile(tesseractExecutable, []byte("#!/bin/sh\necho call >> \"$CH_OCR_TEST_CALLS\"\nexec sleep 10\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	ocrTimeout = 50 * time.Millisecond
+	// Allow the shell to start on macOS before testing execution timeout, not startup.
+	ocrTimeout = 500 * time.Millisecond
 	_, err := readHeroGold(context.Background(), screen)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
@@ -346,5 +350,56 @@ func TestSkogurHirePriceAndTsuchiDecision(t *testing.T) {
 	draw.Draw(covered, image.Rect(b.Dx()*74/1000, next.Y+b.Dy()*7/1000, b.Dx()*137/1000, next.Y+b.Dy()*35/1000), image.NewUniform(color.Black), image.Point{}, draw.Src)
 	if _, err := readHeroPrice(context.Background(), covered, next); !errors.Is(err, errUnreadableGameNumber) {
 		t.Fatalf("covered price=%v", err)
+	}
+}
+
+func TestGoldOCRSingleProcessAndObstruction(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process-count wrapper is Unix only")
+	}
+	realTesseract, err := exec.LookPath("tesseract")
+	if err != nil {
+		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
+			t.Fatal(err)
+		}
+		t.Skip("Tesseract is not installed")
+	}
+	original := tesseractExecutable
+	t.Cleanup(func() { tesseractExecutable = original })
+	calls := filepath.Join(t.TempDir(), "calls")
+	t.Setenv("CH_OCR_TEST_CALLS", calls)
+	t.Setenv("CH_OCR_REAL_TESSERACT", realTesseract)
+	tesseractExecutable = filepath.Join(t.TempDir(), "tesseract")
+	wrapper := "#!/bin/sh\necho call >> \"$CH_OCR_TEST_CALLS\"\nexec \"$CH_OCR_REAL_TESSERACT\" \"$@\"\n"
+	if err := os.WriteFile(tesseractExecutable, []byte(wrapper), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path string
+		want float64
+	}{
+		{"testdata/no-fish-game-screen.jpg", 71 + math.Log10(1.259)},
+		{"testdata/hero-tsuchi-x1.png", 848 + math.Log10(8.465)},
+	} {
+		if err := os.WriteFile(calls, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		screen := loadTestImage(t, tc.path)
+		gold, err := readHeroGold(context.Background(), screen)
+		if err != nil || math.Abs(gold-tc.want) > 0.001 {
+			t.Fatalf("%s gold=%v error=%v", tc.path, gold, err)
+		}
+		data, err := os.ReadFile(calls)
+		if err != nil || string(data) != "call\n" {
+			t.Fatalf("%s required an extra OCR process: %q %v", tc.path, data, err)
+		}
+	}
+	screen := loadTestImage(t, "testdata/hero-tsuchi-x1.png")
+	covered := image.NewRGBA(screen.Bounds())
+	draw.Draw(covered, covered.Bounds(), screen, screen.Bounds().Min, draw.Src)
+	header := image.Rect(0, 0, covered.Bounds().Dx(), covered.Bounds().Dy()/5)
+	draw.Draw(covered, header, image.NewUniform(color.Black), image.Point{}, draw.Src)
+	if _, err := readHeroGold(context.Background(), covered); !errors.Is(err, errUnreadableGameNumber) {
+		t.Fatalf("covered gold was accepted: %v", err)
 	}
 }

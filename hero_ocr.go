@@ -219,7 +219,12 @@ func readHeroGold(ctx context.Context, screen image.Image) (float64, error) {
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
 	region := image.Rect(b.Min.X+w*156/1000, b.Min.Y+h*25/1000, b.Min.X+w*34/100, b.Min.Y+h*12/100)
-	value, err := readGameNumber(ctx, screen, region, max(1, 2048/w), 7, 180)
+	threshold := 180
+	if w >= 2048 {
+		// Preserve faint digits in large captures; smaller text needs the stricter mask.
+		threshold = 174
+	}
+	value, err := readGameNumber(ctx, screen, region, max(1, 2048/w), 7, threshold)
 	if !errors.Is(err, errUnreadableGameNumber) || ctx.Err() != nil {
 		return value, err
 	}

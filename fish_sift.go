@@ -40,7 +40,8 @@ func newSIFTFishDetector() (*siftFishDetector, error) {
 		sift:    gocv.NewSIFTWithParams(nil, nil, &contrast, nil, &sigma),
 		matcher: gocv.NewBFMatcherWithParams(gocv.NormL2, false),
 	}
-	for _, height := range []int{50, 75, 200} {
+	// Keep the 50 px reference: 75 alone misses the smallest fish.
+	for _, height := range []int{50, 75} {
 		if err := detector.addReference(fish, height); err != nil {
 			detector.Close()
 			return nil, err
