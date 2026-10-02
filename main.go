@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/png"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -25,7 +26,7 @@ func main() {
 	robotgo.Scale = false
 	mode := flag.String("mode", "help", "help, shot, click, run, or ancients-plan")
 	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot mode")
-	save := flag.String("save", "", "exported Clicker Heroes save for ancients-plan mode (read only)")
+	save := flag.String("save", "", "exported save for ancients-plan or Ascension invested-soul baseline (read only)")
 	ancientReserve := flag.String("ancient-reserve", "1%", "Hero Souls to reserve beyond the calculator soul bank")
 	ancientSkillRate := flag.Float64("ancient-skill-rate", 1, "calculator allocation to skill Ancients, from 0 to 1")
 	ancientBeyond8k := flag.Bool("ancient-beyond8k", false, "best hero is levelled beyond 8000; changes calculator gold allocation")
@@ -40,8 +41,9 @@ func main() {
 	heroLevels := flag.Bool("hero-levels", false, "scroll the Heroes list and buy hero levels in run mode")
 	gilds := flag.Bool("gilds", false, "open earned gild gifts in batches in run mode")
 	gildInterval := flag.Duration("gild-interval", 5*time.Minute, "time between earned gild gift checks")
-	ascension := flag.Bool("ascension", false, "ascend after a confirmed progress stall; pause after the reset")
-	ascensionStall := flag.Duration("ascension-stall", 15*time.Minute, "continuous lack of zone progress before automatic Ascension")
+	ascension := flag.Bool("ascension", false, "ascend after a full combat boss loss or fallback stall with meaningful Hero Souls gain")
+	ascensionMinGain := flag.Float64("ascension-min-gain", 0.25, "minimum Ascension reward as a fraction of soul capital (0.25 means 25%)")
+	ascensionStall := flag.Duration("ascension-stall", 3*time.Minute, "fallback stall before Ascension when a full combat failure was not observed")
 	mercenaries := flag.Bool("mercenaries", false, "collect mercenary rewards and send new quests without spending rubies")
 	duration := flag.Duration("duration", 0, "maximum run time (0 means unlimited)")
 	stats := flag.Bool("stats", false, "print pipeline timing and analysis counters when run stops")
@@ -108,7 +110,22 @@ func main() {
 				break
 			}
 		}
-		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall, plan)
+		capitalPlan := plan
+		if *ascension && *save != "" {
+			value, e := calculateAncients(context.Background(), *save, *ancientReserve, *ancientSkillRate, *ancientBeyond8k)
+			if e != nil {
+				err = e
+				break
+			}
+			capitalPlan = &value
+		}
+		capital, e := ascensionSoulCapital(capitalPlan)
+		if e != nil {
+			err = e
+			break
+		}
+
+		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall, *ascensionMinGain, capital, plan)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -328,9 +345,9 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.misses = 0
 }
 
-func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration, ancientPlan *ancientPlan) error {
-	if ascension && (!heroLevels || !progression || ascensionStall <= 0) {
-		return errors.New("-ascension requires -hero-levels, -progression and a positive -ascension-stall")
+func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration, ascensionMinGain, ascensionCapital float64, ancientPlan *ancientPlan) error {
+	if ascension && (!progression || ascensionStall <= 0 || ascensionMinGain <= 0 || math.IsNaN(ascensionMinGain) || math.IsInf(ascensionMinGain, 0)) {
+		return errors.New("-ascension requires -progression, positive -ascension-stall and finite positive -ascension-min-gain")
 	}
 	if gilds && gildInterval <= 0 {
 		return errors.New("-gild-interval must be positive")
@@ -422,9 +439,9 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 
 	fmt.Println("paused; press F8 to start or pause, Ctrl+C to stop")
 	pipeline := newGamePipeline(&controls, input, pipelineReaders{
-		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation, ancients: readAncientObservation,
+		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation, ascensionEconomy: readAscensionEconomy, ancients: readAncientObservation,
 		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: foregroundGameWindow,
-	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall, ancientPlan: ancientPlan,
+	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall, ascensionMinGain: ascensionMinGain, ascensionCapital: ascensionCapital, ancientPlan: ancientPlan,
 		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval})
 	err = pipeline.run(ctx)
 	fmt.Printf("stopped after %d actions\n", pipeline.metrics.actions)

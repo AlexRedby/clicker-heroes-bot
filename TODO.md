@@ -43,7 +43,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ### Automatic Ascension
 
-- Verify one live opt-in `-ascension` reset: the observed boss wall and configured stall window, red spiral -> readable positive Hero Souls reward -> green Yes -> zone 1 -> automatic pause. Test a missed click, manual cancellation and F8 with the dialog open. Real-frame recognition, modal isolation, reward changes and decision cancellation are covered by regression tests.
+- Verify one live opt-in `-ascension` reset: the observed full-combat boss loss (or fallback stall), meaningful Hero Souls gain using the chosen bank/export baseline, red spiral -> independently verified Hero Souls reward -> green Yes -> zone 1 -> automatic pause. Test a missed click, manual cancellation and F8 with the dialog open. Real-frame recognition, modal isolation, reward changes and decision cancellation are covered by regression tests.
 - Capture the immediate post-reset HUD to verify zone-1 OCR and initial controls in the installed game. The first implementation pauses after reset; complete initial short-list hero buying, Amenhotep's Ascension unlock and Auto Clicker target setup before enabling repeated unattended runs.
 - Capture the relic-junk blocking screen and recognize/report it specifically; keep automatic relic destruction/equipment outside this mode. Unknown or blocked transitions currently time out to a pause.
 - Verify the Ascension/restart stages and fresh-export spending live before enabling their unattended integration.

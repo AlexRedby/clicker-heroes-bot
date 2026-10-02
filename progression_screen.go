@@ -73,6 +73,15 @@ func progressionBuffs(states [9]skillState) uint8 {
 	return buffs
 }
 
+func fullCombatActive(states [9]skillState) bool {
+	for _, key := range []int{1, 2, 3, 7} {
+		if !states[key-1].Known || !states[key-1].Active {
+			return false
+		}
+	}
+	return true
+}
+
 func readProgressionState(ctx context.Context, screen image.Image, states [9]skillState, modeOnly bool) (progressionState, error) {
 	known, enabled, err := progressionMode(screen)
 	s := progressionState{Known: known, Enabled: enabled}
@@ -89,6 +98,7 @@ func readProgressionState(ctx context.Context, screen image.Image, states [9]ski
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
 	s.Buffs = progressionBuffs(states)
+	s.FullCombat = fullCombatActive(states)
 	// Only farm decisions and boss baselines need damage OCR.
 	if !enabled || s.Zone%5 == 0 {
 		// Preserve antialiasing: a binary mask can turn small-font e into a digit.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +57,7 @@ type analysisJob struct {
 	frame      gameFrame
 	heroBefore *heroObservation
 	modeOnly   bool
+	economy    bool
 	skills     [9]skillState
 }
 type observation struct {
@@ -93,19 +95,21 @@ type actionResult struct {
 }
 
 type pipelineReaders struct {
-	context     func(image.Image) (gameContext, error)
-	fish        func(image.Image) (image.Point, bool, error)
-	skills      func(context.Context, image.Image) ([9]skillState, error)
-	progression func(context.Context, image.Image, [9]skillState, bool) (progressionState, error)
-	mercenaries func(context.Context, gameFrame) (mercenaryObservation, error)
-	ascension   func(context.Context, gameFrame) (ascensionObservation, error)
-	ancients    func(context.Context, gameFrame) (ancientObservation, error)
-	heroes      heroReaders
-	window      func() string
+	context          func(image.Image) (gameContext, error)
+	fish             func(image.Image) (image.Point, bool, error)
+	skills           func(context.Context, image.Image) ([9]skillState, error)
+	progression      func(context.Context, image.Image, [9]skillState, bool) (progressionState, error)
+	mercenaries      func(context.Context, gameFrame) (mercenaryObservation, error)
+	ascension        func(context.Context, gameFrame) (ascensionObservation, error)
+	ascensionEconomy func(context.Context, gameFrame) (ascensionObservation, error)
+	ancients         func(context.Context, gameFrame) (ancientObservation, error)
+	heroes           heroReaders
+	window           func() string
 }
 type pipelineOptions struct {
 	heroes, skills, progression, mercenaries, monster, gilds, ascension bool
 	ascensionStall                                                      time.Duration
+	ascensionMinGain, ascensionCapital                                  float64
 	ancientPlan                                                         *ancientPlan
 	monsterPoint                                                        image.Point
 	fishInterval, clickInterval, gildInterval                           time.Duration
@@ -210,7 +214,11 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 	case mercenaryAnalysis:
 		out.mercenary, out.err = p.readers.mercenaries(ctx, job.frame)
 	case ascensionAnalysis:
-		out.ascension, out.err = p.readers.ascension(ctx, job.frame)
+		if job.economy {
+			out.ascension, out.err = p.readers.ascensionEconomy(ctx, job.frame)
+		} else {
+			out.ascension, out.err = p.readers.ascension(ctx, job.frame)
+		}
 	case ancientAnalysis:
 		out.ancient, out.err = p.readers.ancients(ctx, job.frame)
 	}
@@ -236,6 +244,11 @@ func replaceJob(ch chan analysisJob, job analysisJob) {
 }
 
 func (p *gamePipeline) reset(generation uint64) {
+	// F8 revokes the previous reset assessment. A fresh boss attempt must be
+	// possible even when the old farming planner had already exhausted retries.
+	if generation != p.generation && p.options.ascension {
+		p.progression = progressionPlanner{}
+	}
 	p.ancient.interrupt()
 	p.ascension.interrupt()
 	p.generation = generation
@@ -401,8 +414,10 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			if c.bounds != old.bounds || c.window != old.window || !p.mercenary.expects(c, now) {
 				p.mercenary.interrupt()
 			}
-			if !p.ascension.active || c.bounds != old.bounds || c.window != old.window {
+			if c.bounds != old.bounds || c.window != old.window {
 				p.ascension.interrupt()
+			} else if !p.ascension.active {
+				p.ascension.invalidate()
 			}
 			p.ascension.jobFrame = 0
 			p.ancient.jobFrame = 0
@@ -443,6 +458,11 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		}
 		if c.ascension || p.ascension.active || !c.known || c.modal != noGildModal || p.gild.active {
 			return nil
+		}
+		if p.options.ascension && c.heroes && p.ascension.due(now, p.options.ascensionStall) && p.ascension.jobFrame == 0 && !now.Before(p.ascension.nextRead) {
+			p.ascension.jobFrame = p.frame.id
+			replaceJob(jobs[ascensionAnalysis], analysisJob{frame: p.frame, economy: true})
+			p.ascension.nextRead = now.Add(5 * time.Second)
 		}
 		if p.options.mercenaries && (c.heroes || c.mercenaries) && p.mercenary.needsRead(c) && p.mercenaryJobFrame == 0 && !now.Before(p.mercenary.nextScan) && !now.Before(p.nextMercenary) {
 			p.mercenaryJobFrame = p.frame.id
@@ -544,13 +564,12 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			out.mercenary = mercenaryObservation{frame: out.frame, selected: -1}
 			fmt.Printf("mercenary panel unreadable: %v\n", out.err)
 		case heroAnalysis:
-			p.ascension.interrupt()
 			if p.hero.pending == nil {
 				p.hero.readFailed(out.err, now)
 				return nil
 			}
 		case progressionAnalysis:
-			p.ascension.interrupt()
+			p.ascension.invalidate()
 			p.nextProgression = now.Add(30 * time.Second)
 			fmt.Printf("progression numbers unreadable: %v; retrying in 30s\n", out.err)
 			return nil
@@ -587,7 +606,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 	case progressionAnalysis:
 		p.progression.observeFrame(out.progression, out.frame.id, now)
 		if p.options.ascension && out.frame.context.heroes {
-			p.ascension.observeProgress(out.progression, p.progression.wallZone, now)
+			p.ascension.observeProgress(out.progression, p.progression.wallZone, now, p.progression.wallFullCombat)
 		}
 		if !p.progression.wantAction {
 			delete(p.queue, enableProgression)
@@ -907,10 +926,11 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		if p.gild.deadline.IsZero() {
 			p.gild.deadline = now.Add(20 * time.Second)
 		}
-		gild := p.gild
+		gild, ascension := p.gild, p.ascension
 		p.reset(p.generation)
-		p.gild = gild
-		p.frame.context = gameContext{}
+		p.gild, p.ascension = gild, ascension
+		p.ascension.invalidate()
+		p.frame.context = gameContext{bounds: a.frame.context.bounds, window: a.frame.context.window}
 		fmt.Printf("clicked gild gift control at (%d, %d)\n", a.point.X, a.point.Y)
 
 	case handleMercenary:
@@ -934,7 +954,6 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.hero.obstructed(now)
 		fmt.Printf("clicked fish at (%d, %d)\n", a.point.X, a.point.Y)
 	case castSkill:
-		p.ascension.nextCheck = now.Add(10 * time.Second)
 		p.skill.sent(a.key, a.skills, a.frame.id, now)
 		invalidate(skillAnalysis)
 		invalidate(heroAnalysis)
@@ -958,7 +977,6 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		}
 		invalidate(heroAnalysis)
 		if a.kind == buyHero {
-			p.ascension.nextCheck = now.Add(10 * time.Second)
 			invalidate(progressionAnalysis)
 			delete(p.queue, enableProgression)
 			p.progression.wantAction = false
@@ -1048,11 +1066,21 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 			return true // A manually opened dialog is never permission to confirm it.
 		}
 		if !p.ascensionReady(now) {
+			// Let an in-flight reward read finish without another purchase/skill
+			// changing the damage baseline. Fish collection can still run.
+			if p.ascension.jobFrame != 0 && p.ascension.due(now, p.options.ascensionStall) && !p.progression.wantAction && p.progression.pending == nil && p.hero.pending == nil && p.skill.pending == nil && !p.mercenary.active && p.mercenary.pending == nil {
+				for _, kind := range []actionKind{castSkill, buyHero, scrollHeroes, selectQuantity, handleMercenary, clickMonster} {
+					delete(p.queue, kind)
+				}
+				return true
+			}
 			return false
 		}
 		point, found, err := ascensionControl(p.frame.image, ascensionSpiral)
 		if found && err == nil {
+			p.queue = make(map[actionKind]gameAction)
 			p.enqueue(gameAction{kind: handleAscension, frame: p.frame, point: point, ascension: openAscension}, now)
+			return true
 		}
 		return false
 	}
@@ -1078,11 +1106,24 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 }
 
 func (p *gamePipeline) ascensionReady(now time.Time) bool {
-	if !p.options.ascension || !p.frame.context.heroes || p.gild.active || p.mercenary.active || p.mercenary.pending != nil || p.hero.pending != nil || !p.hero.enabled || p.skill.pending != nil || p.progression.pending != nil || p.progression.wantAction || !p.ascension.due(now, p.options.ascensionStall) {
+	if !p.options.ascension || !p.frame.context.heroes || p.gild.active || p.mercenary.active || p.mercenary.pending != nil || p.hero.pending != nil || p.skill.pending != nil || p.progression.pending != nil || p.progression.wantAction || !p.ascension.due(now, p.options.ascensionStall) {
 		return false
 	}
-	hero := p.state[heroAnalysis]
-	return hero.frame.id > 0 && now.Sub(hero.frame.at) <= 10*time.Second && hero.hero.found && p.fishFresh(now) && !p.state[fishAnalysis].found
+	progress := p.state[progressionAnalysis]
+	if progress.frame.id == 0 || progress.frame.id < p.barriers[progressionAnalysis] || now.Sub(progress.frame.at) > 10*time.Second {
+		return false
+	}
+	out := p.ascension.latest
+	if !out.economy || out.frame.id == 0 || out.frame.context != p.frame.context || now.Sub(out.frame.at) > 10*time.Second || !p.fishFresh(now) || p.state[fishAnalysis].found {
+		return false
+	}
+	p.ascension.minimumReward = max(out.bank, p.options.ascensionCapital) + math.Log10(p.options.ascensionMinGain)
+	if math.IsInf(out.souls, -1) || out.souls < p.ascension.minimumReward {
+		fmt.Println("Ascension deferred: small Hero Souls gain; review Ancient allocation and Transcension/Ancient Souls before another reset")
+		p.ascension.nextCheck = now.Add(time.Minute)
+		return false
+	}
+	return ascensionBudgetStable(out.frame.image, p.frame.image)
 }
 
 func (p *gamePipeline) planAncients(now time.Time) bool {

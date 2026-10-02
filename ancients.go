@@ -34,6 +34,7 @@ type ancientPurchase struct {
 }
 type ancientPlan struct {
 	Souls      string            `json:"souls"`
+	Invested   string            `json:"invested,omitempty"`
 	Reserve    string            `json:"reserve"`
 	Spent      string            `json:"spent"`
 	Remaining  string            `json:"remaining"`
@@ -70,6 +71,11 @@ func (p ancientPlan) validate() error {
 			return err
 		}
 		totals[i] = v
+	}
+	if p.Invested != "" {
+		if _, err := ancientValue(p.Invested); err != nil {
+			return err
+		}
 	}
 	if totals[2].Cmp(totals[0]) > 0 || totals[3].Cmp(totals[1]) < 0 {
 		return errors.New("Ancient plan exceeds soul budget or reserve")

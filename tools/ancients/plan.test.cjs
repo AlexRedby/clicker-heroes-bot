@@ -8,8 +8,11 @@ const modelData = require('./upstream/data/ClickerHeroes_v14307.json');
 
 const byName = name => Object.values(modelData.ancients).find(x => x.name.toLowerCase().startsWith(name + ','));
 const outsider = name => Object.values(modelData.outsiders).find(x => x.name.toLowerCase() === name);
-function save({souls = '1e6', chor = '0'} = {}) {
-  const ancient = (name, level) => [String(byName(name).id), {level: String(level), spentHeroSouls: '0'}];
+function save({souls = '1e6', chor = '0', spent = {}, omitSpent = false} = {}) {
+  const ancient = (name, level) => [String(byName(name).id), {
+    level: String(level),
+    ...(omitSpent ? {} : {spentHeroSouls: String(spent[name] || '0')})
+  }];
   const raw = {
     numWorldResets: 7,
     heroSouls: souls, heroSoulsSacrificed: '1e5', highestFinishedZonePersist: '1000', ancientSoulsTotal: '100',
@@ -27,6 +30,7 @@ const plain = run(input);
 assert.equal(plain.souls, '1000000');
 assert.equal(plain.reserve, '100');
 assert.equal(plain.ascensions, 7);
+assert.equal(plain.invested, '0');
 assert(plain.rows.some(row => row.name === 'Argaiv' && row.current === '5'));
 assert(!plain.rows.some(row => row.name === 'Siyalatas')); // active build excludes idle-only goals
 assert(plain.owned.some(row => row.name === 'Fragsworth' && row.level === '10'));
@@ -34,6 +38,10 @@ assert(plain.rows.every(row => Number(row.quantity) > 0 && Number(row.cost) > 0)
 
 const discounted = run({...input, save: save({chor: '3'})});
 assert(discounted.rows.some((row, index) => row.target !== plain.rows[index].target));
+const invested = run({...input, save: save({spent: {fragsworth: '12', argaiv: '3.5', siyalatas: '0'}})});
+assert.equal(invested.invested, '15.5');
+const unknownInvested = run({...input, save: save({omitSpent: true})});
+assert.equal(unknownInvested.invested, '');
 const huge = run({save: save({souls: '1e50', chor: '1'}), reserve: '1e20', skillRate: 0.5, beyond8k: true});
 assert(/e\+/.test(huge.souls));
 assert.throws(() => run({...input, save: 'corrupt'}), /save/);

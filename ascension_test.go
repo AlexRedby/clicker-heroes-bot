@@ -77,30 +77,30 @@ func TestAscensionStallRequiresObservedBossFallback(t *testing.T) {
 	// Starting on a farm zone, even with an old progression wall, cannot trigger a reset.
 	for i := 0; i <= 200; i++ {
 		at := now.Add(time.Duration(i) * 5 * time.Second)
-		p.observeProgress(progressionState{Known: true, Zone: 14779}, 14780, at)
+		p.observeProgress(progressionState{Known: true, Zone: 14779}, 14780, at, false)
 		if p.due(at, stall) {
 			t.Fatal("ascended without observing a boss")
 		}
 	}
 	p.interrupt()
-	p.observeProgress(progressionState{Known: true, Enabled: true, Zone: 14780}, 0, now)
+	p.observeProgress(progressionState{Known: true, Enabled: true, Zone: 14780}, 0, now, false)
 	for i := 1; i <= 180; i++ {
 		at := now.Add(time.Duration(i) * 5 * time.Second)
-		p.observeProgress(progressionState{Known: true, Zone: 14779}, 14780, at)
+		p.observeProgress(progressionState{Known: true, Zone: 14779}, 14780, at, false)
 		if p.due(at, stall) != (i == 180) {
 			t.Fatalf("stall threshold failed at %s", at.Sub(now))
 		}
 	}
 	at := now.Add(stall)
-	p.observeProgress(progressionState{Known: true, Enabled: true, Zone: 14780}, 14780, at)
+	p.observeProgress(progressionState{Known: true, Enabled: true, Zone: 14780}, 14780, at, false)
 	if p.due(at, stall) {
 		t.Fatal("reset during a boss retry")
 	}
-	p.observeProgress(progressionState{Known: true, Enabled: true, Zone: 14781}, 0, at)
+	p.observeProgress(progressionState{Known: true, Enabled: true, Zone: 14781}, 0, at, false)
 	if p.due(at, stall) {
 		t.Fatal("reset while progressing")
 	}
-	// Missing observations, manual zone changes and F8 all invalidate the stall baseline.
+	// Observation gaps suspend decisions; fresh observations retain the wall history.
 	for _, reason := range []string{"gap", "manual zone", "pause"} {
 		q := ascensionPlanner{highestZone: 14780, wallZone: 14780, lastObservation: at, lastProgress: now}
 		s := progressionState{Known: true, Zone: 14779}
@@ -110,9 +110,9 @@ func TestAscensionStallRequiresObservedBossFallback(t *testing.T) {
 		if reason == "pause" {
 			q.interrupt()
 		}
-		q.observeProgress(s, 14780, at.Add(11*time.Second))
-		if q.due(at.Add(11*time.Second), stall) {
-			t.Fatalf("%s counted as stalled gameplay", reason)
+		q.observeProgress(s, 14780, at.Add(11*time.Second), false)
+		if q.due(at.Add(11*time.Second), stall) != (reason == "gap") {
+			t.Fatalf("%s wall history wrong", reason)
 		}
 	}
 }
@@ -273,13 +273,15 @@ func TestAscensionStaleDecisionAndTimeout(t *testing.T) {
 	p.frame = gameFrame{id: 1, layout: 1, at: now, image: screen, context: c}
 	p.ascension = ascensionPlanner{highestZone: 14780, wallZone: 14780, lastProgress: now.Add(-2 * time.Minute), lastObservation: now}
 	p.state[heroAnalysis] = observation{frame: p.frame, hero: heroObservation{found: true}}
+	p.ascension.latest = ascensionObservation{frame: p.frame, economy: true, bank: 60, souls: 65}
+	p.state[progressionAnalysis] = observation{frame: p.frame, progression: progressionState{Known: true, Zone: 14779}}
 	p.state[fishAnalysis] = observation{frame: p.frame}
 	p.plan(now)
 	if _, ok := p.queue[handleAscension]; !ok {
 		t.Fatal("eligible Ascension not queued")
 	}
 	// A new boss win invalidates the queued opening before any click.
-	p.ascension.observeProgress(progressionState{Known: true, Enabled: true, Zone: 14781}, 0, now)
+	p.ascension.observeProgress(progressionState{Known: true, Enabled: true, Zone: 14781}, 0, now, false)
 	if action, ok := p.nextAction(now); ok {
 		t.Fatalf("stale stalled-run decision executed: %+v", action)
 	}
@@ -290,7 +292,7 @@ func TestAscensionStaleDecisionAndTimeout(t *testing.T) {
 	}
 }
 
-func TestAscensionOCRFailureClearsStall(t *testing.T) {
+func TestAscensionOCRFailureRetainsHistoryButNeedsFreshProgress(t *testing.T) {
 	now := time.Now()
 	screen := loadTestImage(t, "testdata/hero-skogur-hire.png")
 	c, err := recognizedGame(screen)
@@ -310,11 +312,236 @@ func TestAscensionOCRFailureClearsStall(t *testing.T) {
 		if err := p.accept(context.Background(), observation{kind: kind, frame: p.frame, err: errors.New("OCR failed")}, now); err != nil {
 			t.Fatal(err)
 		}
-		if p.ascension.due(now, time.Minute) {
-			t.Fatal("automation failure retained the stall timer")
+		if p.ascension.highestZone != 14780 || p.ascension.lastProgress != now.Add(-2*time.Minute) {
+			t.Fatal("OCR failure erased wall history")
+		}
+		if kind == progressionAnalysis && p.ascension.due(now, time.Minute) {
+			t.Fatal("failed progression remained fresh")
 		}
 		if action, ok := p.nextAction(now); ok {
 			t.Fatalf("automation failure triggered input: %+v", action)
 		}
+	}
+}
+
+func TestAscensionCombatWallAndRewardPolicy(t *testing.T) {
+	now := time.Unix(1000, 0)
+	farm := progressionState{Known: true, Zone: 109, DamageKnown: true, Damage: 100}
+	boss := farm
+	boss.Zone = 110
+	boss.Enabled = true
+	boss.FullCombat = true
+	for _, tc := range []struct {
+		name     string
+		interval time.Duration
+		full     bool
+	}{
+		{"overlapping combat", 2 * time.Second, true}, {"single observation", 0, false}, {"observation gap", 11 * time.Second, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			progress := progressionPlanner{}
+			ascend := ascensionPlanner{}
+			progress.observe(boss, now)
+			ascend.observeProgress(boss, 0, now, false)
+			progress.observe(boss, now.Add(tc.interval))
+			failedAt := now.Add(tc.interval + time.Second)
+			progress.observe(farm, failedAt)
+			ascend.observeProgress(farm, progress.wallZone, failedAt, progress.wallFullCombat)
+			if progress.wallFullCombat != tc.full || ascend.due(failedAt, 3*time.Minute) != tc.full {
+				t.Fatalf("combat proof=%t due=%t", progress.wallFullCombat, ascend.due(failedAt, 3*time.Minute))
+			}
+			fullFarm := farm
+			fullFarm.FullCombat = true
+			if progress.observe(fullFarm, failedAt.Add(time.Second)) == tc.full {
+				t.Fatal("fresh full window was lost, or previously failed full window retried")
+			}
+			if tc.full {
+				improved := farm
+				improved.Damage += 1
+				if !progress.observe(improved, failedAt.Add(2*time.Second)) {
+					t.Fatal("new damage after full combat loss did not allow an immediate retry")
+				}
+			}
+		})
+	}
+	// An activation's farm baseline must never count as an actual full boss attempt.
+	progress := progressionPlanner{seen: true, wallZone: 110, lastZone: 109}
+	fullFarm := farm
+	fullFarm.FullCombat = true
+	progress.sent(fullFarm, 1, now)
+	progress.observeFrame(progressionState{Known: true, Enabled: true}, 2, now.Add(time.Second))
+	progress.observe(farm, now.Add(3*time.Second))
+	if progress.wallFullCombat {
+		t.Fatal("farm retry baseline fabricated a full boss fight")
+	}
+	states := [9]skillState{}
+	for _, key := range []int{1, 2, 3, 7} {
+		states[key-1] = skillState{Known: true, Active: true}
+	}
+	if !fullCombatActive(states) {
+		t.Fatal("full combat not recognized")
+	}
+	states[1].Known = false
+	if fullCombatActive(states) {
+		t.Fatal("unknown combat skill counted as active")
+	}
+
+	screen := loadTestImage(t, "testdata/hero-skogur-hire.png")
+	c, err := recognizedGame(screen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := gameFrame{id: 2, at: now, image: screen, context: c}
+	for _, tc := range []struct {
+		name                  string
+		bank, capital, reward float64
+		eligible              bool
+	}{
+		{"large gain", 60, 62, 65, true}, {"small gain", 60, 62, 60, false}, {"empty bank", math.Inf(-1), math.Inf(-1), 0, true}, {"zero reward", math.Inf(-1), math.Inf(-1), math.Inf(-1), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{ascension: true, ascensionStall: 3 * time.Minute, ascensionMinGain: .25, ascensionCapital: tc.capital, fishInterval: time.Second})
+			p.frame = frame
+			p.ascension = ascensionPlanner{highestZone: 110, wallZone: 110, fullCombatFailed: true, lastObservation: now, lastProgress: now}
+			p.ascension.latest = ascensionObservation{frame: frame, economy: true, bank: tc.bank, souls: tc.reward}
+			p.state[fishAnalysis] = observation{frame: frame}
+			p.state[progressionAnalysis] = observation{frame: frame, progression: farm}
+			if p.ascensionReady(now) != tc.eligible {
+				t.Fatal("wrong reward decision")
+			}
+			if tc.eligible {
+				p.plan(now)
+				if _, ok := p.queue[handleAscension]; !ok {
+					t.Fatal("no hero row should not block Ascension")
+				}
+				p.barriers[progressionAnalysis] = frame.id + 1
+				if p.ascensionReady(now) {
+					t.Fatal("pre-purchase damage allowed a reset")
+				}
+				p.barriers[progressionAnalysis] = 0
+				p.ascension.sent(openAscension, frame.id, now)
+				dialog := gameFrame{id: 3, at: now, context: gameContext{known: true, ascension: true}}
+				p.ascension.observe(ascensionObservation{frame: dialog, souls: math.Inf(-1)}, nil, now)
+				if p.ascension.step != cancelAscension {
+					t.Fatal("lower dialog reward still confirmed")
+				}
+			}
+		})
+	}
+	if math.Abs(soulCapital(60, 60)-(60+math.Log10(2))) > .0001 || !math.IsInf(soulCapital(math.Inf(-1), math.Inf(-1)), -1) {
+		t.Fatal("large/zero soul sum wrong")
+	}
+}
+
+func TestAscensionHUDRealBudget(t *testing.T) {
+	if _, err := exec.LookPath("tesseract"); err != nil {
+		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
+			t.Fatal(err)
+		}
+		t.Skip("Tesseract not installed")
+	}
+	original := loadTestImage(t, "testdata/ascension-ancients.png")
+	for _, width := range []int{2560, 1280} {
+		screen := image.NewRGBA(image.Rect(0, 0, width, width*9/16))
+		xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
+		frame := gameFrame{image: screen}
+		out, err := readAscensionEconomy(context.Background(), frame)
+		if err != nil || !out.economy || math.Abs(out.bank-(58+math.Log10(1.755))) > .001 || math.Abs(out.souls-(65+math.Log10(1.719))) > .001 {
+			t.Fatalf("%d HUD=%+v err=%v", width, out, err)
+		}
+		covered := image.NewRGBA(screen.Bounds())
+		draw.Draw(covered, covered.Bounds(), screen, image.Point{}, draw.Src)
+		draw.Draw(covered, controlRect(screen, ascensionSoulRegions[1]), image.NewUniform(color.Black), image.Point{}, draw.Src)
+		if _, err := readAscensionEconomy(context.Background(), gameFrame{image: covered}); err == nil {
+			t.Fatal("covered reward accepted")
+		}
+		if ascensionBudgetStable(screen, covered) {
+			t.Fatal("changed budget accepted")
+		}
+	}
+}
+
+func TestAscensionCapitalAndPipelineRecovery(t *testing.T) {
+	for _, tc := range []struct {
+		plan *ancientPlan
+		want float64
+	}{
+		{nil, math.Inf(-1)}, {&ancientPlan{Souls: "1e60"}, math.Inf(-1)}, {&ancientPlan{Souls: "0", Invested: "0"}, math.Inf(-1)},
+		{&ancientPlan{Souls: "1e1000", Invested: "1e1000"}, 1000 + math.Log10(2)},
+	} {
+		got, err := ascensionSoulCapital(tc.plan)
+		if err != nil || (got != tc.want && math.Abs(got-tc.want) > .0001) {
+			t.Fatalf("capital=%v want=%v err=%v", got, tc.want, err)
+		}
+	}
+	if _, err := ascensionSoulCapital(&ancientPlan{Souls: "NaN", Invested: "1"}); err == nil {
+		t.Fatal("invalid capital accepted")
+	}
+	now := time.Now()
+	screen := loadTestImage(t, "testdata/hero-skogur-hire.png")
+	c, err := recognizedGame(screen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return screen, nil }}, pipelineReaders{}, pipelineOptions{ascension: true, progression: true, ascensionStall: 3 * time.Minute, ascensionMinGain: .25, ascensionCapital: math.Inf(-1), fishInterval: time.Second})
+	p.frame = gameFrame{id: 1, at: now, image: screen, context: c}
+	p.ascension = ascensionPlanner{highestZone: 14780, wallZone: 14780, lastProgress: now.Add(-4 * time.Minute), lastObservation: now}
+	jobs := make([]chan analysisJob, analysisCount)
+	for i := range jobs {
+		jobs[i] = make(chan analysisJob, 1)
+	}
+	// A bot tab visit suspends decisions without erasing the wall.
+	merc := c
+	merc.heroes = false
+	merc.mercenaries = true
+	p.readers.context = func(image.Image) (gameContext, error) { return merc, nil }
+	if err := p.capture(context.Background(), now, jobs); err != nil {
+		t.Fatal(err)
+	}
+	if p.ascension.highestZone != 14780 || p.ascension.due(now, 3*time.Minute) {
+		t.Fatal("tab visit lost history or retained a fresh decision")
+	}
+	p.readers.context = func(image.Image) (gameContext, error) { return c, nil }
+	if err := p.capture(context.Background(), now.Add(time.Second), jobs); err != nil {
+		t.Fatal(err)
+	}
+	p.ascension.observeProgress(progressionState{Known: true, Zone: 14779}, 14780, now.Add(time.Second), false)
+	if !p.ascension.due(now.Add(time.Second), 3*time.Minute) {
+		t.Fatal("returned tab restarted the stall timer")
+	}
+	if err := p.capture(context.Background(), now.Add(2*time.Second), jobs); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case job := <-jobs[ascensionAnalysis]:
+		if !job.economy || job.frame.id != p.frame.id {
+			t.Fatal("budget did not reuse the shared capture")
+		}
+	default:
+		t.Fatal("wall budget not scheduled")
+	}
+	// Repeated successful purchases/skill casts may require fresh damage, but
+	// cannot indefinitely push the wall decision ten seconds into the future.
+	for i := 0; i < 3; i++ {
+		for _, kind := range []actionKind{castSkill, buyHero} {
+			p.actionCompleted(actionResult{action: gameAction{kind: kind, key: 1, frame: p.frame}, acted: true}, now.Add(time.Duration(i)*time.Second))
+			if !p.ascension.nextCheck.IsZero() {
+				t.Fatal("ordinary actions postponed the reset")
+			}
+		}
+	}
+	// Gild collection uses reset() internally; preserve the same wall there too.
+	p.actionCompleted(actionResult{action: gameAction{kind: collectGilds, frame: p.frame}, acted: true}, now)
+	if err := p.capture(context.Background(), now.Add(3*time.Second), jobs); err != nil {
+		t.Fatal(err)
+	}
+	if p.ascension.highestZone != 14780 {
+		t.Fatal("gild reset or subsequent capture erased wall history")
+	}
+	p.progression.wallZone = 14780
+	p.controls.toggle()
+	p.reset(p.controls.snapshot())
+	if p.ascension.highestZone != 0 || p.progression.wallZone != 0 {
+		t.Fatal("F8 retained an old reset decision or blocked a fresh boss assessment")
 	}
 }

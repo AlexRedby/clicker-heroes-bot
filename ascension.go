@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"math/big"
 	"regexp"
 	"strings"
 	"time"
@@ -22,6 +23,9 @@ const (
 	ascensionYes
 	ascensionNo
 )
+
+var ascensionPendingLabel = regexp.MustCompile(`^Ascend for \+([0-9]+(?:\.[0-9]+)?(?:[eE][0-9]+)?)(?:\s+Hero Souls?)?$`)
+var ascensionSoulRegions = [...]image.Rectangle{image.Rect(410, 172, 591, 199), image.Rect(405, 198, 600, 218)}
 
 var ascensionRewardRegion = image.Rect(675, 307, 887, 329)
 
@@ -78,6 +82,8 @@ type ascensionObservation struct {
 	confirm, no bool
 	souls       float64
 	zone        int
+	economy     bool
+	bank        float64
 }
 
 func readAscensionObservation(ctx context.Context, frame gameFrame) (ascensionObservation, error) {
@@ -113,11 +119,72 @@ func readAscensionObservation(ctx context.Context, frame gameFrame) (ascensionOb
 	return out, nil
 }
 
+// Read the two fixed HUD lines only when a reset candidate exists.
+func readAscensionEconomy(ctx context.Context, frame gameFrame) (ascensionObservation, error) {
+	out := ascensionObservation{frame: frame, economy: true}
+	for i, region := range ascensionSoulRegions {
+		raw, err := readGameText(ctx, frame.image, controlRect(frame.image, region), max(1, 2560/frame.image.Bounds().Dx()), 7, 180, "0123456789.eEabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ +")
+		if err != nil {
+			return out, err
+		}
+		label := ascensionRewardLabel
+		if i == 1 {
+			label = ascensionPendingLabel
+		}
+		match := label.FindStringSubmatch(strings.TrimSpace(raw))
+		if match == nil {
+			return out, fmt.Errorf("unreadable Ascension soul budget %q", strings.TrimSpace(raw))
+		}
+		value, ok := parseGameNumber(match[1])
+		if !ok {
+			return out, errUnreadableGameNumber
+		}
+		if i == 0 {
+			out.bank = value
+		} else {
+			out.souls = value
+		}
+	}
+	return out, nil
+}
+
+// All soul amounts are log10 values, including zero as -Inf.
+func soulCapital(bank, invested float64) float64 {
+	hi, lo := max(bank, invested), min(bank, invested)
+	if math.IsInf(hi, -1) {
+		return hi
+	}
+	return hi + math.Log10(1+math.Pow(10, lo-hi))
+}
+
+// Keep the exported total as a floor, including after a planned Ancient batch
+// transfers the same souls from the wallet into Ancients. A fresh save is needed
+// after manual spending or another Ascension/Transcension.
+func ascensionSoulCapital(plan *ancientPlan) (float64, error) {
+	total := math.Inf(-1)
+	if plan == nil || plan.Invested == "" {
+		return total, nil
+	}
+	for _, raw := range []string{plan.Souls, plan.Invested} {
+		value, err := ancientValue(raw)
+		if err != nil {
+			return 0, err
+		}
+		mantissa := new(big.Float)
+		exponent := value.MantExp(mantissa)
+		m, _ := mantissa.Float64()
+		total = soulCapital(total, math.Log10(m)+float64(exponent)*math.Log10(2))
+	}
+	return total, nil
+}
+
 type ascensionPlanner struct {
 	highestZone, wallZone          int
 	lastProgress, lastObservation  time.Time
 	nextCheck                      time.Time
 	active                         bool
+	fullCombatFailed               bool
+	minimumReward                  float64
 	step                           ascensionStep
 	lastInputFrame, jobFrame       uint64
 	nextRead, nextAction, deadline time.Time
@@ -126,11 +193,17 @@ type ascensionPlanner struct {
 
 func (p *ascensionPlanner) interrupt() { *p = ascensionPlanner{} }
 
-func (p *ascensionPlanner) observeProgress(s progressionState, wall int, now time.Time) {
+func (p *ascensionPlanner) invalidate() {
+	p.lastObservation = time.Time{}
+	p.latest = ascensionObservation{}
+	p.jobFrame = 0
+}
+
+func (p *ascensionPlanner) observeProgress(s progressionState, wall int, now time.Time, fullCombatFailed bool) {
 	if p.active || !s.Known || s.Zone <= 0 {
 		return
 	}
-	if p.lastObservation.IsZero() || now.Sub(p.lastObservation) > 10*time.Second || s.Zone < p.highestZone-1 {
+	if p.highestZone == 0 || s.Zone < p.highestZone-1 {
 		p.highestZone, p.wallZone = s.Zone, 0
 		p.lastProgress = now
 	}
@@ -139,26 +212,38 @@ func (p *ascensionPlanner) observeProgress(s progressionState, wall int, now tim
 		p.highestZone = s.Zone
 		p.lastProgress = now
 	}
-	p.wallZone = 0
+	p.wallZone, p.fullCombatFailed = 0, false
 	// Require an observed boss and its recognized fallback, not a disabled toggle alone.
 	if !s.Enabled && wall > 0 && p.highestZone >= wall && s.Zone >= wall-1 && s.Zone <= wall {
 		p.wallZone = wall
+		p.fullCombatFailed = fullCombatFailed
 	}
 }
 
 func (p *ascensionPlanner) due(now time.Time, stall time.Duration) bool {
 	return !p.active && p.wallZone > 0 && now.Sub(p.lastObservation) <= 10*time.Second &&
-		!now.Before(p.lastProgress.Add(stall)) && !now.Before(p.nextCheck)
+		(p.fullCombatFailed || !now.Before(p.lastProgress.Add(stall))) && !now.Before(p.nextCheck)
 }
 
 func (p *ascensionPlanner) observe(out ascensionObservation, err error, now time.Time) (reset bool) {
-	if !p.active || out.frame.id <= p.lastInputFrame {
+	if !p.active {
+		if out.economy {
+			p.latest = out
+			if err != nil {
+				p.latest = ascensionObservation{}
+				p.nextRead = now.Add(30 * time.Second)
+				fmt.Printf("Ascension soul budget unreadable: %v; retrying in 30s\n", err)
+			}
+		}
+		return false
+	}
+	if out.frame.id <= p.lastInputFrame {
 		return false
 	}
 	p.latest = out
 	if (p.step == openAscension || p.step == confirmAscension) && out.frame.context.ascension {
-		if err != nil || math.IsInf(out.souls, -1) {
-			reason := "no Hero Souls gained"
+		if err != nil || math.IsInf(out.souls, -1) || out.souls < p.minimumReward {
+			reason := "Hero Souls reward below the minimum useful gain"
 			if err != nil {
 				reason = err.Error()
 			}
@@ -174,7 +259,9 @@ func (p *ascensionPlanner) observe(out ascensionObservation, err error, now time
 		return true
 	}
 	if p.step == cancelAscension && !out.frame.context.ascension && out.frame.context.known {
-		*p = ascensionPlanner{nextCheck: now.Add(5 * time.Minute)}
+		p.active, p.latest = false, ascensionObservation{}
+		p.deadline = time.Time{}
+		p.nextCheck = now.Add(time.Minute)
 	}
 	return false
 }
@@ -221,6 +308,24 @@ func ascensionActionStable(a gameAction, current gameFrame) bool {
 			}
 			if yellow(a.frame.image) != yellow(current.image) {
 				return false
+			}
+		}
+	}
+	return true
+}
+
+func ascensionBudgetStable(before, after image.Image) bool {
+	if before == nil || after == nil || before.Bounds() != after.Bounds() {
+		return false
+	}
+	for _, region := range ascensionSoulRegions {
+		r := controlRect(after, region)
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			for x := r.Min.X; x < r.Max.X; x++ {
+				bright := func(im image.Image) bool { r, g, b := rgb(im.At(x, y)); return min(r, min(g, b)) > 180 }
+				if bright(before) != bright(after) {
+					return false
+				}
 			}
 		}
 	}

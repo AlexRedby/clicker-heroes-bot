@@ -115,11 +115,17 @@ function run(input) {
   if (!raw.transcendent) data.tp = new Decimal(0);
 
   const ancientById = raw.ancients.ancients;
+  let invested = new Decimal(0);
+  let investedKnown = true;
   for (const [id, entry] of Object.entries(ancientById)) {
     if (!/^\d+$/.test(id) || !entry || entry.level === undefined) throw new Error('malformed ancient data');
     const level = decimal(entry.level, `ancient ${id} level`);
     if (!level.isInteger()) throw new Error(`ancient ${id} level must be an integer`);
     if (!Object.values(sourceData.ancients).some(ancient => String(ancient.id) === id) && level.greaterThan(0)) throw new Error(`unknown owned ancient ${id}`);
+    if (level.greaterThan(0)) {
+      if (entry.spentHeroSouls === undefined) investedKnown = false;
+      else invested = invested.plus(decimal(entry.spentHeroSouls, `ancient ${id} spentHeroSouls`));
+    }
   }
   for (const key of Object.keys(data.ancients)) {
     const ancient = data.ancients[key];
@@ -158,6 +164,7 @@ function run(input) {
     });
   }
   return {souls: data.heroSouls.toString(), reserve: reserve.toString(), spent: spent.toString(),
+    invested: investedKnown ? invested.toString() : '',
     remaining: data.heroSouls.minus(spent).toString(), ascensions: ascensions.toNumber(), rows, owned};
 }
 
