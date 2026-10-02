@@ -27,14 +27,15 @@ func saveMenu(screen image.Image) bool {
 	if screen == nil || screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 {
 		return false
 	}
-	for _, point := range []image.Point{{300, 300}, {890, 340}} {
+	for _, point := range []image.Point{{270, 170}, {1005, 550}} {
 		p := controlRect(screen, image.Rect(point.X, point.Y, point.X+1, point.Y+1)).Min
 		r, g, b := rgb(screen.At(p.X, p.Y))
 		if r < 230 || g < 220 || b < 150 {
 			return false
 		}
 	}
-	_, found, err := saveControl(screen, 0)
+	// Save can remain highlighted after exporting; the menu X is independent.
+	_, found, err := saveControl(screen, 1)
 	return found && err == nil
 }
 
@@ -71,6 +72,7 @@ type saveExporter struct {
 	requested, active, waiting bool
 	step                       exportStep
 	window                     string
+	status                     string
 	before                     exportSnapshot
 	lastFrame, jobFrame        uint64
 	deadline                   time.Time
@@ -87,9 +89,21 @@ func (e *saveExporter) interrupt() {
 	e.lastFrame, e.jobFrame = 0, 0
 }
 func (p *gamePipeline) exportFailed(err error) {
-	reason := fmt.Sprintf("save export failed at %s: %v; close any dialog, focus the game and press F8 to retry", p.export.step, err)
+	reason := fmt.Sprintf("save export failed at %s: %v", p.export.step, err)
+	if p.export.status != "" {
+		reason += " (" + p.export.status + ")"
+	}
+	reason += "; close any dialog, focus the game and press F8 to retry"
 	p.export.interrupt()
 	p.controls.pause(reason)
+	if p.frame.image != nil && p.frame.image.Bounds().Dx() >= 640 {
+		path := fmt.Sprintf("artifacts/save-export-failure-%s.png", time.Now().Format("20060102-150405.000"))
+		if err := saveImage(path, p.frame.image); err != nil {
+			fmt.Printf("save export diagnostic failed: %v\n", err)
+		} else {
+			fmt.Println("saved save export failure screenshot:", path)
+		}
+	}
 }
 func (p *gamePipeline) planExport(now time.Time) bool {
 	e := &p.export
@@ -112,6 +126,7 @@ func (p *gamePipeline) planExport(now time.Time) bool {
 		p.queue = make(map[actionKind]gameAction)
 		fmt.Println("save export: started")
 	}
+	e.status = fmt.Sprintf("expected window=%q, observed window=%q, recognized=%t, menu=%t", e.window, p.frame.context.window, p.frame.context.known, p.frame.context.saveMenu)
 	if now.After(e.deadline) {
 		p.exportFailed(fmt.Errorf("transition timed out"))
 		return true
@@ -160,6 +175,7 @@ func (p *gamePipeline) planExport(now time.Time) bool {
 			return true
 		}
 		if !found {
+			e.status += ", control not recognized"
 			return true
 		}
 		a.point = point

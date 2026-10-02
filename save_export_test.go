@@ -253,7 +253,52 @@ func TestSaveRecognitionRejectsImportButton(t *testing.T) {
 	save := controlRect(screen, image.Rect(290, 192, 449, 216))
 	// Identical green controls must be distinguished by their labels.
 	draw.Draw(screen, save, menu, image.Pt(save.Min.X, save.Min.Y+50), draw.Src)
-	if saveMenu(screen) {
-		t.Fatal("Import accepted as Save")
+	if _, found, err := saveControl(screen, 0); err != nil || found {
+		t.Fatal("Import accepted as Save", err)
+	}
+	if !saveMenu(screen) {
+		t.Fatal("menu X did not independently identify the menu")
+	}
+}
+
+func TestExportClosesMenuWithChangedSaveButton(t *testing.T) {
+	for _, width := range []int{1280, 2560} {
+		menu := exportFixture(t, "save-menu.png", width)
+		screen := image.NewRGBA(menu.Bounds())
+		draw.Draw(screen, screen.Bounds(), menu, menu.Bounds().Min, draw.Src)
+		draw.Draw(screen, controlRect(screen, image.Rect(290, 192, 449, 216)), &image.Uniform{C: color.RGBA{100, 100, 100, 255}}, image.Point{}, draw.Src)
+		// A previous supposed background anchor was inside Recover Save Data's label.
+		draw.Draw(screen, controlRect(screen, image.Rect(290, 292, 449, 316)), &image.Uniform{C: color.RGBA{100, 100, 100, 255}}, image.Point{}, draw.Src)
+		if _, found, err := saveControl(screen, 0); err != nil || found {
+			t.Fatal("changed Save unexpectedly matched", err)
+		}
+		c, err := recognizedGame(screen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.window = "101:Clicker Heroes"
+		var clicked image.Point
+		controls := &pauseControl{}
+		p := newGamePipeline(controls, heroInput{click: func(point image.Point) error { clicked = point; return nil }}, pipelineReaders{window: func() string { return c.window }}, pipelineOptions{export: &saveExportOptions{dir: t.TempDir()}})
+		now := time.Now()
+		p.layout = 1
+		p.frame = gameFrame{id: 2, layout: 1, at: now, image: screen, context: c}
+		p.export = saveExporter{requested: true, active: true, step: exportCloseMenu, window: c.window, lastFrame: 1, deadline: now.Add(time.Second)}
+		p.plan(now)
+		a, ok := p.nextAction(now)
+		if !ok || a.kind != handleExport || a.export.step != exportCloseMenu {
+			t.Fatalf("no close action at width %d: context=%+v", width, c)
+		}
+		if acted, err := p.execute(context.Background(), a); err != nil || !acted {
+			t.Fatalf("close input: %v %v", acted, err)
+		}
+		point, found, err := saveControl(screen, 1)
+		if err != nil || !found || clicked != point {
+			t.Fatalf("wrong close target %v", clicked)
+		}
+		controls.toggle()
+		if acted, err := p.execute(context.Background(), a); err != nil || acted {
+			t.Fatal("close input escaped F8")
+		}
 	}
 }
