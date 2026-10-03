@@ -59,14 +59,18 @@ func ancientTabPoint(screen image.Image, heroes bool) image.Point {
 	return r.Min
 }
 func ancientButtons(screen image.Image) []image.Point {
+	if screen == nil {
+		return nil
+	}
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
 	var rows []image.Point
 	first, last := -1, -1
-	gap := max(3, h/150)
-	for y := b.Min.Y + h*40/100; y < b.Min.Y+h*96/100+gap; y++ {
+	gap := max(3, h/100)
+	top, bottom := b.Min.Y+h*275/720, b.Min.Y+h*718/720
+	for y := top; y < bottom+gap; y++ {
 		blue, n := 0, 0
-		if y < b.Min.Y+h*96/100 {
+		if y < bottom {
 			for x := b.Min.X + w*65/1000; x < b.Min.X+w*70/1000; x += max(1, w/500) {
 				r, g, bl := rgb(screen.At(x, y))
 				n++
@@ -83,7 +87,7 @@ func ancientButtons(screen image.Image) []image.Point {
 			continue
 		}
 		if first >= 0 && y-last > gap {
-			if last-first > h/40 && last-first < h/7 {
+			if first > top+gap && last < bottom-gap && last-first > h*75/1000 && last-first < h/7 {
 				rows = append(rows, image.Pt(b.Min.X+w*95/1000, (first+last)/2))
 			}
 			first = -1
@@ -104,14 +108,73 @@ type ancientScreenRow struct {
 	name, level string
 	point       image.Point
 }
+type ancientNameAnchor struct {
+	name string
+	y    int
+}
 type ancientObservation struct {
-	frame       gameFrame
-	souls       string
-	rows        []ancientScreenRow
-	okay        bool
-	thumb       image.Point
-	thumbHeight int
-	hasThumb    bool
+	frame     gameFrame
+	souls     string
+	rows      []ancientScreenRow
+	anchors   []ancientNameAnchor
+	namesOnly bool
+	okay      bool
+}
+
+func ancientScrollArrow(screen image.Image, direction int) (image.Point, bool, error) {
+	r, name := image.Rect(576, 276, 596, 294), "ancients/scroll-up.png"
+	if direction > 0 {
+		r, name = image.Rect(576, 699, 596, 717), "ancients/scroll-down.png"
+	}
+	found, err := matchControl(screen, r, name)
+	box := controlRect(screen, r)
+	return box.Min.Add(box.Size().Div(2)), found, err
+}
+
+func readAncientNames(ctx context.Context, frame gameFrame) (ancientObservation, error) {
+	out := ancientObservation{frame: frame, namesOnly: true}
+	if !frame.context.ancients {
+		return out, nil
+	}
+	b := frame.image.Bounds()
+	region := controlRect(frame.image, image.Rect(170, 275, 570, 699))
+	first, last := -1, -1
+	gap := max(2, b.Dy()/200)
+	for y := region.Min.Y; y < region.Max.Y+gap; y++ {
+		pink := 0
+		if y < region.Max.Y {
+			for x := region.Min.X; x < region.Max.X; x++ {
+				r, g, bl := rgb(frame.image.At(x, y))
+				if r > 150 && bl > 150 && g < 140 {
+					pink++
+				}
+			}
+		}
+		if pink >= max(3, b.Dx()/1000) {
+			if first < 0 {
+				first = y
+			}
+			last = y
+			continue
+		}
+		if first < 0 || y-last <= gap {
+			continue
+		}
+		if last-first >= b.Dy()/100 && last-first < b.Dy()/25 {
+			padding := max(gap, b.Dy()/100)
+			crop := image.Rect(region.Min.X, first-padding, region.Max.X, last+padding+1).Intersect(b)
+			raw, err := readGameText(ctx, frame.image, crop, max(1, 2560/b.Dx()), 7, -180, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ,'")
+			if err != nil {
+				return out, err
+			}
+			name := strings.TrimSpace(strings.Split(raw, ",")[0])
+			if name != "" {
+				out.anchors = append(out.anchors, ancientNameAnchor{name, (first + last) / 2})
+			}
+		}
+		first = -1
+	}
+	return out, nil
 }
 
 func readAncientObservation(ctx context.Context, frame gameFrame) (ancientObservation, error) {
@@ -124,6 +187,11 @@ func readAncientObservation(ctx context.Context, frame gameFrame) (ancientObserv
 	if !frame.context.ancients {
 		return out, nil
 	}
+	names, err := readAncientNames(ctx, frame)
+	if err != nil {
+		return out, err
+	}
+	out.anchors = names.anchors
 	raw, err := readGameText(ctx, screen, controlRect(screen, image.Rect(410, 172, 591, 199)), max(1, 2560/screen.Bounds().Dx()), 7, 180, "0123456789.eEabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ")
 	if err != nil {
 		return out, err
@@ -134,26 +202,25 @@ func readAncientObservation(ctx context.Context, frame gameFrame) (ancientObserv
 	}
 	out.souls = match[1]
 	for _, point := range ancientButtons(screen) {
-		// Preserve thin level digits even in full-resolution captures.
+		var name string
+		for _, anchor := range out.anchors {
+			if anchor.y >= ancientNameRegion(screen, point).Min.Y && anchor.y < ancientNameRegion(screen, point).Max.Y {
+				name = anchor.name
+				break
+			}
+		}
+		if name == "" {
+			continue
+		}
 		raw, err := readGameText(ctx, screen, ancientLevelRegion(screen, point), max(2, 2560/screen.Bounds().Dx()), 7, 0, "0123456789.eElLvViI")
 		if err != nil {
 			return out, err
 		}
-		raw = strings.TrimSpace(raw)
-		raw = ancientLevelLabel.ReplaceAllString(raw, "")
+		raw = ancientLevelLabel.ReplaceAllString(strings.TrimSpace(raw), "")
 		if _, err := ancientcalc.Value(raw); err != nil {
-			continue
-		}
-		name, err := readGameText(ctx, screen, ancientNameRegion(screen, point), max(1, 2560/screen.Bounds().Dx()), 7, -180, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ,'")
-		if err != nil {
-			return out, err
-		}
-		name = strings.TrimSpace(strings.Split(name, ",")[0])
-		if name == "" {
-			continue
+			raw = ""
 		}
 		out.rows = append(out.rows, ancientScreenRow{name, raw, point})
 	}
-	out.thumb, out.thumbHeight, out.hasThumb = listScrollbarThumb(screen, 416)
 	return out, nil
 }

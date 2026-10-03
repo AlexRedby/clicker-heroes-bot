@@ -64,6 +64,7 @@ type analysisJob struct {
 	export       *exportJob
 	heroBefore   *heroObservation
 	modeOnly     bool
+	ancientNames bool
 	economy      bool
 	skills       [9]skillState
 	outsiderBase *ancientcalc.TranscensionPreview
@@ -115,6 +116,7 @@ type pipelineReaders struct {
 	ascension        func(context.Context, gameFrame) (ascensionObservation, error)
 	ascensionEconomy func(context.Context, gameFrame) (ascensionObservation, error)
 	ancients         func(context.Context, gameFrame) (ancientObservation, error)
+	ancientNames     func(context.Context, gameFrame) (ancientObservation, error)
 	outsiders        func(context.Context, gameFrame) (outsiderObservation, error)
 	heroes           heroReaders
 	window           func() string
@@ -259,6 +261,8 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 	case ancientAnalysis:
 		if job.modeOnly {
 			out.ancient = ancientObservation{frame: job.frame}
+		} else if job.ancientNames && p.readers.ancientNames != nil {
+			out.ancient, out.err = p.readers.ancientNames(ctx, job.frame)
 		} else {
 			out.ancient, out.err = p.readers.ancients(ctx, job.frame)
 		}
@@ -575,7 +579,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		}
 		if p.ancient.active && p.ancient.jobFrame == 0 && !now.Before(p.ancient.nextRead) && c.window != "!outside-game" {
 			p.ancient.jobFrame = p.frame.id
-			replaceJob(jobs[ancientAnalysis], analysisJob{frame: p.frame, modeOnly: p.ancient.pending != nil && p.ancient.pending.ancient.step == confirmAncientQuantity})
+			replaceJob(jobs[ancientAnalysis], analysisJob{frame: p.frame, modeOnly: p.ancient.pending != nil && p.ancient.pending.ancient.step == confirmAncientQuantity, ancientNames: p.ancient.budgetChecked && p.ancient.selected < 0 && !p.ancient.needFullRead})
 			p.ancient.nextRead = now.Add(300 * time.Millisecond)
 		}
 		if c.ancientDialog || p.ancient.active || (p.ancient.plan != nil && !p.ancient.finished) {
@@ -1065,7 +1069,14 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 		case handleAncient:
 			switch a.ancient.step {
 			case scrollAncients:
-				return input.drag(a.point, a.target)
+				if a.ancient.fine {
+					if err := input.click(a.point); err != nil {
+						return err
+					}
+				} else if err := input.scroll(a.point, a.ancient.direction); err != nil {
+					return err
+				}
+				return input.move(parkPoint(a.frame.context.bounds))
 			case openAncientQuantity:
 				return clickAncientCustom(ctx, input, a.point)
 			case fillAncientQuantity:

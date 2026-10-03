@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"image"
-	"image/color"
 	"image/draw"
 	"image/png"
 	"sync/atomic"
@@ -119,8 +118,8 @@ func TestAncientRecognitionRetryDoesNotWaitForFish(t *testing.T) {
 	frame.context.ancients = true
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
 	p.frame, p.layout = frame, frame.layout
-	pending := &gameAction{ancient: ancientCommand{step: scrollAncients}, point: image.Pt(50, 10), target: image.Pt(50, 70)}
-	p.ancient = ancientPlanner{active: true, pending: pending, deadline: now.Add(20 * time.Second)}
+	pending := &gameAction{ancient: ancientCommand{step: scrollAncients, direction: 1, before: []ancientNameAnchor{{"Argaiv", 80}}}, point: image.Pt(50, 10)}
+	p.ancient = ancientPlanner{plan: &ancientPlan{Plan: ancientcalc.Plan{Owned: []ancientcalc.Level{{Name: "Argaiv"}}, Rows: []ancientcalc.Purchase{{Name: "Atman"}}}}, active: true, pending: pending, deadline: now.Add(20 * time.Second)}
 	failure := observation{kind: ancientAnalysis, frame: frame, err: errors.New("scrollbar obscured")}
 	if err := p.accept(context.Background(), failure, now); err != nil {
 		t.Fatal(err)
@@ -130,7 +129,7 @@ func TestAncientRecognitionRetryDoesNotWaitForFish(t *testing.T) {
 	}
 	// A later shared frame confirms scrolling without any completed fish scan.
 	frame.id++
-	confirmed := ancientObservation{frame: frame, hasThumb: true, thumb: image.Pt(50, 70)}
+	confirmed := ancientObservation{frame: frame, anchors: []ancientNameAnchor{{"Argaiv", 70}}}
 	if err := p.accept(context.Background(), observation{kind: ancientAnalysis, frame: frame, ancient: confirmed}, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
@@ -373,30 +372,20 @@ func TestFishCollectionWhileWaitingForSaveFile(t *testing.T) {
 
 func TestAncientScrollsContinueDuringSlowFishScan(t *testing.T) {
 	original := loadTestImage(t, "testdata/ascension-ancients.png")
-	thumb, height, found := listScrollbarThumb(original, 416)
-	if !found {
-		t.Fatal("fixture scrollbar missing")
-	}
-	region := image.Rect(thumb.X-30, thumb.Y-height/2-3, thumb.X+31, thumb.Y+height/2+4)
-	var screens [3]image.Image
-	for i := range screens {
-		screen := image.NewRGBA(original.Bounds())
-		draw.Draw(screen, screen.Bounds(), original, original.Bounds().Min, draw.Src)
-		draw.Draw(screen, region, image.NewUniform(color.RGBA{R: 30, G: 25, B: 10, A: 255}), image.Point{}, draw.Src)
-		moved := region.Add(image.Pt(0, original.Bounds().Dy()*(50+i*10)/100-thumb.Y))
-		draw.Draw(screen, moved, original, region.Min, draw.Src)
-		screens[i] = screen
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	started, scrolled := make(chan struct{}), make(chan struct{}, 2)
 	var position atomic.Int32
 	frame := testPipelineFrame()
-	frame.image = screens[0]
+	frame.image = original
 	frame.context = gameContext{known: true, ancients: true, bounds: frame.image.Bounds()}
 	p := newGamePipeline(&pauseControl{}, heroInput{
-		capture: func() (image.Image, error) { return screens[min(2, int(position.Load()))], nil },
-		drag: func(from, to image.Point) error {
+		capture: func() (image.Image, error) { return original, nil },
+		move:    func(image.Point) error { return nil },
+		scroll: func(point image.Point, direction int) error {
+			if direction != 1 {
+				t.Fatal("wheel direction", direction)
+			}
 			position.Add(1)
 			scrolled <- struct{}{}
 			return nil
@@ -409,13 +398,12 @@ func TestAncientScrollsContinueDuringSlowFishScan(t *testing.T) {
 			return image.Point{}, false, ctx.Err()
 		},
 		ancients: func(ctx context.Context, f gameFrame) (ancientObservation, error) {
-			point, h, ok := listScrollbarThumb(f.image, 416)
-			return ancientObservation{frame: f, thumb: point, thumbHeight: h, hasThumb: ok}, nil
+			return ancientObservation{frame: f, namesOnly: true, anchors: []ancientNameAnchor{{"Argaiv", 900 - int(position.Load())*50}}}, nil
 		},
 	}, pipelineOptions{fishInterval: time.Second})
 	p.frame, p.layout = frame, frame.layout
-	p.ancient = ancientPlanner{active: true, budgetChecked: true, topChecked: true, selected: -1,
-		plan: &ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Absent Ancient"}}}}, done: map[int]bool{}}
+	p.ancient = ancientPlanner{active: true, budgetChecked: true, selected: -1,
+		plan: &ancientPlan{Plan: ancientcalc.Plan{Owned: []ancientcalc.Level{{Name: "Argaiv"}}, Rows: []ancientcalc.Purchase{{Name: "Atman"}}}}, done: map[int]bool{}}
 	// A previous negative observation has expired, and the new scan cannot finish.
 	old := frame
 	old.at = time.Now().Add(-time.Minute)

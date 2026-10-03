@@ -350,6 +350,7 @@ type heroInput struct {
 	move         func(image.Point) error
 	drag         func(image.Point, image.Point) error
 	click        func(image.Point) error
+	scroll       func(image.Point, int) error
 	keyTap       func(string) error
 	keyToggle    func(string, string) error
 	typeText     func(string) error
@@ -515,9 +516,19 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 		monsterClick: func(p image.Point) error { return clickAt(ctx, p.X, p.Y) },
 		move:         moveAt,
 		click:        func(p image.Point) error { return clickGameAt(ctx, p) },
-		keyTap:       func(key string) error { return robotgo.KeyTap(key) },
-		keyToggle:    func(key, state string) error { return robotgo.KeyToggle(key, state) },
-		typeText:     func(text string) error { robotgo.TypeStr(text); return nil },
+		scroll: func(p image.Point, direction int) error {
+			if err := moveForClick(ctx, p); err != nil {
+				return err
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			robotgo.Scroll(0, -direction)
+			return nil
+		},
+		keyTap:    func(key string) error { return robotgo.KeyTap(key) },
+		keyToggle: func(key, state string) error { return robotgo.KeyToggle(key, state) },
+		typeText:  func(text string) error { robotgo.TypeStr(text); return nil },
 		drag: func(from, to image.Point) error {
 			if err := moveAt(from); err != nil {
 				return err
@@ -587,7 +598,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 
 	fmt.Println("paused; press F8 to start or pause, Ctrl+C to stop")
 	pipeline := newGamePipeline(&controls, input, pipelineReaders{
-		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation, ascensionEconomy: readAscensionEconomy, ancients: readAncientObservation, outsiders: readOutsiderObservation,
+		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation, ascensionEconomy: readAscensionEconomy, ancients: readAncientObservation, ancientNames: readAncientNames, outsiders: readOutsiderObservation,
 		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: windowReader,
 	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall, ascensionMinGain: ascensionMinGain, ascensionCapital: ascensionCapital, ancientPlan: ancientPlan, export: export, outsiderBase: outsiderBase,
 		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval, windowed: windowed})

@@ -191,31 +191,115 @@ const (
 )
 
 type ancientCommand struct {
-	step     ancientStep
-	quantity string
+	step      ancientStep
+	quantity  string
+	direction int
+	fine      bool
+	before    []ancientNameAnchor
 }
 type ancientPlanner struct {
-	plan                               *ancientPlan
-	active, started, finished, blocked bool
-	budgetChecked, topChecked          bool
-	quantityEntered, recovering        bool
-	bottomChecked                      bool
-	done                               map[int]bool
-	latest                             ancientObservation
-	pending                            *gameAction
-	selected                           int
-	quantity                           string
-	failure, waiting                   string
-	deadline, nextRead, nextAction     time.Time
-	jobFrame                           uint64
+	plan                                                                               *ancientPlan
+	active, started, finished, blocked                                                 bool
+	budgetChecked, quantityEntered, needFullRead                                       bool
+	seekTarget, seekDirection, seekClicks, seekStalls, seekTurns, seekLocal, seekReads int
+	seekReadFrame                                                                      uint64
+	seekNames                                                                          []ancientNameAnchor
+	done                                                                               map[int]bool
+	latest                                                                             ancientObservation
+	pending                                                                            *gameAction
+	selected                                                                           int
+	quantity                                                                           string
+	failure, waiting                                                                   string
+	deadline, nextRead, nextAction                                                     time.Time
+	jobFrame                                                                           uint64
 }
 
-// The native track excludes its arrow buttons; its thumb has a minimum height.
-// A fraction of thumb height is not the same fraction of a page of cards.
-func ancientScrollLimits(out ancientObservation) (int, int) {
-	b := out.frame.context.bounds
-	return b.Min.Y + b.Dy()*416/1000 + out.thumbHeight/2,
-		b.Min.Y + b.Dy()*965/1000 - out.thumbHeight/2
+// The installed game orders owned Ancients alphabetically (confirmed by the user).
+// Accept only fresh-save canonical names; arbitrary OCR strings cannot set direction.
+func (p *ancientPlanner) canonicalAnchors(out ancientObservation) ([]ancientNameAnchor, bool) {
+	anchors := out.anchors
+	if len(anchors) == 0 {
+		for _, row := range out.rows {
+			anchors = append(anchors, ancientNameAnchor{row.name, row.point.Y})
+		}
+	}
+	var known []ancientNameAnchor
+	for _, anchor := range anchors {
+		name := ""
+		if p.plan != nil {
+			for _, owned := range p.plan.Owned {
+				if strings.EqualFold(anchor.name, owned.Name) {
+					name = owned.Name
+					break
+				}
+			}
+			if name == "" {
+				for _, buy := range p.plan.Rows {
+					if strings.EqualFold(anchor.name, buy.Name) {
+						name = buy.Name
+						break
+					}
+				}
+			}
+		}
+		if name == "" {
+			continue
+		}
+		valid := len(known) == 0 || anchor.y > known[len(known)-1].y && strings.ToLower(name) > strings.ToLower(known[len(known)-1].name)
+		known = append(known, ancientNameAnchor{name, anchor.y})
+		if !valid {
+			return known, false
+		}
+	}
+	return known, len(known) > 0
+}
+func (p *ancientPlanner) beginSeek(index int) {
+	if p.seekTarget == index {
+		return
+	}
+	p.seekTarget = index
+	p.seekDirection, p.seekClicks, p.seekStalls, p.seekTurns, p.seekLocal, p.seekReads = 0, 0, 0, 0, 0, 0
+	p.seekReadFrame = 0
+}
+func (p *ancientPlanner) seekStatus() string {
+	name := "none"
+	if p.plan != nil && p.seekTarget >= 0 && p.seekTarget < len(p.plan.Rows) {
+		name = p.plan.Rows[p.seekTarget].Name
+	}
+	neighbors := make([]string, 0, len(p.seekNames))
+	for _, anchor := range p.seekNames {
+		neighbors = append(neighbors, fmt.Sprintf("%s@%d", anchor.name, anchor.y))
+	}
+	direction := "none"
+	if p.seekDirection < 0 {
+		direction = "up"
+	}
+	if p.seekDirection > 0 {
+		direction = "down"
+	}
+	return fmt.Sprintf("target=%s, direction=%s, neighbors=%s, inputs=%d, no-motion=%d, fine=%d, turns=%d", name, direction, strings.Join(neighbors, ","), p.seekClicks, p.seekStalls, p.seekLocal, p.seekTurns)
+}
+func (p *ancientPlanner) retrySeek(now time.Time, full bool) {
+	if p.latest.frame.id != p.seekReadFrame {
+		p.seekReads++
+		p.seekReadFrame = p.latest.frame.id
+	}
+	p.needFullRead = full
+	p.latest = ancientObservation{}
+	p.nextRead, p.nextAction = now.Add(300*time.Millisecond), now.Add(300*time.Millisecond)
+	if p.deadline.IsZero() {
+		p.deadline = now.Add(20 * time.Second)
+	}
+}
+
+func ancientRowReadable(rows []ancientScreenRow, name string) bool {
+	for _, row := range rows {
+		if strings.EqualFold(row.name, name) {
+			_, err := ancientcalc.Value(row.level)
+			return err == nil
+		}
+	}
+	return false
 }
 
 func (p *ancientPlanner) interrupt() {
@@ -239,7 +323,7 @@ func (p *ancientPlanner) confirmationStatus() string {
 	if p.plan != nil && p.selected >= 0 && p.selected < len(p.plan.Rows) {
 		name = p.plan.Rows[p.selected].Name
 	}
-	return fmt.Sprintf("stage=%s, Ancient=%s, quantity=%q, dialog=%t, OK=%t, visible rows=%d", stage, name, p.quantity, p.latest.frame.context.ancientDialog, p.latest.okay, len(p.latest.rows))
+	return fmt.Sprintf("stage=%s, Ancient=%s, quantity=%q, dialog=%t, OK=%t, visible rows=%d; %s", stage, name, p.quantity, p.latest.frame.context.ancientDialog, p.latest.okay, len(p.latest.rows), p.seekStatus())
 }
 func (p *ancientPlanner) pauseReason() string {
 	return "Ancient batch blocked: " + p.failure + "; close the dialog, export a fresh save and restart before another batch"
@@ -270,8 +354,11 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 		return
 	}
 	p.latest = out
+	if !out.namesOnly && out.souls != "" {
+		p.needFullRead = false
+	}
 	if p.pending == nil {
-		if out.hasThumb || out.frame.context.ancientDialog {
+		if !out.namesOnly && out.souls != "" || out.frame.context.ancientDialog {
 			p.deadline = time.Time{}
 		}
 		return
@@ -292,28 +379,39 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 			return
 		}
 	case scrollAncients:
-		if !out.frame.context.ancients || !out.hasThumb {
+		if !out.frame.context.known || !out.frame.context.ancients || out.frame.context.ancientDialog {
 			return
 		}
-		top, bottom := ancientScrollLimits(out)
-		tolerance := max(2, out.frame.context.bounds.Dy()/1000)
-		endPad := max(2, out.frame.context.bounds.Dy()*4/1000)
-		move := out.thumb.Y - a.point.Y
-		if a.target.Y < a.point.Y {
-			if move > 0 || (absDiff(move, 0) < tolerance && !(a.target.Y <= top+tolerance && out.thumb.Y <= top+tolerance)) {
-				return
+		anchors, valid := p.canonicalAnchors(out)
+		if !valid {
+			return
+		}
+		p.seekNames = anchors
+		moved := false
+		for _, before := range a.ancient.before {
+			for _, after := range anchors {
+				if before.name == after.name && a.ancient.direction*(before.y-after.y) >= max(2, out.frame.context.bounds.Dy()/1000) {
+					moved = true
+				}
 			}
-		} else if move < 0 || (move < tolerance && !(a.target.Y >= bottom-endPad && out.thumb.Y >= bottom-endPad)) {
-			return
 		}
-		if a.target.Y >= bottom+endPad && out.thumb.Y >= bottom-endPad {
-			p.bottomChecked = true
+		if len(a.ancient.before) > 0 && len(anchors) > 0 && a.ancient.direction*strings.Compare(strings.ToLower(anchors[0].name), strings.ToLower(a.ancient.before[0].name)) > 0 {
+			moved = true
+		}
+		if moved {
+			p.seekStalls = 0
+		} else {
+			p.seekStalls++
+		}
+		if p.seekStalls >= 3 {
+			p.fail("Ancient navigation made no progress: " + p.seekStatus())
+			return
 		}
 	case openAncientQuantity:
 		if !out.frame.context.ancientDialog {
 			buy := p.plan.Rows[p.selected]
 			for _, row := range out.rows {
-				if row.name != buy.Name || ancientDisplayMatches(row.level, buy.Current) {
+				if !strings.EqualFold(row.name, buy.Name) || ancientDisplayMatches(row.level, buy.Current) {
 					continue
 				}
 				level, e1 := ancientcalc.Value(row.level)
@@ -348,6 +446,7 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 		p.selected = -1
 		p.quantity = ""
 		p.quantityEntered = false
+		p.needFullRead = true
 	case returnAncientHeroes:
 		if !out.frame.context.heroes {
 			return
@@ -365,7 +464,7 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 		return gameAction{}, false
 	}
 	makeAction := func(step ancientStep, point image.Point) (gameAction, bool) {
-		return gameAction{kind: handleAncient, frame: frame, point: point, ancient: ancientCommand{step, p.quantity}}, true
+		return gameAction{kind: handleAncient, frame: frame, point: point, ancient: ancientCommand{step: step, quantity: p.quantity}}, true
 	}
 	if !p.active {
 		if !frame.context.heroes && !frame.context.ancients {
@@ -407,44 +506,50 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 		}
 		p.budgetChecked = true
 	}
-	if !p.topChecked && !p.latest.hasThumb {
-		// Short lists need no sweep when every remaining planned row is readable.
-		visible := 0
-		for i, buy := range p.plan.Rows {
-			if p.done[i] {
+	if len(p.done) == len(p.plan.Rows) {
+		return makeAction(returnAncientHeroes, ancientTabPoint(frame.image, true))
+	}
+	target := -1
+	for i, buy := range p.plan.Rows {
+		if !p.done[i] && (target < 0 || strings.ToLower(buy.Name) < strings.ToLower(p.plan.Rows[target].Name)) {
+			target = i
+		}
+	}
+	p.beginSeek(target)
+	anchors, valid := p.canonicalAnchors(p.latest)
+	p.seekNames = anchors
+	if !valid {
+		if p.seekReads >= 3 {
+			p.fail("unreadable or nonalphabetical Ancient neighbors: " + p.seekStatus())
+			return gameAction{}, false
+		}
+		p.retrySeek(now, false)
+		return gameAction{}, false
+	}
+	// Read numbers only when a remaining name belongs to a complete button.
+	for _, point := range ancientButtons(frame.image) {
+		region := ancientNameRegion(frame.image, point)
+		for _, anchor := range anchors {
+			if anchor.y < region.Min.Y || anchor.y >= region.Max.Y {
 				continue
 			}
-			for _, row := range p.latest.rows {
-				if row.name == buy.Name {
-					visible++
-					break
+			for i, buy := range p.plan.Rows {
+				if !p.done[i] && anchor.name == buy.Name && (p.latest.namesOnly || p.seekReads < 3 && !ancientRowReadable(p.latest.rows, buy.Name)) {
+					p.retrySeek(now, true)
+					return gameAction{}, false
 				}
 			}
 		}
-		if visible != len(p.plan.Rows)-len(p.done) {
-			if p.deadline.IsZero() {
-				p.deadline = now.Add(20 * time.Second)
-			}
-			p.nextAction = now.Add(300 * time.Millisecond)
-			return gameAction{}, false
-		}
-		p.topChecked = true
-	}
-	if !p.topChecked && p.latest.hasThumb {
-		top, _ := ancientScrollLimits(p.latest)
-		if p.latest.thumb.Y > top+max(2, frame.context.bounds.Dy()/1000) {
-			a, _ := makeAction(scrollAncients, p.latest.thumb)
-			a.target = image.Pt(a.point.X, top)
-			return a, true
-		}
-		p.topChecked = true
 	}
 	for i, buy := range p.plan.Rows {
 		if p.done[i] {
 			continue
 		}
 		for _, row := range p.latest.rows {
-			if row.name != buy.Name {
+			if !strings.EqualFold(row.name, buy.Name) {
+				continue
+			}
+			if _, err := ancientcalc.Value(row.level); err != nil {
 				continue
 			}
 			if !ancientDisplayMatches(row.level, buy.Current) {
@@ -464,52 +569,84 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 				p.fail(err.Error())
 				return gameAction{}, false
 			}
+			p.beginSeek(i)
 			p.selected = i
 			p.quantityEntered = false
 			return makeAction(openAncientQuantity, row.point)
 		}
 	}
-	if len(p.done) == len(p.plan.Rows) {
-		return makeAction(returnAncientHeroes, ancientTabPoint(frame.image, true))
+	name := strings.ToLower(p.plan.Rows[target].Name)
+	direction, fine := 1, false
+	if name < strings.ToLower(anchors[0].name) {
+		direction = -1
+	} else if name <= strings.ToLower(anchors[len(anchors)-1].name) {
+		fine = true
 	}
-	if !p.latest.hasThumb {
-		if p.deadline.IsZero() {
-			p.deadline = now.Add(20 * time.Second)
+	if p.seekTurns > 0 || p.seekDirection != 0 && p.seekDirection != direction {
+		fine = true
+	}
+	if fine {
+		direction = 1
+		onScreen := false
+		for _, anchor := range anchors {
+			if strings.EqualFold(anchor.name, p.plan.Rows[target].Name) {
+				onScreen = true
+				if anchor.y < frame.context.bounds.Min.Y+frame.context.bounds.Dy()/2 {
+					direction = -1
+				} else if anchor.y > frame.context.bounds.Min.Y+frame.context.bounds.Dy()*3/4 {
+					direction = 1
+				} else if p.seekLocal%4 >= 2 {
+					direction = -1
+				}
+				break
+			}
 		}
-		p.nextAction = now.Add(300 * time.Millisecond)
+		if name < strings.ToLower(anchors[0].name) {
+			direction = -1
+		} else if name > strings.ToLower(anchors[len(anchors)-1].name) {
+			direction = 1
+		} else if !onScreen && p.seekLocal%4 >= 2 {
+			direction = -1
+		}
+	}
+	if p.seekClicks >= 64 || p.seekLocal >= 24 || p.seekTurns >= 4 {
+		p.fail("Ancient navigation limit reached: " + p.seekStatus())
 		return gameAction{}, false
 	}
-	top, bottom := ancientScrollLimits(p.latest)
-	tolerance := max(2, frame.context.bounds.Dy()/1000)
-	var missing []string
-	for i, row := range p.plan.Rows {
-		if !p.done[i] {
-			missing = append(missing, row.Name)
+	point := controlRect(frame.image, image.Rect(350, 510, 351, 511)).Min
+	if fine {
+		var found bool
+		var err error
+		point, found, err = ancientScrollArrow(frame.image, direction)
+		if err != nil || !found {
+			if p.seekReads >= 6 {
+				p.fail("Ancient fine-scroll control unreadable: " + p.seekStatus())
+				return gameAction{}, false
+			}
+			p.retrySeek(now, false)
+			return gameAction{}, false
 		}
 	}
-	if p.recovering && p.latest.thumb.Y <= top+tolerance {
-		p.fail("planned Ancients still missing after recovery sweep: " + strings.Join(missing, ", "))
-		return gameAction{}, false
-	}
-	if !p.recovering && p.bottomChecked {
-		p.recovering = true
-		fmt.Printf("Ancient list recovery for remaining rows: %s\n", strings.Join(missing, ", "))
-	}
-	a, _ := makeAction(scrollAncients, p.latest.thumb)
-	// Quarter-thumb steps overlap expanded cards even with the native minimum thumb size.
-	// Gold-run height can omit border pixels (4px in the native bottom fixture).
-	// Request the endpoint with a small pad, then require a newer clamped frame.
-	endPad := max(2, frame.context.bounds.Dy()*4/1000)
-	a.target = image.Pt(a.point.X, min(bottom+endPad, a.point.Y+max(2, p.latest.thumbHeight/4)))
-	if p.recovering {
-		// One reverse sweep samples closer views; submitted rows stay excluded.
-		a.target.Y = max(top, a.point.Y-max(2, p.latest.thumbHeight/8))
-	}
+	a, _ := makeAction(scrollAncients, point)
+	a.ancient.direction, a.ancient.fine, a.ancient.before = direction, fine, append([]ancientNameAnchor(nil), anchors...)
 	return a, true
 }
 func (p *ancientPlanner) sent(a gameAction, now time.Time) {
 	fmt.Printf("Ancient action: %s at (%d, %d), quantity=%q\n", a.ancient.step, a.point.X, a.point.Y, a.ancient.quantity)
 	p.waiting = ""
+	if a.ancient.step == scrollAncients {
+		p.seekClicks++
+		if a.ancient.fine {
+			p.seekLocal++
+		}
+		if p.seekDirection != 0 && p.seekDirection != a.ancient.direction {
+			p.seekTurns++
+		}
+		p.seekDirection = a.ancient.direction
+		p.seekReads = 0
+		p.needFullRead = false
+		fmt.Printf("Ancient seek: %s, fine=%t\n", p.seekStatus(), a.ancient.fine)
+	}
 	p.pending = &a
 	p.latest = ancientObservation{}
 	p.jobFrame = 0
@@ -528,8 +665,14 @@ func ancientActionStable(a gameAction, current gameFrame) bool {
 		return true
 	}
 	if a.ancient.step == scrollAncients {
-		thumb, _, found := listScrollbarThumb(current.image, 416)
-		return found && absDiff(thumb.Y, a.point.Y) <= max(3, current.context.bounds.Dy()/100)
+		if !current.context.known || !current.context.ancients || current.context.ancientDialog || (a.ancient.direction != -1 && a.ancient.direction != 1) {
+			return false
+		}
+		if !a.ancient.fine {
+			return a.point == controlRect(current.image, image.Rect(350, 510, 351, 511)).Min
+		}
+		point, found, err := ancientScrollArrow(current.image, a.ancient.direction)
+		return found && err == nil && point == a.point
 	}
 	if a.ancient.step != openAncientQuantity {
 		return true
