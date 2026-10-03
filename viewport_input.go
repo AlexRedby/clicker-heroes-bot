@@ -87,8 +87,8 @@ func bindViewportInput(ctx context.Context, base heroInput, g viewportGeometry) 
 		if err := guard(); err != nil {
 			return err
 		}
-		robotgo.Scroll(0, -direction)
-		return nil
+		robotgo.Scroll(0, -direction, 150)
+		return guard()
 	}
 	base.drag = func(from, to image.Point) error {
 		// Validate both endpoints before mouse-down. Keep RobotGo's native drag.

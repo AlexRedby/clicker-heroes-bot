@@ -523,8 +523,8 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			robotgo.Scroll(0, -direction)
-			return nil
+			robotgo.Scroll(0, -direction, 150)
+			return ctx.Err()
 		},
 		keyTap:    func(key string) error { return robotgo.KeyTap(key) },
 		keyToggle: func(key, state string) error { return robotgo.KeyToggle(key, state) },

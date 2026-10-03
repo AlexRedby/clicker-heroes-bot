@@ -201,6 +201,7 @@ type ancientPlanner struct {
 	plan                                                                               *ancientPlan
 	active, started, finished, blocked                                                 bool
 	budgetChecked, quantityEntered, needFullRead                                       bool
+	seekArrows                                                                         bool
 	seekTarget, seekDirection, seekClicks, seekStalls, seekTurns, seekLocal, seekReads int
 	seekReadFrame                                                                      uint64
 	seekNames                                                                          []ancientNameAnchor
@@ -260,6 +261,7 @@ func (p *ancientPlanner) beginSeek(index int) {
 	p.seekTarget = index
 	p.seekDirection, p.seekClicks, p.seekStalls, p.seekTurns, p.seekLocal, p.seekReads = 0, 0, 0, 0, 0, 0
 	p.seekReadFrame = 0
+	p.seekArrows = false
 }
 func (p *ancientPlanner) seekStatus() string {
 	name := "none"
@@ -403,7 +405,11 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 		} else {
 			p.seekStalls++
 		}
-		if p.seekStalls >= 3 {
+		if !a.ancient.fine && p.seekStalls >= 2 {
+			fmt.Printf("Ancient seek switching wheel -> arrow after repeated no-motion: %s\n", p.seekStatus())
+			p.seekArrows = true
+			p.seekStalls = 0
+		} else if p.seekStalls >= 3 {
 			p.fail("Ancient navigation made no progress: " + p.seekStatus())
 			return
 		}
@@ -582,7 +588,7 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 	} else if name <= strings.ToLower(anchors[len(anchors)-1].name) {
 		fine = true
 	}
-	if p.seekTurns > 0 || p.seekDirection != 0 && p.seekDirection != direction {
+	if p.seekArrows || p.seekTurns > 0 || p.seekDirection != 0 && p.seekDirection != direction {
 		fine = true
 	}
 	if fine {
@@ -609,7 +615,11 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 			direction = -1
 		}
 	}
-	if p.seekClicks >= 64 || p.seekLocal >= 24 || p.seekTurns >= 4 {
+	limit := 64
+	if p.seekArrows {
+		limit = 128
+	}
+	if p.seekClicks >= limit || p.seekLocal >= 24 || p.seekTurns >= 4 {
 		p.fail("Ancient navigation limit reached: " + p.seekStatus())
 		return gameAction{}, false
 	}
@@ -636,7 +646,10 @@ func (p *ancientPlanner) sent(a gameAction, now time.Time) {
 	p.waiting = ""
 	if a.ancient.step == scrollAncients {
 		p.seekClicks++
-		if a.ancient.fine {
+		name := strings.ToLower(p.plan.Rows[p.seekTarget].Name)
+		// Arrow transit toward a distant target has its own total-input bound;
+		// reserve the fine limit for corrections within the readable name range.
+		if a.ancient.fine && (!p.seekArrows || len(a.ancient.before) > 0 && name >= strings.ToLower(a.ancient.before[0].name) && name <= strings.ToLower(a.ancient.before[len(a.ancient.before)-1].name)) {
 			p.seekLocal++
 		}
 		if p.seekDirection != 0 && p.seekDirection != a.ancient.direction {

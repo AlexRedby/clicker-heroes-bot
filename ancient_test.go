@@ -161,16 +161,22 @@ func TestAncientAlphabeticalSeek(t *testing.T) {
 		name                string
 		start, wheel, arrow int
 		missing, stalled    bool
+		only                string
 	}{
-		{"top", 0, 163, 8, false, false},
-		{"middle", 1500, 181, 11, false, false},
-		{"bottom", 9999, 169, 9, false, false},
-		{"missing", 0, 163, 8, true, false},
-		{"no-motion", 0, 163, 8, false, true},
+		{"top", 0, 163, 8, false, false, ""},
+		{"middle", 1500, 181, 11, false, false, ""},
+		{"bottom", 9999, 169, 9, false, false, ""},
+		{"missing", 0, 163, 8, true, false, ""},
+		{"no-motion", 0, 163, 8, false, true, ""},
+		{"wheel-no-motion", 0, 0, 8, false, false, ""},
+		{"Fragsworth-wheel-no-motion", sort.SearchStrings(names, "Chawedo")*148 + 16, 0, 8, false, false, "Fragsworth"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			plan := ancientPlan{Plan: ancientcalc.Plan{Souls: "1000", Reserve: "1", Owned: exported.Owned}}
 			for i := len(names) - 1; i >= 0; i-- {
+				if tc.only != "" && names[i] != tc.only {
+					continue
+				}
 				plan.Rows = append(plan.Rows, ancientcalc.Purchase{Name: names[i], Current: "1", Quantity: "1", Cost: "1"})
 			}
 			roster := append([]string(nil), names...)
@@ -254,11 +260,17 @@ func TestAncientAlphabeticalSeek(t *testing.T) {
 				}
 			}
 			if tc.missing || tc.stalled {
-				if !p.blocked || !strings.Contains(p.failure, "target=") || !strings.Contains(p.failure, "neighbors=") || p.seekClicks > 64 {
+				if !p.blocked || !strings.Contains(p.failure, "target=") || !strings.Contains(p.failure, "neighbors=") || p.seekClicks > 128 {
 					t.Fatal("missing/no-motion navigation did not stop with diagnostics", p.failure)
 				}
 			} else if !p.finished || len(p.done) != len(plan.Rows) || coarse == 0 || tc.name != "bottom" && fine == 0 {
 				t.Fatal("alphabetical batch incomplete", len(p.done), fine, coarse, p.failure)
+			}
+			if tc.only == "Fragsworth" && (coarse != 2 || fine <= 24) {
+				t.Fatal("distant target did not get one bounded arrow recovery", coarse, fine)
+			}
+			if tc.stalled && (coarse != 2 || fine != 3) {
+				t.Fatal("stalled arrows inherited wheel failures or retried forever", coarse, fine)
 			}
 		})
 	}

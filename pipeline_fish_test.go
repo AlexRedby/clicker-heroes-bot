@@ -371,10 +371,16 @@ func TestFishCollectionWhileWaitingForSaveFile(t *testing.T) {
 }
 
 func TestAncientScrollsContinueDuringSlowFishScan(t *testing.T) {
+	t.Run("wheel", func(t *testing.T) { testAncientScrollWithSlowFish(t, false) })
+	t.Run("wheel-to-arrow", func(t *testing.T) { testAncientScrollWithSlowFish(t, true) })
+}
+
+func testAncientScrollWithSlowFish(t *testing.T, stalledWheel bool) {
+	t.Helper()
 	original := loadTestImage(t, "testdata/ascension-ancients.png")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	started, scrolled := make(chan struct{}), make(chan struct{}, 2)
+	started, scrolled := make(chan struct{}), make(chan bool, 3)
 	var position atomic.Int32
 	frame := testPipelineFrame()
 	frame.image = original
@@ -386,8 +392,18 @@ func TestAncientScrollsContinueDuringSlowFishScan(t *testing.T) {
 			if direction != 1 {
 				t.Fatal("wheel direction", direction)
 			}
+			if !stalledWheel {
+				position.Add(1)
+			}
+			scrolled <- false
+			return nil
+		},
+		click: func(point image.Point) error {
+			if point != image.Pt(1172, 1416) {
+				t.Fatal("arrow recovery clicked outside its native control", point)
+			}
 			position.Add(1)
-			scrolled <- struct{}{}
+			scrolled <- true
 			return nil
 		},
 	}, pipelineReaders{
@@ -417,9 +433,16 @@ func TestAncientScrollsContinueDuringSlowFishScan(t *testing.T) {
 		<-done
 		t.Fatal("fish worker never started")
 	}
-	for range 2 {
+	inputs := 2
+	if stalledWheel {
+		inputs = 3
+	}
+	for i := range inputs {
 		select {
-		case <-scrolled:
+		case arrow := <-scrolled:
+			if arrow != (stalledWheel && i == 2) {
+				t.Fatal("wheel-to-arrow recovery did not preserve shared input ordering", i, arrow)
+			}
 		case <-time.After(2 * time.Second):
 			cancel()
 			<-done
