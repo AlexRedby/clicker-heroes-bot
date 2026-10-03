@@ -177,7 +177,15 @@ func heroScrollbarThumb(screen image.Image) (image.Point, int, bool) {
 	if screen == nil || !heroTabSelected(screen) {
 		return image.Point{}, 0, false
 	}
-	return listScrollbarThumb(screen, 320)
+	if point, height, found := listScrollbarThumb(screen, 320); found {
+		return point, height, true
+	}
+	if !heroQuantityBarPresent(screen) {
+		return image.Point{}, 0, false
+	}
+	// At the top of the Heroes list the arrow can merge with the gold thumb.
+	// Scan below the arrow while retaining the same shape and size checks.
+	return listScrollbarThumb(screen, 420)
 }
 
 func listScrollbarThumb(screen image.Image, top int) (image.Point, int, bool) {

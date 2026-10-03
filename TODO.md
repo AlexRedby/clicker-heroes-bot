@@ -1,5 +1,12 @@
 # TODO
 
+## Current runtime errors
+
+- Reproduce the ordinary Heroes scrollbar rejection on the native top-list fixture, share the existing merged-arrow handling with startup and queue checks, and verify regular leveling can request the drag after an Ancient batch. Save the failed shared frame if recognition still fails in the installed game.
+- Integrate the Mercenary owner fix for CRLF TSV timer coordinates and noisy running-row timer labels; verify supplied log regressions and existing quest scenarios.
+- Review skill 7 activation confirmation with the combat owner; fix reproduced defects and retain a specific native evidence gate for unconfirmed behavior.
+- Run the combined OCR regression suite and build, review the changed paths, then commit and push the integrated fixes to main.
+
 ## Startup and unattended Ascension validation
 
 - Verify native hire/MAX level confirmation and the full affordable hero sweep using the supplied initial frames. If confirmation fails, capture before/after rows and logs; positive post-hire levels in fixture tests use the existing level reader through controlled stubs.

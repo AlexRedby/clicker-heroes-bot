@@ -21,7 +21,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		return out, nil
 	}
 	var thumbHeight int
-	out.thumb, thumbHeight, out.thumbFound = startupHeroScrollbarThumb(frame.image)
+	out.thumb, thumbHeight, out.thumbFound = heroScrollbarThumb(frame.image)
 	b := frame.image.Bounds()
 	out.bottom = out.thumbFound && absDiff(out.thumb.Y+thumbHeight/2, b.Min.Y+b.Dy()*965/1000) <= max(3, b.Dy()/100)
 	for name, done := range visited {
@@ -186,27 +186,6 @@ func heroTextStable(a, z image.Image, region image.Rectangle) bool {
 		}
 	}
 	return white > total/100 && changed*100 <= total
-}
-
-func startupHeroScrollbarThumb(screen image.Image) (image.Point, int, bool) {
-	if !heroQuantityBarPresent(screen) {
-		return image.Point{}, 0, false
-	}
-	if p, h, ok := heroScrollbarThumb(screen); ok {
-		return p, h, ok
-	}
-	// On the native reset list the top arrow and thumb form one gold run.
-	// Start below that arrow; keep all shared width/height/shape gates unchanged.
-	return listScrollbarThumb(screen, 420)
-}
-
-func startupHeroListStable(before, after image.Image) bool {
-	if before == nil || after == nil || before.Bounds() != after.Bounds() {
-		return false
-	}
-	a, ah, af := startupHeroScrollbarThumb(before)
-	z, zh, zf := startupHeroScrollbarThumb(after)
-	return af && zf && absDiff(a.Y-ah/2, z.Y-zh/2) <= max(3, before.Bounds().Dy()/100)
 }
 
 func bootstrapHeroes(c gameContext) bool {

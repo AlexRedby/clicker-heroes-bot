@@ -189,3 +189,29 @@ func TestHeroObservationNamesFailedOCRFields(t *testing.T) {
 		})
 	}
 }
+
+func TestHeroTopScrollbarAfterAncientBatch(t *testing.T) {
+	screen := loadTestImage(t, "testdata/hero-startup-gold.png")
+	now := time.Now()
+	frame := gameFrame{id: 1, layout: 1, at: now, image: screen, context: gameContext{known: true, heroes: true, bounds: screen.Bounds()}}
+	out, err := readHeroObservation(context.Background(), frame, heroReaders{}, nil)
+	if err != nil || !out.thumbFound || out.bottom || out.startup {
+		t.Fatalf("ordinary top-list observation: thumb=%v found=%t bottom=%t startup=%t err=%v", out.thumb, out.thumbFound, out.bottom, out.startup, err)
+	}
+	if !heroListStable(screen, screen) {
+		t.Fatal("stationary top list rejected after startup finished")
+	}
+	runner := heroRunner{enabled: true}
+	runner.observe(out, observation{}, now)
+	action, ok := runner.action(now)
+	if !ok || action.kind != scrollHeroes || action.point != out.thumb || action.target.Y != screen.Bounds().Max.Y-1 {
+		t.Fatalf("ordinary leveling should drag to the bottom: %+v, %t", action, ok)
+	}
+	pipeline := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
+	pipeline.frame, pipeline.layout = frame, 1
+	pipeline.hero.observe(out, observation{}, now)
+	pipeline.plan(now)
+	if queued, ok := pipeline.nextAction(now); !ok || queued.kind != scrollHeroes {
+		t.Fatalf("queue rejected ordinary top-list drag: %+v %t", queued, ok)
+	}
+}

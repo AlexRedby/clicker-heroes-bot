@@ -189,7 +189,7 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 			}
 			p.pending = nil
 		case scrollHeroes:
-			movedStartup := pending.action.hero.startup && out.thumbFound && !startupHeroListStable(pending.action.frame.image, out.frame.image)
+			movedStartup := pending.action.hero.startup && out.thumbFound && !heroListStable(pending.action.frame.image, out.frame.image)
 			if !out.bottom && !movedStartup {
 				if pending.attempts >= 3 {
 					p.pending = nil
@@ -256,6 +256,14 @@ func (p *heroRunner) action(now time.Time) (gameAction, bool) {
 	case !o.startup && !o.thumbFound:
 		if p.parked {
 			fmt.Println("hero scrollbar not recognized; retrying in 30s")
+			if o.frame.image != nil {
+				const path = "artifacts/hero-scrollbar-unrecognized.png"
+				if err := saveImage(path, o.frame.image); err != nil {
+					fmt.Printf("save hero scrollbar screenshot: %v\n", err)
+				} else {
+					fmt.Printf("saved hero scrollbar screenshot: %s\n", path)
+				}
+			}
 			p.nextScan = now.Add(30 * time.Second)
 			p.latest = heroObservation{}
 			return a, false

@@ -261,7 +261,7 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 		if job.startup == startupUpgrades {
 			out.hero = heroObservation{frame: job.frame, startup: true, x1: heroQuantitySelected(job.frame.image, 122)}
 			var height int
-			out.hero.thumb, height, out.hero.thumbFound = startupHeroScrollbarThumb(job.frame.image)
+			out.hero.thumb, height, out.hero.thumbFound = heroScrollbarThumb(job.frame.image)
 			b := job.frame.image.Bounds()
 			out.hero.bottom = out.hero.thumbFound && absDiff(out.hero.thumb.Y+height/2, b.Min.Y+b.Dy()*965/1000) <= max(3, b.Dy()/100)
 			out.point, out.found, out.err = readHeroUpgradeButton(ctx, job.frame.image)
@@ -1147,9 +1147,6 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			}
 			if kind == scrollHeroes {
 				thumb, _, found := heroScrollbarThumb(p.frame.image)
-				if action.hero.startup {
-					thumb, _, found = startupHeroScrollbarThumb(p.frame.image)
-				}
 				if !found || absDiff(thumb.Y, action.point.Y) > max(3, p.frame.context.bounds.Dy()/100) {
 					delete(p.queue, kind)
 					p.hero.interrupt()
