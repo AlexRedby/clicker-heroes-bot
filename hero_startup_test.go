@@ -30,7 +30,7 @@ func TestStartupHeroNativeSweep(t *testing.T) {
 	}
 	gold := frame("testdata/hero-startup-gold.png", 2)
 	// Native before-hire frames verify names and bare zero. The level reader stub
-	// models confirmed LVL results; a native post-hire pair is still a live gate.
+	// models the single-level hire path; the native MAX pair is tested below.
 	levels := map[int]int{}
 	read := real
 	read.level = func(ctx context.Context, s image.Image, p image.Point) (int, error) {
@@ -285,5 +285,98 @@ func TestHeroUpgradeFooterAtBottomBoundary(t *testing.T) {
 	point, known, available, err := readHeroUpgradeFooter(context.Background(), shifted)
 	if err != nil || !known || !available || point.Y < 1300 {
 		t.Fatal("visible bottom footer skipped", point, known, available, err)
+	}
+}
+
+func TestStartupHeroNativeBareZero(t *testing.T) {
+	ctx := context.Background()
+	read := heroReaders{level: readHeroLevel, gold: readHeroGold, price: readHeroPrice}
+	for _, tc := range []struct {
+		path string
+		y    int
+		name string
+	}{
+		{"testdata/hero-startup-gilded-unhired.png", 736, "TheMaskedSamurai"},
+		{"testdata/hero-startup-gilded-unhired.png", 945, "Leon"},
+		{"testdata/hero-startup-gilded-unhired.png", 1158, "TheGreatForestSeer"},
+		{"testdata/hero-startup-fisherman-before.png", 966, "TheWanderingFisherman"},
+		{"testdata/hero-startup-fisherman-before.png", 1152, "BettyClicker"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := loadTestImage(t, tc.path)
+			button := image.Pt(204, tc.y)
+			name, err := readStartupHeroName(ctx, s, button)
+			if err != nil || name != tc.name {
+				t.Fatalf("identity: %q %v", name, err)
+			}
+			level, err := readStartupHeroLevel(ctx, s, button, read)
+			if err != nil || level != 0 {
+				t.Fatalf("visible bare zero: %d %v", level, err)
+			}
+			noHire := image.NewRGBA(s.Bounds())
+			draw.Draw(noHire, noHire.Bounds(), s, s.Bounds().Min, draw.Src)
+			glyph := startupBareZeroGlyph(s, button)
+			draw.Draw(noHire, image.Rect(179, glyph.Min.Y-15, 294, glyph.Max.Y+6), image.NewUniform(color.Black), image.Point{}, draw.Src)
+			if _, err := readStartupHeroLevel(ctx, noHire, button, read); err == nil {
+				t.Fatal("bare zero without HIRE accepted")
+			}
+			covered := image.NewRGBA(s.Bounds())
+			draw.Draw(covered, covered.Bounds(), s, s.Bounds().Min, draw.Src)
+			// HIRE remains visible; neither black coverage nor blank background proves zero.
+			for _, fill := range []color.Color{color.Black, color.RGBA{R: 255, G: 224, B: 95, A: 255}} {
+				draw.Draw(covered, startupBareZeroRegion(covered, button), image.NewUniform(fill), image.Point{}, draw.Src)
+				if _, err := readStartupHeroLevel(ctx, covered, button, read); err == nil {
+					t.Fatal("obscured zero accepted")
+				}
+			}
+		})
+	}
+}
+
+func TestStartupHeroNativeMovedHire(t *testing.T) {
+	ctx := context.Background()
+	read := heroReaders{level: readHeroLevel, gold: readHeroGold, price: readHeroPrice}
+	frame := func(path string, id uint64) gameFrame {
+		s := loadTestImage(t, path)
+		return gameFrame{id: id, image: s, context: gameContext{known: true, heroes: true, bounds: s.Bounds()}}
+	}
+	beforeFrame := frame("testdata/hero-startup-fisherman-before.png", 1)
+	afterFrame := frame("testdata/hero-startup-fisherman-after.png", 2)
+	visited := map[string]bool{"BrittanyBeachPrincess": true}
+	before, err := readStartupHeroObservation(ctx, beforeFrame, read, nil, visited, true)
+	if err != nil || !before.found || before.owned || before.level != 0 || before.startupName != "TheWanderingFisherman" {
+		t.Fatalf("before hire: %+v %v", before, err)
+	}
+	unchanged, err := readStartupHeroObservation(ctx, beforeFrame, read, &before, visited, true)
+	if err != nil || !unchanged.stable || unchanged.owned || unchanged.level != 0 {
+		t.Fatalf("unchanged hire: %+v %v", unchanged, err)
+	}
+	after, err := readStartupHeroObservation(ctx, afterFrame, read, &before, visited, true)
+	if err != nil || !after.stable || !after.owned || after.level != 10000 || after.startupName != before.startupName || after.button == before.button {
+		t.Fatalf("moved native hire: %+v %v", after, err)
+	}
+	for _, tc := range []struct {
+		name   string
+		region image.Rectangle
+	}{
+		{"name", startupHeroNameRegion(afterFrame.image, after.button)},
+		{"level", image.Rect(665, after.button.Y-86, 973, after.button.Y+43)},
+	} {
+		t.Run("covered-"+tc.name, func(t *testing.T) {
+			covered := image.NewRGBA(afterFrame.image.Bounds())
+			draw.Draw(covered, covered.Bounds(), afterFrame.image, covered.Bounds().Min, draw.Src)
+			draw.Draw(covered, tc.region, image.NewUniform(color.Black), image.Point{}, draw.Src)
+			f := afterFrame
+			f.image = covered
+			o, err := readStartupHeroObservation(ctx, f, read, &before, visited, true)
+			if err == nil && o.stable && o.owned {
+				t.Fatalf("covered %s confirmed: %+v", tc.name, o)
+			}
+		})
+	}
+	wrong := frame("testdata/hero-startup-gilded-unhired.png", 3)
+	out, err := readStartupHeroObservation(ctx, wrong, read, &before, visited, true)
+	if err == nil && out.stable {
+		t.Fatal("different hero confirmed hire")
 	}
 }
