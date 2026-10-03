@@ -307,13 +307,141 @@ func planAncients(ctx context.Context, save ancientSave, reserve string, skillRa
 			loss = aConst("0") // These integer balances and charges stay exact.
 		}
 	}
-	return planAncientsWithPrice(ctx, save, reserve, skillRate, beyond8k, func(formula string, old, target, multiplier *big.Float) (*big.Float, error) {
+	price := func(formula string, old, target, multiplier *big.Float) (*big.Float, error) {
 		cost, err := ancientPrice(formula, old, target, multiplier)
 		if err != nil {
 			return nil, err
 		}
 		return aRound(aAdd(cost, loss), true), nil
-	})
+	}
+	p, err := planAncientsWithPrice(ctx, save, reserve, skillRate, beyond8k, price)
+	if err != nil {
+		return p, err
+	}
+	return addProfitableMorgulis(ctx, save, p, price)
+}
+
+// Retain the Active RoT allocation, then compare an affordable Morgulis batch
+// with leaving its souls in the wallet. Official client 6144 combines them as
+// 1 + 0.10*wallet + 0.11*Morgulis; gold, farm and skill effects stay unchanged.
+func addProfitableMorgulis(ctx context.Context, save ancientSave, p Plan, price func(string, *big.Float, *big.Float, *big.Float) (*big.Float, error)) (Plan, error) {
+	entry, owned := save.Ancients.Ancients["16"]
+	if !owned || aConst(string(entry.Level)).Sign() == 0 {
+		return p, nil
+	}
+	old := aConst(string(entry.Level))
+	rowIndex := -1
+	previousQuantity, previousCost := aConst("0"), aConst("0")
+	for i, row := range p.Rows {
+		if row.ID == 16 {
+			rowIndex = i
+			previousQuantity, previousCost = aConst(row.Quantity), aConst(row.Cost)
+			break
+		}
+	}
+	wallet, reserved := aConst(p.Souls), aConst(p.Reserve)
+	otherCost := aSub(aConst(p.Spent), previousCost)
+	budget := aSub(aSub(wallet, reserved), otherCost)
+	if budget.Sign() <= 0 {
+		return p, nil
+	}
+	chor := aConst("0")
+	if outsider, ok := save.Outsiders.Outsiders["2"]; ok {
+		chor = aConst(string(outsider.Level))
+	}
+	multiplier := bigfloat.Pow(aConst("0.95"), chor)
+	left, right := aConst("0"), aRound(aDiv(budget, multiplier), false)
+	currentExact, _ := new(big.Rat).SetString(string(entry.Level))
+	if old.Cmp(aConst("1e9")) >= 0 {
+		minimum := new(big.Rat).Quo(currentExact, big.NewRat(1000, 1))
+		integer := new(big.Int).Quo(new(big.Int).Add(minimum.Num(), new(big.Int).Sub(minimum.Denom(), big.NewInt(1))), minimum.Denom())
+		left = aNew().SetInt(integer)
+		if right.Cmp(left) < 0 {
+			return p, nil // Even the ideal discounted quantity cannot pass the input gate.
+		}
+		cost, err := price("one", old, aAdd(old, left), multiplier)
+		if err != nil {
+			return p, err
+		}
+		if cost.Cmp(budget) > 0 {
+			return p, nil
+		}
+	}
+	// The discounted linear cost bounds affordable levels from above; retain
+	// enough search precision for the field's six significant digits.
+	initial := aMax(right, aConst("1"))
+	for iteration := 0; right.Cmp(left) > 0 && aDiv(aSub(right, left), initial).Cmp(aConst("1e-10")) > 0; iteration++ {
+		if err := ctx.Err(); err != nil {
+			return p, err
+		}
+		if iteration >= 1024 {
+			return p, errors.New("Morgulis search did not converge")
+		}
+		mid := aRound(aDiv(aAdd(aAdd(left, right), aConst("1")), aConst("2")), false)
+		cost, err := price("one", old, aAdd(old, mid), multiplier)
+		if err != nil {
+			return p, err
+		}
+		if cost.Cmp(budget) <= 0 {
+			left = mid
+		} else {
+			right = aSub(mid, aConst("1"))
+		}
+	}
+	if left.Cmp(previousQuantity) <= 0 {
+		return p, nil
+	}
+	integer, _ := left.Int(nil)
+	quantity, err := InputQuantity(integer.String())
+	if err != nil {
+		return p, err
+	}
+	entered := aConst(quantity)
+	if entered.Cmp(previousQuantity) <= 0 {
+		return p, nil
+	}
+	enteredExact, _ := new(big.Rat).SetString(quantity)
+	if old.Cmp(aConst("1e9")) >= 0 && new(big.Rat).Mul(enteredExact, big.NewRat(1000, 1)).Cmp(currentExact) < 0 {
+		return p, nil
+	}
+	target := aAdd(old, entered)
+	cost, err := price("one", old, target, multiplier)
+	if err != nil {
+		return p, err
+	}
+	baselineCost := aConst("0")
+	if previousQuantity.Sign() > 0 {
+		baselineCost, err = price("one", old, aAdd(old, previousQuantity), multiplier)
+		if err != nil {
+			return p, err
+		}
+	}
+	additionalCost, err := price("one", aAdd(old, previousQuantity), target, multiplier)
+	if err != nil {
+		return p, err
+	}
+	// Check the merged purchase and its additional benefit. Using exact
+	// decimal arithmetic also avoids cancellation at enormous levels.
+	newCost, _ := new(big.Rat).SetString(aString(cost))
+	oldQuantity, _ := new(big.Rat).SetString(aString(previousQuantity))
+	oldCost, _ := new(big.Rat).SetString(aString(baselineCost))
+	extraCost, _ := new(big.Rat).SetString(aString(additionalCost))
+	benefit := func(q, c *big.Rat) bool {
+		return new(big.Rat).Mul(q, big.NewRat(11, 1)).Cmp(new(big.Rat).Mul(c, big.NewRat(10, 1))) > 0
+	}
+	extraQuantity := new(big.Rat).Sub(enteredExact, oldQuantity)
+	if cost.Cmp(budget) > 0 || !benefit(enteredExact, newCost) || !benefit(extraQuantity, new(big.Rat).Sub(newCost, oldCost)) || !benefit(extraQuantity, extraCost) {
+		return p, nil
+	}
+	row := Purchase{ID: 16, Name: "Morgulis", Current: aString(old), Target: aString(target), Quantity: quantity, Cost: aString(cost)}
+	if rowIndex >= 0 {
+		p.Rows[rowIndex] = row
+	} else {
+		p.Rows = append(p.Rows, row)
+	}
+	spent := aAdd(otherCost, cost)
+	p.Spent, p.Remaining = aString(spent), aString(aSub(wallet, spent))
+	return p, p.Validate()
 }
 
 // Keep allocation separate from pricing so frozen legacy allocations and actual

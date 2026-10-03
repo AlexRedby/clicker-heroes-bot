@@ -479,7 +479,13 @@ func TestAncientLegacyExactBudgetAndAllocationInvariants(t *testing.T) {
 						}
 						maximum, raw := wantBase, target*(target+1)/2-1
 						if row.ID == 16 && morgulis {
-							maximum, raw = wantBase*wantBase, target-1
+							// Residual Morgulis purchases may exceed the RoT goal;
+							// they must still fit the native price and wallet.
+							maximum, raw = wallet+1, target-1
+							if chor > 0 {
+								limit := new(big.Rat).Quo(new(big.Rat).SetInt64(int64(wallet)), discount)
+								maximum = int(new(big.Int).Quo(limit.Num(), limit.Denom()).Int64()) + 1
+							}
 						} else if row.ID != 19 {
 							t.Fatal("unexpected guarded purchase", row)
 						}
