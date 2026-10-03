@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
 	"sort"
 	"strings"
 
@@ -159,9 +158,9 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		if name == "" {
 			return out, fmt.Errorf("startup hero name missing at %v", button)
 		}
-		level, err := readStartupHeroLevel(ctx, frame.image, button, read)
+		kind, err := startupHeroButtonKind(frame.image, button)
 		if err != nil {
-			if visited[name] && button.Y-b.Dy()*7/100 < heroListViewport(frame.image).Min.Y {
+			if visited[name] && button.Y-b.Dy()*7/100 < viewport.Min.Y {
 				continue
 			}
 			if startupHeroNavigate(&out, button, thumbHeight, edges[button.Y]) {
@@ -169,7 +168,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 			}
 			return out, err
 		}
-		owned := level > 0
+		owned := kind == heroButtonLevelUp
 		out.passiveReady = out.passiveReady || owned && name != "Cid,theHelpfulAdventurer"
 		if visited[name] && !owned {
 			return out, fmt.Errorf("confirmed startup hero %s lost its level", name)
@@ -178,6 +177,16 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 			continue
 		}
 		if enabled[button.Y] {
+			level := 0
+			if owned {
+				level, err = readStartupOwnedHeroLevel(ctx, frame.image, button, read)
+				if err != nil {
+					if startupHeroNavigate(&out, button, thumbHeight, edges[button.Y]) {
+						return out, nil
+					}
+					return out, err
+				}
+			}
 			out.button, out.found, out.owned, out.level, out.startupName = button, true, owned, level, name
 			return out, nil
 		}
@@ -224,73 +233,36 @@ func findStartupHeroAfter(ctx context.Context, before heroObservation, current g
 }
 
 func readStartupHeroLevel(ctx context.Context, screen image.Image, button image.Point, read heroReaders) (int, error) {
+	kind, err := startupHeroButtonKind(screen, button)
+	if err != nil {
+		return 0, err
+	}
+	if kind == heroButtonHire {
+		return 0, nil
+	}
+	return readStartupOwnedHeroLevel(ctx, screen, button, read)
+}
+
+func startupHeroButtonKind(screen image.Image, button image.Point) (heroButtonKind, error) {
+	kind, err := readHeroButtonKind(screen, button)
+	if err != nil {
+		return heroButtonUnknown, fmt.Errorf("startup hero button at %v: %w", button, err)
+	}
+	if kind == heroButtonUnknown {
+		return kind, fmt.Errorf("startup hero button at %v crop %v: caption is missing or obscured", button, heroButtonCaptionRegion(screen, button))
+	}
+	return kind, nil
+}
+
+func readStartupOwnedHeroLevel(ctx context.Context, screen image.Image, button image.Point, read heroReaders) (int, error) {
 	level, err := read.level(ctx, screen, button)
-	if err == nil || ctx.Err() != nil {
-		return level, err
+	if err != nil {
+		return 0, fmt.Errorf("startup owned hero level at %v: %w", button, err)
 	}
-	// Unhired cards show a bare zero. Empty/covered level areas do not prove it.
-	b := screen.Bounds()
-	glyph := startupBareZeroGlyph(screen, button)
-	if glyph.Empty() {
-		return 0, fmt.Errorf("startup hero level at %v: HIRE glyph missing in %v; LVL: %w", button, startupBareZeroRegion(screen, button), err)
+	if level <= 0 {
+		return 0, fmt.Errorf("startup owned hero level at %v: invalid level %d", button, level)
 	}
-	label := image.Rect(b.Min.X+b.Dx()*179/2560, glyph.Min.Y-b.Dy()*15/1440, b.Min.X+b.Dx()*294/2560, glyph.Max.Y+b.Dy()*6/1440)
-	if label.Intersect(heroListViewport(screen)) != label {
-		return 0, fmt.Errorf("startup hero HIRE at %v: clipped crop %v in %v", button, label, heroListViewport(screen))
-	}
-	caption := image.NewRGBA(image.Rect(0, 0, label.Dx(), label.Dy()))
-	draw.Draw(caption, caption.Bounds(), screen, label.Min, draw.Src)
-	// HIRE positively identifies an unhired row. Use a single-word retry for
-	// dark disabled buttons that line segmentation cannot read.
-	var raw []string
-	for _, psm := range []int{7, 8} {
-		hire, hireErr := readTextImage(ctx, caption, psm, "HIRELVUP")
-		if hireErr != nil {
-			return 0, fmt.Errorf("startup hero HIRE at %v crop %v: %w", button, label, hireErr)
-		}
-		raw = append(raw, strings.TrimSpace(hire))
-		if strings.TrimSpace(hire) == "HIRE" {
-			return 0, nil
-		}
-	}
-	return 0, fmt.Errorf("startup hero HIRE at %v crop %v: unrecognized %q; LVL: %w", button, label, raw, err)
-}
-
-func startupBareZeroRegion(screen image.Image, button image.Point) image.Rectangle {
-	b := screen.Bounds()
-	return image.Rect(b.Min.X+b.Dx()*193/1280, button.Y-b.Dy()*80/1440,
-		b.Min.X+b.Dx()*206/1280, button.Y+b.Dy()*30/1440).Intersect(b)
-}
-
-// The bare zero shifts within differently sized HIRE buttons. Locate its dark
-// outline in the narrow text column, then normalize the OCR crop around it.
-func startupBareZeroGlyph(screen image.Image, button image.Point) image.Rectangle {
-	region := startupBareZeroRegion(screen, button)
-	b := screen.Bounds()
-	best, run := image.Rectangle{}, image.Rectangle{}
-	for y := region.Min.Y; y <= region.Max.Y; y++ {
-		row := image.Rectangle{}
-		if y < region.Max.Y {
-			for x := region.Min.X; x < region.Max.X; x++ {
-				if color.GrayModel.Convert(screen.At(x, y)).(color.Gray).Y < 80 {
-					row = row.Union(image.Rect(x, y, x+1, y+1))
-				}
-			}
-		}
-		if !row.Empty() {
-			run = run.Union(row)
-			continue
-		}
-		if run.Dx() >= max(3, b.Dx()*8/2560) && run.Dy() >= max(5, b.Dy()*15/1440) && run.Dy() <= b.Dy()*40/1440 &&
-			(best.Empty() || absDiff((run.Min.Y+run.Max.Y)/2, button.Y) < absDiff((best.Min.Y+best.Max.Y)/2, button.Y)) {
-			best = run
-		}
-		run = image.Rectangle{}
-	}
-	if best.Empty() {
-		return best
-	}
-	return best.Inset(-max(1, b.Dx()/2560)).Intersect(region)
+	return level, nil
 }
 
 func startupHeroNameRegion(screen image.Image, button image.Point) image.Rectangle {

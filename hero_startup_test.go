@@ -12,128 +12,78 @@ import (
 )
 
 func TestStartupHeroNativeSweep(t *testing.T) {
+	requireAncientOCR(t)
 	ctx := context.Background()
 	now := time.Now()
 	frame := func(path string, id uint64) gameFrame {
 		s := loadTestImage(t, path)
 		return gameFrame{id: id, at: now.Add(time.Duration(id) * time.Second), image: s, context: gameContext{known: true, heroes: true, bounds: s.Bounds()}}
 	}
-	real := heroReaders{level: readHeroLevel, gold: readHeroGold, price: readHeroPrice}
+	read := heroReaders{gold: readHeroGold, price: readHeroPrice, level: func(context.Context, image.Image, image.Point) (int, error) {
+		t.Fatal("HIRE must not invoke numeric level OCR")
+		return 0, nil
+	}}
 	zero := frame("testdata/hero-startup-zero.png", 1)
-	first, err := readStartupHeroObservation(ctx, zero, real, nil, nil, false)
+	first, err := readStartupHeroObservation(ctx, zero, read, nil, nil, false)
 	if err != nil || !first.found || first.owned || first.startupName != "Cid,theHelpfulAdventurer" || first.passiveReady || first.startupComplete {
 		t.Fatalf("free Cid: %+v %v", first, err)
 	}
-	shortRead := real
-	shortRead.level = func(context.Context, image.Image, image.Point) (int, error) { return 1000, nil }
-	short, shortErr := readStartupHeroObservation(ctx, zero, shortRead, nil, map[string]bool{"Cid,theHelpfulAdventurer": true}, true)
-	if shortErr != nil || short.found || short.startupComplete || short.passiveReady {
-		t.Fatalf("known completed short list: %+v %v", short, shortErr)
+	// A cached visit cannot turn an observed HIRE into an owned hero.
+	stale, staleErr := readStartupHeroObservation(ctx, zero, read, nil, map[string]bool{"Cid,theHelpfulAdventurer": true}, true)
+	if staleErr == nil || stale.found || stale.startupComplete || stale.passiveReady {
+		t.Fatalf("stale visit accepted HIRE: %+v %v", stale, staleErr)
 	}
 	gold := frame("testdata/hero-startup-gold.png", 2)
-	// Native before-hire frames verify names and bare zero. The level reader stub
-	// models the single-level hire path; the native MAX pair is tested below.
-	levels := map[int]int{}
-	read := real
-	read.level = func(ctx context.Context, s image.Image, p image.Point) (int, error) {
-		if n := levels[p.Y]; n > 0 {
-			return n, nil
-		}
-		return readHeroLevel(ctx, s, p)
-	}
-	p := heroRunner{enabled: true}
-	p.startStartup()
-	for i, want := range []struct {
+	for _, want := range []struct {
 		y    int
 		name string
 	}{{655, "Cid,theHelpfulAdventurer"}, {865, "Treebeast"}, {1075, "IvantheDrunkenBrawler"}, {1285, "BrittanyBeachPrincess"}} {
-		gold.id = uint64(3 + i*4)
-		o, e := readStartupHeroObservation(ctx, gold, read, nil, p.startupVisits(), p.startupTop)
-		if e != nil || !o.found || absDiff(o.button.Y, want.y) > 3 || o.startupName != want.name || o.startupComplete {
-			t.Fatalf("row %d: %+v %v", i, o, e)
+		button := image.Pt(204, want.y)
+		name, err := readStartupHeroName(ctx, gold.image, button)
+		if err != nil || name != want.name {
+			t.Fatalf("native HIRE identity: %q %v", name, err)
 		}
-		p.nextScan = time.Time{}
-		p.observe(o, observation{}, now)
-		a, ok := p.action(now)
-		if !ok || a.kind != buyHero {
-			t.Fatalf("row %d action: %+v %t", i, a, ok)
-		}
-		p.sent(a, now)
-		// A unchanged zero must never confirm input.
-		after := gold
-		after.id++
-		unchanged, e := readStartupHeroObservation(ctx, after, read, &o, p.startupVisits(), p.startupTop)
-		if e != nil || !unchanged.stable || unchanged.level != 0 {
-			t.Fatalf("unchanged: %+v %v", unchanged, e)
-		}
-		p.observe(unchanged, observation{}, after.at)
-		if p.pending == nil {
-			t.Fatal("zero level confirmed hire")
-		}
-		levels[o.button.Y] = 1
-		after.id++
-		confirmed, e := readStartupHeroObservation(ctx, after, read, &o, p.startupVisits(), p.startupTop)
-		if e != nil || !confirmed.stable || !confirmed.owned {
-			t.Fatalf("hire confirmation: %+v %v", confirmed, e)
-		}
-		p.observe(confirmed, observation{}, after.at)
-		if p.pending != nil || p.startupDone[o.startupName] {
-			t.Fatal("hire alone finished MAX visit")
-		}
-		// Hire and owned MAX are distinct: confirm owned MAX before marking visited.
-		owned, e := readStartupHeroObservation(ctx, after, read, nil, p.startupVisits(), p.startupTop)
-		if e != nil || !owned.found || !owned.owned || owned.startupName != o.startupName {
-			t.Fatalf("owned row: %+v %v", owned, e)
-		}
-		p.nextScan = time.Time{}
-		p.observe(owned, observation{}, now)
-		a, ok = p.action(now)
-		if !ok || a.kind != buyHero {
-			t.Fatal("owned MAX missing")
-		}
-		p.sent(a, now)
-		levels[o.button.Y] = 1000
-		after.id++
-		done, e := readStartupHeroObservation(ctx, after, read, &owned, p.startupVisits(), p.startupTop)
-		if e != nil {
-			t.Fatal(e)
-		}
-		p.observe(done, observation{}, after.at)
-		if !p.startupDone[o.startupName] {
-			t.Fatal("owned MAX visit not recorded")
-		}
-		if i == 1 && done.startupComplete {
-			t.Fatal("Treebeast completed the sweep")
+		if level, err := readStartupHeroLevel(ctx, gold.image, button, read); err != nil || level != 0 {
+			t.Fatalf("native HIRE level: %d %v", level, err)
 		}
 	}
-	next, e := readStartupHeroObservation(ctx, gold, read, nil, p.startupVisits(), p.startupTop)
-	if e != nil || next.startupComplete || next.found || next.startupScroll == (image.Point{}) {
-		t.Fatalf("overlap scroll: %+v %v", next, e)
-	}
-	p.nextScan = time.Time{}
-	p.observe(next, observation{}, now)
+	p := heroRunner{enabled: true}
+	p.startStartup()
+	p.observe(first, observation{}, now)
 	a, ok := p.action(now)
-	if !ok || a.kind != scrollHeroes || a.target.Y-a.point.Y > 200 {
-		t.Fatalf("skipped-page scroll: %+v %t", a, ok)
+	if !ok || a.kind != buyHero {
+		t.Fatal("native Cid purchase not queued")
 	}
-	snapshot := p.startupVisits()
+	p.sent(a, now)
+	unchangedFrame := zero
+	unchangedFrame.id++
+	unchanged, err := readStartupHeroObservation(ctx, unchangedFrame, read, &first, nil, true)
+	if err != nil || !unchanged.stable || unchanged.owned || unchanged.level != 0 {
+		t.Fatalf("unchanged HIRE: %+v %v", unchanged, err)
+	}
+	p.observe(unchanged, observation{}, unchangedFrame.at)
+	if p.pending == nil || p.startupDone[first.startupName] {
+		t.Fatal("unchanged HIRE confirmed purchase")
+	}
 	p.interrupt()
-	if len(p.startupDone) != 4 {
-		t.Fatal("F8 lost confirmed visits")
-	}
+	p.startupDone["Treebeast"] = true
+	snapshot := p.startupVisits()
 	delete(snapshot, "Treebeast")
 	if !p.startupDone["Treebeast"] {
-		t.Fatal("worker map was shared")
+		t.Fatal("worker visit map was shared")
+	}
+	p.interrupt()
+	if !p.startupDone["Treebeast"] {
+		t.Fatal("F8 lost confirmed visit")
 	}
 	p.startStartup()
 	if len(p.startupDone) != 0 {
 		t.Fatal("new reset kept old visits")
 	}
-	b := gold.image.Bounds()
-	covered := image.NewRGBA(b)
-	draw.Draw(covered, b, gold.image, b.Min, draw.Src)
+	covered := image.NewRGBA(zero.image.Bounds())
+	draw.Draw(covered, covered.Bounds(), zero.image, covered.Bounds().Min, draw.Src)
 	draw.Draw(covered, startupHeroNameRegion(covered, first.button), image.NewUniform(color.Black), image.Point{}, draw.Src)
-	other := gold
+	other := zero
 	other.image = covered
 	if startupHeroStable(first, other) {
 		t.Fatal("obscured name accepted")
@@ -141,25 +91,60 @@ func TestStartupHeroNativeSweep(t *testing.T) {
 	quantity := first
 	quantity.x1 = false
 	p.latest = quantity
-	p.nextScan = time.Time{}
 	if a, ok := p.action(now); !ok || a.kind != selectQuantity {
 		t.Fatal("x1 not restored")
 	}
 	mature := frame("testdata/hero-tsuchi-x1.png", 99)
-	unsupported, e := readStartupHeroObservation(ctx, mature, real, nil, nil, false)
-	if e != nil || unsupported.found || unsupported.startupComplete || unsupported.startupScroll == (image.Point{}) {
-		t.Fatalf("mature list did not seek top: %+v %v", unsupported, e)
+	unsupported, err := readStartupHeroObservation(ctx, mature, read, nil, nil, false)
+	if err != nil || unsupported.found || unsupported.startupComplete || unsupported.startupScroll == (image.Point{}) {
+		t.Fatalf("mature list did not seek top: %+v %v", unsupported, err)
+	}
+}
+
+// Input scheduling is modeled here; native HIRE -> MAX pixels are tested separately.
+func TestStartupHeroSingleLevelHireNeedsOwnedPass(t *testing.T) {
+	now := time.Now()
+	p := heroRunner{enabled: true}
+	p.startStartup()
+	before := heroObservation{frame: gameFrame{id: 1, at: now}, startup: true, x1: true, found: true, startupName: "Treebeast", button: image.Pt(204, 865)}
+	p.observe(before, observation{}, now)
+	a, ok := p.action(now)
+	if !ok || a.kind != buyHero {
+		t.Fatal("hire action missing")
+	}
+	p.sent(a, now)
+	owned := before
+	owned.frame.id++
+	owned.frame.at = now.Add(time.Second)
+	owned.level, owned.owned, owned.stable = 1, true, true
+	p.observe(owned, observation{}, owned.frame.at)
+	if p.pending != nil || p.startupDone[before.startupName] {
+		t.Fatal("single-level hire finished MAX visit")
+	}
+	p.observe(owned, observation{}, owned.frame.at)
+	a, ok = p.action(owned.frame.at)
+	if !ok || a.kind != buyHero {
+		t.Fatal("owned MAX action missing")
+	}
+	p.sent(a, owned.frame.at)
+	maxed := owned
+	maxed.frame.id++
+	maxed.frame.at = maxed.frame.at.Add(time.Second)
+	maxed.level = 1000
+	p.observe(maxed, observation{}, maxed.frame.at)
+	if p.pending != nil || !p.startupDone[before.startupName] {
+		t.Fatal("owned MAX visit not recorded")
 	}
 }
 
 func TestStartupHeroBlockedSuccessorAndBulk(t *testing.T) {
 	ctx := context.Background()
-	s := loadTestImage(t, "testdata/hero-startup-gold.png")
+	s := loadTestImage(t, "testdata/hero-startup-bottom-hire.png")
 	b := s.Bounds()
 	dark := image.NewRGBA(b)
 	draw.Draw(dark, b, s, b.Min, draw.Src)
-	// Preserve native labels while making Ivan's button unavailable.
-	for y := 1010; y < 1140; y++ {
+	// Preserve native labels while making Samurai's button unavailable.
+	for y := 1290; y < 1390; y++ {
 		for x := 140; x < 350; x++ {
 			r, g, blue := rgb(dark.At(x, y))
 			if blue > 150 && blue > r+40 && blue >= g-10 && g > 90 {
@@ -168,13 +153,11 @@ func TestStartupHeroBlockedSuccessorAndBulk(t *testing.T) {
 		}
 	}
 	f := gameFrame{id: 10, image: dark, context: gameContext{known: true, heroes: true, bounds: b}}
-	visited := map[string]bool{"Cid,theHelpfulAdventurer": true, "Treebeast": true}
+	visited := map[string]bool{"BrittanyBeachPrincess": true, "TheWanderingFisherman": true, "BettyClicker": true}
 	read := heroReaders{
-		level: func(ctx context.Context, s image.Image, p image.Point) (int, error) {
-			if p.Y < 900 {
-				return 1000, nil
-			}
-			return readHeroLevel(ctx, s, p)
+		level: func(context.Context, image.Image, image.Point) (int, error) {
+			t.Fatal("visited/disabled owned rows must not invoke numeric level OCR")
+			return 0, nil
 		},
 		price: func(context.Context, image.Image, image.Point) (float64, error) { return 2, nil },
 		gold:  func(context.Context, image.Image) (float64, error) { return 1, nil },
@@ -290,7 +273,7 @@ func TestHeroUpgradeFooterAtBottomBoundary(t *testing.T) {
 	}
 }
 
-func TestStartupHeroNativeBareZero(t *testing.T) {
+func TestStartupHeroNativeHireState(t *testing.T) {
 	ctx := context.Background()
 	read := heroReaders{level: readHeroLevel, gold: readHeroGold, price: readHeroPrice}
 	for _, tc := range []struct {
@@ -317,18 +300,17 @@ func TestStartupHeroNativeBareZero(t *testing.T) {
 			}
 			noHire := image.NewRGBA(s.Bounds())
 			draw.Draw(noHire, noHire.Bounds(), s, s.Bounds().Min, draw.Src)
-			glyph := startupBareZeroGlyph(s, button)
-			draw.Draw(noHire, image.Rect(179, glyph.Min.Y-15, 294, glyph.Max.Y+6), image.NewUniform(color.Black), image.Point{}, draw.Src)
+			draw.Draw(noHire, heroButtonCaptionRegion(s, button), image.NewUniform(color.Black), image.Point{}, draw.Src)
 			if _, err := readStartupHeroLevel(ctx, noHire, button, read); err == nil {
 				t.Fatal("bare zero without HIRE accepted")
 			}
 			covered := image.NewRGBA(s.Bounds())
 			draw.Draw(covered, covered.Bounds(), s, s.Bounds().Min, draw.Src)
-			// HIRE remains visible; neither black coverage nor blank background proves zero.
+			// The observed HIRE caption establishes zero without reading the numeral.
 			for _, fill := range []color.Color{color.Black, color.RGBA{R: 255, G: 224, B: 95, A: 255}} {
-				draw.Draw(covered, startupBareZeroRegion(covered, button), image.NewUniform(fill), image.Point{}, draw.Src)
-				if _, err := readStartupHeroLevel(ctx, covered, button, read); err == nil {
-					t.Fatal("obscured zero accepted")
+				draw.Draw(covered, image.Rect(386, button.Y-80, 412, button.Y+30), image.NewUniform(fill), image.Point{}, draw.Src)
+				if level, err := readStartupHeroLevel(ctx, covered, button, read); err != nil || level != 0 {
+					t.Fatalf("HIRE depended on numeral OCR: %d %v", level, err)
 				}
 			}
 		})
@@ -546,14 +528,17 @@ func TestStartupHeroViewportObstruction(t *testing.T) {
 			region := startupHeroNameRegion(s, button)
 			switch tc.field {
 			case "caption":
-				glyph := startupBareZeroGlyph(s, button)
-				region = image.Rect(179, glyph.Min.Y-15, 294, glyph.Max.Y+6)
+				region = image.Rect(179, button.Y-40, 294, button.Y+10)
 			case "level":
 				region = image.Rect(665, button.Y-29, 973, button.Y+21)
 			}
 			covered := image.NewRGBA(s.Bounds())
 			draw.Draw(covered, covered.Bounds(), s, s.Bounds().Min, draw.Src)
 			fill := color.Color(color.Black)
+			if tc.field == "caption" {
+				// Cover the letters without changing the blue button band geometry.
+				fill = color.RGBA{R: 98, G: 190, B: 247, A: 255}
+			}
 			if tc.field == "level" {
 				fill = color.RGBA{R: 255, G: 224, B: 95, A: 255}
 			}
@@ -563,7 +548,7 @@ func TestStartupHeroViewportObstruction(t *testing.T) {
 			if err == nil || o.found || o.startupComplete || o.startupScroll != (image.Point{}) {
 				t.Fatalf("middle obstruction accepted: %+v %v", o, err)
 			}
-			if tc.field == "caption" && (!strings.Contains(err.Error(), "crop") || !strings.Contains(err.Error(), "unrecognized")) {
+			if tc.field == "caption" && (!strings.Contains(err.Error(), "crop") || !strings.Contains(err.Error(), "caption")) {
 				t.Fatalf("HIRE crop/raw evidence missing: %v", err)
 			}
 			// A blocked modal prevents all hero OCR and input decisions.
