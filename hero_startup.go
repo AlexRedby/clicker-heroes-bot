@@ -9,9 +9,9 @@ import (
 	"strings"
 )
 
-// This reset-only sweep levels each affordable row before allowing Ancient spending.
+// This initial/reset sweep levels each affordable row before allowing Ancient spending.
 // passiveReady is a combat fact; only startupComplete ends the hero sweep.
-func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroReaders, before *heroObservation, visited map[string]bool) (heroObservation, error) {
+func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroReaders, before *heroObservation, visited map[string]bool, started bool) (heroObservation, error) {
 	out := heroObservation{frame: frame, startup: true}
 	if !bootstrapHeroes(frame.context) || !heroQuantityBarPresent(frame.image) {
 		return out, nil
@@ -50,9 +50,12 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 	if len(buttons) == 0 {
 		return out, nil
 	}
-	if len(visited) == 0 || !out.thumbFound {
+	if !started || !out.thumbFound {
 		b := frame.image.Bounds()
 		if absDiff(buttons[0].Y, b.Min.Y+b.Dy()*455/1000) > b.Dy()/40 {
+			if !started && out.thumbFound {
+				out.startupScroll = image.Pt(out.thumb.X, b.Min.Y+b.Dy()*4/10)
+			}
 			return out, nil
 		}
 		name, err := readStartupHeroName(ctx, frame.image, buttons[0])
@@ -60,8 +63,12 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 			return out, err
 		}
 		if name != "Cid,theHelpfulAdventurer" {
+			if !started && out.thumbFound {
+				out.startupScroll = image.Pt(out.thumb.X, b.Min.Y+b.Dy()*4/10)
+			}
 			return out, nil
 		}
+		out.startupTop = true
 	}
 	for _, button := range buttons {
 		name, err := readStartupHeroName(ctx, frame.image, button)

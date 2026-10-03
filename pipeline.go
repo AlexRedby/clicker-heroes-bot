@@ -25,6 +25,7 @@ const (
 	ancientAnalysis
 	exportAnalysis
 	outsiderAnalysis
+	autoClickerAnalysis
 	analysisCount
 )
 
@@ -35,6 +36,7 @@ const (
 	collectGilds
 	castSkill
 	enableProgression
+	placeOwnedClicker
 	handleMercenary
 	handleAscension
 	handleAncient
@@ -44,6 +46,7 @@ const (
 	scrollHeroes
 	buyHero
 	buyHeroUpgrades
+	visitHeroes
 	clickMonster
 )
 
@@ -66,6 +69,8 @@ type analysisJob struct {
 	heroBefore    *heroObservation
 	startup       startupPhase
 	startupVisits map[string]bool
+	startupTop    bool
+	upgrades      bool
 	modeOnly      bool
 	ancientNames  bool
 	economy       bool
@@ -73,22 +78,25 @@ type analysisJob struct {
 	outsiderBase  *ancientcalc.TranscensionPreview
 }
 type observation struct {
-	kind         analysisKind
-	startup      startupPhase
-	frame        gameFrame
-	elapsed      time.Duration
-	point        image.Point
-	found        bool
-	skills       [9]skillState
-	progression  progressionState
-	hero         heroObservation
-	mercenary    mercenaryObservation
-	ascension    ascensionObservation
-	ancient      ancientObservation
-	export       exportResult
-	outsider     outsiderObservation
-	outsiderPlan outsiderAdvice
-	err          error
+	kind          analysisKind
+	startup       startupPhase
+	upgrades      bool
+	upgradesKnown bool
+	frame         gameFrame
+	elapsed       time.Duration
+	point         image.Point
+	found         bool
+	skills        [9]skillState
+	progression   progressionState
+	hero          heroObservation
+	mercenary     mercenaryObservation
+	ascension     ascensionObservation
+	ancient       ancientObservation
+	export        exportResult
+	outsider      outsiderObservation
+	outsiderPlan  outsiderAdvice
+	clickerPool   autoClickerPool
+	err           error
 }
 type gameAction struct {
 	kind          actionKind
@@ -102,6 +110,7 @@ type gameAction struct {
 	ascension     ascensionStep
 	ancient       ancientCommand
 	export        *exportCommand
+	clicker       autoClickerCommand
 	queuedAt      time.Time
 }
 type actionResult struct {
@@ -123,10 +132,11 @@ type pipelineReaders struct {
 	ancientNames     func(context.Context, gameFrame) (ancientObservation, error)
 	outsiders        func(context.Context, gameFrame) (outsiderObservation, error)
 	heroes           heroReaders
+	autoClickers     func(context.Context, gameFrame) (autoClickerPool, error)
 	window           func() string
 }
 type pipelineOptions struct {
-	windowed                                                            bool
+	windowed, autoClickers                                              bool
 	heroes, skills, progression, mercenaries, monster, gilds, ascension bool
 	ascensionStall                                                      time.Duration
 	ascensionMinGain, ascensionCapital                                  float64
@@ -147,6 +157,9 @@ type pipelineMetrics struct {
 type gamePipeline struct {
 	readers                                             pipelineReaders
 	options                                             pipelineOptions
+	clickers                                            autoClickerPlanner
+	clickerJobFrame                                     uint64
+	nextClickerRead                                     time.Time
 	input                                               heroInput
 	controls                                            *pauseControl
 	frame                                               gameFrame
@@ -160,6 +173,7 @@ type gamePipeline struct {
 	startup                                             startupPhase
 	startupPassive                                      bool
 	startupDeadline                                     time.Time
+	nextUpgrades                                        time.Time
 	skill                                               skillPlanner
 	progression                                         progressionPlanner
 	ascension                                           ascensionPlanner
@@ -189,13 +203,14 @@ type gamePipeline struct {
 
 func newGamePipeline(controls *pauseControl, input heroInput, readers pipelineReaders, options pipelineOptions) *gamePipeline {
 	p := &gamePipeline{controls: controls, input: input, readers: readers, options: options, hero: heroRunner{enabled: options.heroes}, queue: make(map[actionKind]gameAction), diagnostics: make(chan heroAttempt, 1)}
+	p.clickers.footerAttempted = !options.heroes
 	p.ancient.plan = options.ancientPlan
 	p.outsiderBase = options.outsiderBase
 	if p.outsiderBase == nil && options.ancientPlan != nil {
 		p.outsiderBase = options.ancientPlan.Transcension
 	}
 	p.export.requested = options.export != nil
-	p.startupCheck = options.export != nil && options.heroes && options.progression && readers.ascension != nil
+	p.startupCheck = options.heroes
 	p.hero.onFailure = func(a heroAttempt) {
 		select {
 		case p.diagnostics <- a:
@@ -248,9 +263,11 @@ func recognizedGame(screen image.Image) (gameContext, error) {
 }
 
 func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analysisJob) observation {
-	out := observation{kind: kind, startup: job.startup, frame: job.frame}
+	out := observation{kind: kind, startup: job.startup, upgrades: job.upgrades, frame: job.frame}
 	start := time.Now()
 	switch kind {
+	case autoClickerAnalysis:
+		out.clickerPool, out.err = p.readers.autoClickers(ctx, job.frame)
 	case fishAnalysis:
 		out.point, out.found, out.err = p.readers.fish(job.frame.image)
 	case skillAnalysis:
@@ -258,15 +275,15 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 	case progressionAnalysis:
 		out.progression, out.err = p.readers.progression(ctx, job.frame.image, job.skills, job.modeOnly)
 	case heroAnalysis:
-		if job.startup == startupUpgrades {
+		if job.startup == startupUpgrades || job.upgrades {
 			out.hero = heroObservation{frame: job.frame, startup: true, x1: heroQuantitySelected(job.frame.image, 122)}
 			var height int
 			out.hero.thumb, height, out.hero.thumbFound = heroScrollbarThumb(job.frame.image)
 			b := job.frame.image.Bounds()
 			out.hero.bottom = out.hero.thumbFound && absDiff(out.hero.thumb.Y+height/2, b.Min.Y+b.Dy()*965/1000) <= max(3, b.Dy()/100)
-			out.point, out.found, out.err = readHeroUpgradeButton(ctx, job.frame.image)
+			out.point, out.upgradesKnown, out.found, out.err = readHeroUpgradeFooter(ctx, job.frame.image)
 		} else if job.startup == startupHeroes {
-			out.hero, out.err = readStartupHeroObservation(ctx, job.frame, p.readers.heroes, job.heroBefore, job.startupVisits)
+			out.hero, out.err = readStartupHeroObservation(ctx, job.frame, p.readers.heroes, job.heroBefore, job.startupVisits, job.startupTop)
 		} else {
 			out.hero, out.err = readHeroObservation(ctx, job.frame, p.readers.heroes, job.heroBefore)
 		}
@@ -336,6 +353,9 @@ func (p *gamePipeline) reset(generation uint64) {
 	}
 	p.gild.interrupt()
 	p.heroJobFrame = 0
+	p.clickerJobFrame = 0
+	p.nextClickerRead = time.Time{}
+	p.clickers.interrupt()
 	p.outsiderJobFrame = 0
 	p.nextOutsider = time.Time{}
 	p.outsiderMessage = ""
@@ -465,6 +485,9 @@ func (p *gamePipeline) run(ctx context.Context) error {
 			now := time.Now()
 			p.plan(now)
 			if action, ok := p.nextAction(now); ok {
+				if action.kind == placeOwnedClicker {
+					p.clickers.sent(action.clicker, now)
+				}
 				p.busy = true
 				p.metrics.queueTime += now.Sub(action.queuedAt)
 				select {
@@ -585,15 +608,18 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			replaceJob(jobs[fishAnalysis], analysisJob{frame: p.frame})
 			p.nextFish = now.Add(p.options.fishInterval)
 		}
-		if p.startupCheck {
-			if c.known && !bootstrapHeroes(c) {
-				p.startupCheck = false
-			} else if bootstrapHeroes(c) && p.ascension.jobFrame == 0 && !now.Before(p.ascension.nextRead) {
-				p.ascension.jobFrame = p.frame.id
-				replaceJob(jobs[ascensionAnalysis], analysisJob{frame: p.frame})
-				p.ascension.nextRead = now.Add(time.Second)
+		if p.options.autoClickers && p.readers.autoClickers != nil && bootstrapHeroes(c) && p.clickerJobFrame == 0 && !now.Before(p.nextClickerRead) {
+			p.clickerJobFrame = p.frame.id
+			replaceJob(jobs[autoClickerAnalysis], analysisJob{frame: p.frame})
+			p.nextClickerRead = now.Add(5 * time.Second)
+			if p.clickers.pending != nil && !p.clickers.blocked {
+				p.nextClickerRead = now.Add(300 * time.Millisecond)
 			}
-			if p.startupCheck {
+		}
+		if p.startupCheck {
+			if bootstrapHeroes(c) {
+				p.beginStartup()
+			} else {
 				return nil
 			}
 		}
@@ -601,9 +627,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			if bootstrapHeroes(c) {
 				if p.startup != startupProgression && p.hero.due(now) && p.heroJobFrame == 0 && (p.hero.latest.frame.id == 0 || p.hero.pending != nil) {
 					p.heroJobFrame = p.frame.id
-					replaceJob(jobs[heroAnalysis], analysisJob{frame: p.frame, startup: p.startup, heroBefore: p.hero.before(), startupVisits: p.hero.startupVisits()})
+					replaceJob(jobs[heroAnalysis], analysisJob{frame: p.frame, startup: p.startup, heroBefore: p.hero.before(), startupVisits: p.hero.startupVisits(), startupTop: p.hero.startupTop})
 				}
-				if p.startupPassive && !now.Before(p.nextProgression) {
+				if p.options.progression && p.startupPassive && !now.Before(p.nextProgression) {
 					replaceJob(jobs[progressionAnalysis], analysisJob{frame: p.frame, modeOnly: true})
 					p.nextProgression = now.Add(300 * time.Millisecond)
 				}
@@ -668,7 +694,11 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		}
 		if p.options.heroes && c.heroes && p.hero.due(now) && p.heroJobFrame == 0 && (p.hero.latest.frame.id == 0 || p.hero.pending != nil) {
 			p.heroJobFrame = p.frame.id
-			replaceJob(jobs[heroAnalysis], analysisJob{frame: p.frame, heroBefore: p.hero.before()})
+			upgrades := p.hero.pending == nil && !p.clickers.upgrades && !now.Before(p.nextUpgrades)
+			if upgrades {
+				p.nextUpgrades = now.Add(30 * time.Second)
+			}
+			replaceJob(jobs[heroAnalysis], analysisJob{frame: p.frame, heroBefore: p.hero.before(), upgrades: upgrades})
 		}
 		// Progression receives the skill observation for this exact frame, in accept().
 		p.progressionJobs = jobs[progressionAnalysis]
@@ -689,6 +719,9 @@ func (p *gamePipeline) accept(ctx context.Context, out observation, now time.Tim
 	}
 	if out.kind == mercenaryAnalysis && out.frame.id == p.mercenaryJobFrame {
 		p.mercenaryJobFrame = 0
+	}
+	if out.kind == autoClickerAnalysis && out.frame.id == p.clickerJobFrame {
+		p.clickerJobFrame = 0
 	}
 	if out.kind == heroAnalysis && out.frame.id == p.heroJobFrame {
 		p.heroJobFrame = 0
@@ -767,22 +800,26 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 	if out.kind == fishAnalysis && !p.fishContext(out.frame.context) {
 		return nil
 	}
-	if out.kind == ascensionAnalysis && p.startupCheck {
-		if out.frame.layout != p.layout || out.frame.context != p.frame.context || out.frame.id < p.barriers[ascensionAnalysis] {
+	if out.kind == autoClickerAnalysis {
+		if !p.options.autoClickers || out.frame.generation != p.generation || out.frame.layout != p.layout || !bootstrapHeroes(p.frame.context) || out.frame.id <= p.state[autoClickerAnalysis].frame.id {
 			return nil
 		}
-		if out.err != nil || out.ascension.zone <= 0 {
-			p.ascension.nextRead = now.Add(30 * time.Second)
-			fmt.Printf("startup zone unreadable: %v; retrying in 30s\n", out.err)
+		if out.err != nil {
+			fmt.Printf("Auto Clicker pool unreadable: %v; retrying later\n", out.err)
 			return nil
 		}
-		p.startupCheck = false
-		if out.ascension.zone == 1 {
-			p.beginStartup()
+		wasBlocked, wasPending := p.clickers.blocked, p.clickers.pending != nil
+		p.clickers.observe(out.frame, out.clickerPool, now)
+		if !wasBlocked && p.clickers.blocked {
+			fmt.Println("Auto Clicker placement not confirmed; leaving assignments unchanged and continuing automation")
 		}
+		if wasPending && p.clickers.pending == nil {
+			p.nextClickerRead = time.Time{}
+		}
+		p.state[autoClickerAnalysis] = out
 		return nil
 	}
-	if out.kind != fishAnalysis && (p.export.requested || p.frame.context.saveMenu) {
+	if out.kind != fishAnalysis && (p.export.requested && p.startup == noStartup && !p.startupCheck || p.frame.context.saveMenu) {
 		p.metrics.dropped++
 		return nil
 	}
@@ -819,6 +856,8 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			}
 			p.progression = progressionPlanner{}
 			p.skill.reset()
+			p.clickers = autoClickerPlanner{footerAttempted: !p.options.heroes}
+			p.nextClickerRead = time.Time{}
 			p.hero.failures, p.hero.enabled = 0, p.options.heroes
 			// accept() already owns the pause-control mutex.
 			if p.options.export != nil {
@@ -938,6 +977,12 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.nextProgression = now.Add(delay)
 		}
 	case heroAnalysis:
+		if out.upgrades {
+			if out.found {
+				p.enqueue(gameAction{kind: buyHeroUpgrades, frame: out.frame, point: out.point}, now)
+			}
+			return nil
+		}
 		p.hero.observe(out.hero, p.state[fishAnalysis], now)
 		if p.startup == startupHeroes && out.err == nil {
 			p.startupPassive = p.startupPassive || out.hero.passiveReady
@@ -985,6 +1030,7 @@ func (p *gamePipeline) plan(now time.Time) {
 	if now.Before(p.settleUntil) {
 		return
 	}
+	p.planAutoClickers(now)
 	if p.planStartup(now) || p.planExport(now) || p.planAncients(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
 		return
 	}
@@ -1036,7 +1082,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if p.startup != noStartup && kind != collectFish && kind != enableProgression && kind != buyHero && kind != buyHeroUpgrades && kind != scrollHeroes && kind != selectQuantity && kind != clickMonster {
+		if p.startup != noStartup && kind != collectFish && kind != enableProgression && kind != buyHero && kind != buyHeroUpgrades && kind != scrollHeroes && kind != selectQuantity && kind != visitHeroes && kind != placeOwnedClicker && kind != clickMonster {
 			delete(p.queue, kind)
 			continue
 		}
@@ -1044,13 +1090,21 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if kind == buyHeroUpgrades && (p.startup != startupUpgrades || !bootstrapHeroes(p.frame.context) || !heroUpgradeButtonStable(action.frame.image, p.frame.image, action.point)) {
+		if kind == buyHeroUpgrades && ((p.startup != startupUpgrades && p.startup != noStartup) || !bootstrapHeroes(p.frame.context) || !heroUpgradeButtonStable(action.frame.image, p.frame.image, action.point)) {
 			delete(p.queue, kind)
 			p.hero.latest = heroObservation{}
 			p.hero.nextScan = now
 			continue
 		}
-		if (p.export.requested || p.frame.context.saveMenu) && kind != handleExport && kind != collectFish {
+		if kind == placeOwnedClicker && (p.clickers.pending != nil || p.clickers.blocked || !autoClickerCommandStable(action.clicker, p.frame)) {
+			delete(p.queue, kind)
+			continue
+		}
+		if kind == visitHeroes && (!p.startupCheck || !p.fishContext(p.frame.context)) {
+			delete(p.queue, kind)
+			continue
+		}
+		if (p.export.requested && p.startup == noStartup && !p.startupCheck || p.frame.context.saveMenu) && kind != handleExport && kind != collectFish {
 			delete(p.queue, kind)
 			continue
 		}
@@ -1058,7 +1112,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if (p.ancient.active || p.frame.context.ancientDialog || (p.ancient.plan != nil && !p.ancient.finished)) && kind != handleAncient && kind != collectFish {
+		if (p.ancient.active || p.frame.context.ancientDialog || (p.startup == noStartup && !p.startupCheck && p.ancient.plan != nil && !p.ancient.finished)) && kind != handleAncient && kind != collectFish {
 			delete(p.queue, kind)
 			continue
 		}
@@ -1237,9 +1291,14 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 				return nil
 			}
 			return input.move(parkPoint(a.frame.context.bounds))
+		case placeOwnedClicker:
+			if err := placeAutoClicker(ctx, input, a.clicker); err != nil {
+				return err
+			}
+			return input.move(parkPoint(a.frame.context.bounds))
 		case clickMonster:
 			return input.monsterClick(a.point)
-		case collectFish, collectGilds, handleAscension:
+		case collectFish, collectGilds, handleAscension, visitHeroes:
 			return input.click(a.point)
 		case castSkill:
 			return holdGameKey(ctx, input, fmt.Sprint(a.key))
@@ -1391,7 +1450,20 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.progression.sent(a.progression, a.frame.id, now)
 		invalidate(progressionAnalysis)
 		p.nextProgression = time.Time{}
+	case placeOwnedClicker:
+		p.nextClickerRead = time.Time{}
+		invalidate(autoClickerAnalysis)
+		fmt.Printf("assigned owned Auto Clicker at (%d, %d)\n", a.point.X, a.point.Y)
+	case visitHeroes:
+		p.queue = make(map[actionKind]gameAction)
+		invalidate(heroAnalysis)
 	case buyHeroUpgrades:
+		if p.startup == noStartup {
+			p.hero.interrupt()
+			invalidate(heroAnalysis)
+			fmt.Println("bought available hero upgrades")
+			break
+		}
 		p.startup = startupProgression
 		p.startupDeadline = time.Time{}
 		p.hero.interrupt()
@@ -1425,7 +1497,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 
 func (m pipelineMetrics) String() string {
 	parts := []string{fmt.Sprintf("captures=%d capture=%s actions=%d input=%s queue=%s stale=%d", m.captures, m.captureTime, m.actions, m.inputTime, m.queueTime, m.dropped)}
-	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders"} {
+	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers"} {
 		parts = append(parts, fmt.Sprintf("%s=%d/%s", name, m.counts[i], m.elapsed[i]))
 	}
 	return strings.Join(parts, " ")

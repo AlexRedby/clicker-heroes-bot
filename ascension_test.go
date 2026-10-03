@@ -174,6 +174,8 @@ func TestAscensionPipelineIsolationAndPause(t *testing.T) {
 	}
 	controls := &pauseControl{}
 	p := newGamePipeline(controls, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true, skills: true, progression: true, monster: true, fishInterval: time.Second})
+	p.startupCheck = false // This test begins after initial hero setup.
+	p.nextUpgrades = time.Now().Add(time.Hour)
 	p.layout = 1
 	p.frame = gameFrame{id: 2, layout: 1, at: now, image: screen, context: c}
 	// A manual dialog blocks all unrelated input, even when automatic Ascension is disabled.
@@ -270,6 +272,8 @@ func TestAscensionStaleDecisionAndTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true, progression: true, ascension: true, ascensionStall: time.Minute, fishInterval: time.Second})
+	p.startupCheck = false // This test begins after initial hero setup.
+	p.nextUpgrades = time.Now().Add(time.Hour)
 	p.layout = 1
 	p.frame = gameFrame{id: 1, layout: 1, at: now, image: screen, context: c}
 	p.ascension = ascensionPlanner{highestZone: 14780, wallZone: 14780, lastProgress: now.Add(-2 * time.Minute), lastObservation: now}
@@ -302,6 +306,8 @@ func TestAscensionOCRFailureRetainsHistoryButNeedsFreshProgress(t *testing.T) {
 	}
 	for _, kind := range []analysisKind{heroAnalysis, progressionAnalysis} {
 		p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true, progression: true, ascension: true, ascensionStall: time.Minute, fishInterval: time.Second})
+		p.startupCheck = false // This test begins after initial hero setup.
+		p.nextUpgrades = time.Now().Add(time.Hour)
 		p.layout = 1
 		p.frame = gameFrame{id: 2, layout: 1, at: now, image: screen, context: c}
 		p.ascension = ascensionPlanner{highestZone: 14780, wallZone: 14780, lastProgress: now.Add(-2 * time.Minute), lastObservation: now}

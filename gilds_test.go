@@ -171,6 +171,8 @@ func TestPipelineGildBatchIsolationAndPause(t *testing.T) {
 		capture: func() (image.Image, error) { return img, nil },
 		click:   func(image.Point) error { clicks++; return nil },
 	}, pipelineReaders{context: recognizedGame}, pipelineOptions{gilds: true, gildInterval: 5 * time.Minute, heroes: true, skills: true, progression: true, monster: true, fishInterval: time.Second})
+	p.startupCheck = false // This test begins after initial hero setup.
+	p.nextUpgrades = time.Now().Add(time.Hour)
 	jobs := make([]chan analysisJob, analysisCount)
 	for i := range jobs {
 		jobs[i] = make(chan analysisJob, 1)

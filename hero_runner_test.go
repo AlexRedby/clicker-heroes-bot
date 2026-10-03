@@ -20,6 +20,8 @@ func TestHeroRunner(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			p := newGamePipeline(&controls, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true, fishInterval: time.Second})
+			p.startupCheck = false // This test begins after initial hero setup.
+			p.nextUpgrades = time.Now().Add(time.Hour)
 			p.layout = 1
 			p.frame = frame
 			p.hero.failures = 2
@@ -134,6 +136,8 @@ func TestHeroObservationInterruptedOCR(t *testing.T) {
 				t.Fatal(err)
 			}
 			p := newGamePipeline(&controls, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
+			p.startupCheck = false // This test begins after initial hero setup.
+			p.nextUpgrades = time.Now().Add(time.Hour)
 			p.layout = 1
 			p.hero.failures = 2
 			if err := p.accept(ctx, observation{kind: heroAnalysis, frame: frame, hero: o}, now); err != nil {
@@ -208,6 +212,8 @@ func TestHeroTopScrollbarAfterAncientBatch(t *testing.T) {
 		t.Fatalf("ordinary leveling should drag to the bottom: %+v, %t", action, ok)
 	}
 	pipeline := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
+	pipeline.startupCheck = false // This test begins after initial hero setup.
+	pipeline.nextUpgrades = time.Now().Add(time.Hour)
 	pipeline.frame, pipeline.layout = frame, 1
 	pipeline.hero.observe(out, observation{}, now)
 	pipeline.plan(now)

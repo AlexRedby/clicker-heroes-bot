@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/draw"
 	_ "image/png"
+	"math"
 	"sync"
 
 	"gocv.io/x/gocv"
@@ -66,11 +67,57 @@ func matchControl(screen image.Image, region image.Rectangle, name string) (bool
 		return false, err
 	}
 	defer scene.Close()
+	score, err := controlTemplateScore(scene, reference, r.Size())
+	return score >= 0.90, err
+}
+
+// Transparent artwork excludes the changing game location from UI matching.
+func controlTemplateScore(scene gocv.Mat, reference image.Image, size image.Point) (float32, error) {
 	source, err := gocv.ImageToMatRGB(reference)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	defer source.Close()
-	score, err := templateScore(scene, source, r.Size())
-	return score >= 0.90, err
+	b := reference.Bounds()
+	pixels := make([]byte, b.Dx()*b.Dy())
+	transparent, visible := false, 0
+	for y := 0; y < b.Dy(); y++ {
+		for x := 0; x < b.Dx(); x++ {
+			_, _, _, a := reference.At(b.Min.X+x, b.Min.Y+y).RGBA()
+			transparent = transparent || a < 65535
+			if a > 0 {
+				pixels[y*b.Dx()+x] = 255
+				visible++
+			}
+		}
+	}
+	if !transparent {
+		return templateScore(scene, source, size)
+	}
+	if visible == 0 {
+		return 0, nil
+	}
+	sourceMask, err := gocv.NewMatFromBytes(b.Dy(), b.Dx(), gocv.MatTypeCV8U, pixels)
+	if err != nil {
+		return 0, err
+	}
+	defer sourceMask.Close()
+	scaled, mask, result := gocv.NewMat(), gocv.NewMat(), gocv.NewMat()
+	defer scaled.Close()
+	defer mask.Close()
+	defer result.Close()
+	if err := gocv.Resize(source, &scaled, size, 0, 0, gocv.InterpolationArea); err != nil {
+		return 0, err
+	}
+	if err := gocv.Resize(sourceMask, &mask, size, 0, 0, gocv.InterpolationNearestNeighbor); err != nil {
+		return 0, err
+	}
+	if err := gocv.MatchTemplate(scene, scaled, &result, gocv.TmCcoeffNormed, mask); err != nil {
+		return 0, err
+	}
+	_, score, _, _ := gocv.MinMaxLoc(result)
+	if math.IsNaN(float64(score)) || math.IsInf(float64(score), 0) {
+		return 0, nil
+	}
+	return score, nil
 }

@@ -90,6 +90,8 @@ func TestPipelineBoundedParallelAnalysis(t *testing.T) {
 
 func TestPipelineFrameOwnershipAndContext(t *testing.T) {
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true, skills: true, progression: true, fishInterval: time.Second})
+	p.startupCheck = false // This test begins after initial hero setup.
+	p.nextUpgrades = time.Now().Add(time.Hour)
 	frame := testPipelineFrame()
 	frame.context.heroes = true
 	current := frame.context
@@ -262,6 +264,8 @@ func TestPipelineHeroPurchaseSharedConfirmation(t *testing.T) {
 		click:   func(image.Point) error { clicked.Store(true); return nil },
 		move:    func(image.Point) error { return nil }, keyToggle: func(string, string) error { return nil },
 	}, read, pipelineOptions{heroes: true, fishInterval: time.Hour})
+	p.startupCheck = false // This test begins after initial hero setup.
+	p.nextUpgrades = time.Now().Add(time.Hour)
 	done := make(chan error, 1)
 	go func() { done <- p.run(ctx) }()
 	// After confirmation, a new economy read must choose saving rather than reuse the purchase.
@@ -280,6 +284,8 @@ func TestPipelineHeroPurchaseSharedConfirmation(t *testing.T) {
 
 func TestPipelineUnreadableConfirmationIsBounded(t *testing.T) {
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
+	p.startupCheck = false // This test begins after initial hero setup.
+	p.nextUpgrades = time.Now().Add(time.Hour)
 	frame := testPipelineFrame()
 	p.frame = frame
 	p.layout = 1
@@ -391,6 +397,8 @@ func TestPipelineScrollDoesNotWaitForFishAndConfirmsBottom(t *testing.T) {
 	}
 	frame := gameFrame{id: 1, layout: 1, at: time.Now(), image: top, context: gameContext{known: true, heroes: true, bounds: top.Bounds()}}
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true, fishInterval: time.Second})
+	p.startupCheck = false // This test begins after initial hero setup.
+	p.nextUpgrades = time.Now().Add(time.Hour)
 	p.frame, p.layout = frame, 1
 	out, err := readHeroObservation(context.Background(), frame, heroReaders{}, nil)
 	if err != nil || !out.thumbFound {

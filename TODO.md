@@ -4,7 +4,8 @@
 
 - Verify native hire/MAX level confirmation and the full affordable hero sweep using the supplied initial frames. If confirmation fails, capture before/after rows and logs; positive post-hire levels in fixture tests use the existing level reader through controlled stubs.
 - Verify two consecutive installed-game cycles: combat wall -> confirmed Ascension -> affordable hero sweep -> Buy Available Upgrades -> enabled progression -> fresh export -> submitted Ancient purchases -> Heroes continuation. Include zero gold, short/expanding lists, no-purchase plans, F8, unreadable names/prices and fish over controls. Code/fixture tests are not native acceptance.
-- Recognize the owned Auto Clicker pool and place an available clicker on the approved target without buying new clickers or reclaiming existing assignments. Native placement/target evidence remains necessary; startup currently uses one recognized Buy Available Upgrades click through the shared queue.
+- Verify `-auto-clickers` placement in the installed game: available/owned count before and after C + click, monster and Buy Available Upgrades assignments, a sole clicker, already occupied footer, F8 and scene background changes. Pool recognition passes supplied native 3/3 frames and placement/queue acknowledgement is covered with modeled observations; actual assigned targets still need native evidence. Existing assignments must remain intact and rubies must not be spent.
+- Verify initial hero/skill upgrade setup at a later zone, including missing earlier heroes, already-disabled Buy Available Upgrades, and an empty Ancient plan that stays on Heroes. Confirm a placed footer clicker handles newly unlocked upgrades; ordinary clicks remain a periodic fallback.
 - Recognize the native relic-junk blocker and block reset on nonempty or unknown junk with a specific reason. The export preflight is advisory; equipment/salvage UI still needs evidence.
 - Obtain a final Ace Scout Dorothy frame before enabling terminal-roster recognition without a successor.
 
@@ -29,7 +30,7 @@ Goal: complete the unattended active-play loop using the existing shared capture
 ### Integration sequence (owned by the main chat)
 
 1. Validate the integrated hero startup/combat/Ancient handoff and close the remaining Auto Clicker/relic native UI gates below. Keep R6 measurement independent from gameplay decisions.
-2. Implement owned Auto Clicker placement and native relic interactions in isolated worktrees; coordinate shared main.go/pipeline.go changes in the main chat.
+2. Validate the integrated owned Auto Clicker placement and obtain native relic interaction evidence; coordinate shared main.go/pipeline.go changes in the main chat.
 3. Retain bounded failure pauses and validate startup/export/spending handoffs. A failed purchase must not be replayed from a stale plan.
 4. Verify two complete consecutive cycles: combat wall -> confirmed Ascension -> zone 1 -> affordable hero sweep -> Buy Available Upgrades -> enabled progression -> fresh export -> Ancient purchases -> Heroes continuation. Include F8 during transitions, missed input, fish over controls, Explorer focus restoration and unsupported dialogs. Code/fixture checks do not establish native game acceptance.
 5. Add R4 when the repeated loop works. R7 remains independent platform work. Enable R8 automation only after the loop and recommendation/Outsider preview are accepted.

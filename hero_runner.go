@@ -18,14 +18,14 @@ type heroReaders struct {
 	level func(context.Context, image.Image, image.Point) (int, error)
 }
 type heroObservation struct {
-	frame                                        gameFrame
-	button, thumb                                image.Point
-	thumbFound, bottom, x1, found, owned, stable bool
-	startup, passiveReady, startupComplete       bool
-	startupName                                  string
-	startupScroll                                image.Point
-	level                                        int
-	gold, nextPrice                              float64
+	frame                                              gameFrame
+	button, thumb                                      image.Point
+	thumbFound, bottom, x1, found, owned, stable       bool
+	startup, passiveReady, startupComplete, startupTop bool
+	startupName                                        string
+	startupScroll                                      image.Point
+	level                                              int
+	gold, nextPrice                                    float64
 }
 type heroAttempt struct {
 	action   gameAction
@@ -35,6 +35,7 @@ type heroAttempt struct {
 }
 type heroRunner struct {
 	startupDone  map[string]bool
+	startupTop   bool
 	enabled      bool
 	failures     int
 	nextScan     time.Time
@@ -49,6 +50,7 @@ type heroRunner struct {
 func (p *heroRunner) startStartup() {
 	p.interrupt()
 	p.startupDone = make(map[string]bool)
+	p.startupTop = false
 }
 
 // The worker owns this snapshot; it never shares a mutable map with input.
@@ -145,6 +147,7 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 	if !p.enabled {
 		return
 	}
+	p.startupTop = p.startupTop || out.startupTop
 	if p.pending != nil {
 		pending := p.pending
 		if out.frame.id <= pending.action.frame.id || out.frame.at.Before(pending.afterAt) {

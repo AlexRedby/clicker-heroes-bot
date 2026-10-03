@@ -472,6 +472,18 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 	makeAction := func(step ancientStep, point image.Point) (gameAction, bool) {
 		return gameAction{kind: handleAncient, frame: frame, point: point, ancient: ancientCommand{step: step, quantity: p.quantity}}, true
 	}
+	if len(p.plan.Rows) == 0 && !p.active {
+		if frame.context.heroes && bootstrapHeroes(frame.context) {
+			p.finished = true
+			fmt.Println("Ancient plan has no purchases; continuing on Heroes")
+			return gameAction{}, false
+		}
+		if frame.context.ancients && frame.context.known && !frame.context.ancientDialog && !frame.context.saveMenu && frame.context.modal == noGildModal {
+			p.active, p.started = true, true
+			return makeAction(returnAncientHeroes, ancientTabPoint(frame.image, true))
+		}
+		return gameAction{}, false
+	}
 	if !p.active {
 		if !frame.context.heroes && !frame.context.ancients {
 			return gameAction{}, false

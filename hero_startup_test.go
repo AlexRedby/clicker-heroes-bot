@@ -18,13 +18,13 @@ func TestStartupHeroNativeSweep(t *testing.T) {
 	}
 	real := heroReaders{level: readHeroLevel, gold: readHeroGold, price: readHeroPrice}
 	zero := frame("testdata/hero-startup-zero.png", 1)
-	first, err := readStartupHeroObservation(ctx, zero, real, nil, nil)
+	first, err := readStartupHeroObservation(ctx, zero, real, nil, nil, false)
 	if err != nil || !first.found || first.owned || first.startupName != "Cid,theHelpfulAdventurer" || first.passiveReady || first.startupComplete {
 		t.Fatalf("free Cid: %+v %v", first, err)
 	}
 	shortRead := real
 	shortRead.level = func(context.Context, image.Image, image.Point) (int, error) { return 1000, nil }
-	short, shortErr := readStartupHeroObservation(ctx, zero, shortRead, nil, map[string]bool{"Cid,theHelpfulAdventurer": true})
+	short, shortErr := readStartupHeroObservation(ctx, zero, shortRead, nil, map[string]bool{"Cid,theHelpfulAdventurer": true}, true)
 	if shortErr != nil || short.found || short.startupComplete || short.passiveReady {
 		t.Fatalf("known completed short list: %+v %v", short, shortErr)
 	}
@@ -46,7 +46,7 @@ func TestStartupHeroNativeSweep(t *testing.T) {
 		name string
 	}{{655, "Cid,theHelpfulAdventurer"}, {865, "Treebeast"}, {1075, "IvantheDrunkenBrawler"}, {1285, "BrittanyBeachPrincess"}} {
 		gold.id = uint64(3 + i*4)
-		o, e := readStartupHeroObservation(ctx, gold, read, nil, p.startupVisits())
+		o, e := readStartupHeroObservation(ctx, gold, read, nil, p.startupVisits(), p.startupTop)
 		if e != nil || !o.found || absDiff(o.button.Y, want.y) > 3 || o.startupName != want.name || o.startupComplete {
 			t.Fatalf("row %d: %+v %v", i, o, e)
 		}
@@ -60,7 +60,7 @@ func TestStartupHeroNativeSweep(t *testing.T) {
 		// A unchanged zero must never confirm input.
 		after := gold
 		after.id++
-		unchanged, e := readStartupHeroObservation(ctx, after, read, &o, p.startupVisits())
+		unchanged, e := readStartupHeroObservation(ctx, after, read, &o, p.startupVisits(), p.startupTop)
 		if e != nil || !unchanged.stable || unchanged.level != 0 {
 			t.Fatalf("unchanged: %+v %v", unchanged, e)
 		}
@@ -70,7 +70,7 @@ func TestStartupHeroNativeSweep(t *testing.T) {
 		}
 		levels[o.button.Y] = 1
 		after.id++
-		confirmed, e := readStartupHeroObservation(ctx, after, read, &o, p.startupVisits())
+		confirmed, e := readStartupHeroObservation(ctx, after, read, &o, p.startupVisits(), p.startupTop)
 		if e != nil || !confirmed.stable || !confirmed.owned {
 			t.Fatalf("hire confirmation: %+v %v", confirmed, e)
 		}
@@ -79,7 +79,7 @@ func TestStartupHeroNativeSweep(t *testing.T) {
 			t.Fatal("hire alone finished MAX visit")
 		}
 		// Hire and owned MAX are distinct: confirm owned MAX before marking visited.
-		owned, e := readStartupHeroObservation(ctx, after, read, nil, p.startupVisits())
+		owned, e := readStartupHeroObservation(ctx, after, read, nil, p.startupVisits(), p.startupTop)
 		if e != nil || !owned.found || !owned.owned || owned.startupName != o.startupName {
 			t.Fatalf("owned row: %+v %v", owned, e)
 		}
@@ -92,7 +92,7 @@ func TestStartupHeroNativeSweep(t *testing.T) {
 		p.sent(a, now)
 		levels[o.button.Y] = 1000
 		after.id++
-		done, e := readStartupHeroObservation(ctx, after, read, &owned, p.startupVisits())
+		done, e := readStartupHeroObservation(ctx, after, read, &owned, p.startupVisits(), p.startupTop)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -104,7 +104,7 @@ func TestStartupHeroNativeSweep(t *testing.T) {
 			t.Fatal("Treebeast completed the sweep")
 		}
 	}
-	next, e := readStartupHeroObservation(ctx, gold, read, nil, p.startupVisits())
+	next, e := readStartupHeroObservation(ctx, gold, read, nil, p.startupVisits(), p.startupTop)
 	if e != nil || next.startupComplete || next.found || next.startupScroll == (image.Point{}) {
 		t.Fatalf("overlap scroll: %+v %v", next, e)
 	}
@@ -144,9 +144,9 @@ func TestStartupHeroNativeSweep(t *testing.T) {
 		t.Fatal("x1 not restored")
 	}
 	mature := frame("testdata/hero-tsuchi-x1.png", 99)
-	unsupported, e := readStartupHeroObservation(ctx, mature, real, nil, nil)
-	if e != nil || unsupported.found || unsupported.startupComplete {
-		t.Fatalf("unstarted mature list accepted: %+v %v", unsupported, e)
+	unsupported, e := readStartupHeroObservation(ctx, mature, real, nil, nil, false)
+	if e != nil || unsupported.found || unsupported.startupComplete || unsupported.startupScroll == (image.Point{}) {
+		t.Fatalf("mature list did not seek top: %+v %v", unsupported, e)
 	}
 }
 
@@ -177,17 +177,17 @@ func TestStartupHeroBlockedSuccessorAndBulk(t *testing.T) {
 		price: func(context.Context, image.Image, image.Point) (float64, error) { return 2, nil },
 		gold:  func(context.Context, image.Image) (float64, error) { return 1, nil },
 	}
-	out, err := readStartupHeroObservation(ctx, f, read, nil, visited)
+	out, err := readStartupHeroObservation(ctx, f, read, nil, visited, true)
 	if err != nil || !out.startupComplete || !out.passiveReady || out.found {
 		t.Fatalf("blocked successor: %+v %v", out, err)
 	}
 	read.gold = func(context.Context, image.Image) (float64, error) { return 3, nil }
-	out, err = readStartupHeroObservation(ctx, f, read, nil, visited)
+	out, err = readStartupHeroObservation(ctx, f, read, nil, visited, true)
 	if err != nil || out.startupComplete {
 		t.Fatalf("dark but affordable: %+v %v", out, err)
 	}
 	read.price = func(context.Context, image.Image, image.Point) (float64, error) { return 0, errUnreadableGameNumber }
-	out, err = readStartupHeroObservation(ctx, f, read, nil, visited)
+	out, err = readStartupHeroObservation(ctx, f, read, nil, visited, true)
 	if err == nil || out.startupComplete {
 		t.Fatal("unknown price completed startup")
 	}
@@ -196,7 +196,7 @@ func TestStartupHeroBlockedSuccessorAndBulk(t *testing.T) {
 	wrongQuantity.Set(b.Min.X+b.Dx()*97/1000, b.Min.Y+b.Dy()*345/1000, color.RGBA{R: 255, G: 230, A: 255})
 	qframe := f
 	qframe.image = wrongQuantity
-	quantityOut, quantityErr := readStartupHeroObservation(ctx, qframe, heroReaders{}, nil, visited)
+	quantityOut, quantityErr := readStartupHeroObservation(ctx, qframe, heroReaders{}, nil, visited, true)
 	if quantityErr != nil || quantityOut.x1 || quantityOut.startupComplete {
 		t.Fatal("non-x1 reader consumed numeric fields")
 	}
@@ -236,5 +236,54 @@ func TestStartupHeroBlockedSuccessorAndBulk(t *testing.T) {
 	p.observe(unchanged, observation{}, unchanged.frame.at)
 	if p.pending == nil {
 		t.Fatal("unchanged thumb confirmed startup scroll")
+	}
+}
+
+func TestDisabledHeroUpgradeFooter(t *testing.T) {
+	requireAncientOCR(t)
+	s := loadTestImage(t, "testdata/hero-startup-zero.png")
+	disabled := image.NewRGBA(s.Bounds())
+	draw.Draw(disabled, disabled.Bounds(), s, s.Bounds().Min, draw.Src)
+	for y := 800; y < 940; y++ {
+		for x := 680; x < 1100; x++ {
+			r, g, b := rgb(disabled.At(x, y))
+			if g > 100 && g > r+50 && g > b+50 {
+				disabled.Set(x, y, color.RGBA{R: 60, G: 60, B: 60, A: 255})
+			}
+		}
+	}
+	_, known, available, err := readHeroUpgradeFooter(context.Background(), disabled)
+	if err != nil || !known || available {
+		t.Fatal("disabled footer not recognized", known, available, err)
+	}
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
+	now := time.Now()
+	p.frame = gameFrame{id: 1, at: now, image: disabled, context: gameContext{known: true, heroes: true, bounds: disabled.Bounds()}}
+	p.startup, p.startupCheck, p.startupPassive = startupUpgrades, false, true
+	p.state[heroAnalysis] = observation{frame: p.frame, upgradesKnown: true}
+	p.plan(now)
+	if p.startup != startupProgression {
+		t.Fatal("disabled footer stalled startup")
+	}
+	if _, ok := p.nextAction(now); ok {
+		t.Fatal("disabled upgrade button clicked")
+	}
+	p.plan(now.Add(time.Second))
+	if p.startup != noStartup || p.controls.isPaused() {
+		t.Fatal("upgrade-free setup did not finish")
+	}
+}
+
+func TestHeroUpgradeFooterAtBottomBoundary(t *testing.T) {
+	requireAncientOCR(t)
+	s := loadTestImage(t, "testdata/hero-startup-zero.png")
+	shifted := image.NewRGBA(s.Bounds())
+	draw.Draw(shifted, shifted.Bounds(), s, s.Bounds().Min, draw.Src)
+	original := image.Rect(650, 830, 1100, 912)
+	draw.Draw(shifted, original, image.NewUniform(color.Black), image.Point{}, draw.Src)
+	draw.Draw(shifted, original.Add(image.Pt(0, 490)), s, original.Min, draw.Src)
+	point, known, available, err := readHeroUpgradeFooter(context.Background(), shifted)
+	if err != nil || !known || !available || point.Y < 1300 {
+		t.Fatal("visible bottom footer skipped", point, known, available, err)
 	}
 }

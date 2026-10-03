@@ -74,6 +74,8 @@ func TestSaveMenuRecognitionAndExclusiveExport(t *testing.T) {
 	window, screen := "101:Clicker Heroes", main
 	var steps []exportStep
 	p := newGamePipeline(controls, heroInput{}, pipelineReaders{context: recognizedGame, window: func() string { return window }}, pipelineOptions{export: &saveExportOptions{dir: dir, reserve: "1%", skillRate: 1, planOutput: filepath.Join(dir, "plan.json")}, fishInterval: time.Second, heroes: true, skills: true, progression: true, monster: true})
+	p.startupCheck = false // This test begins after initial hero setup.
+	p.nextUpgrades = time.Now().Add(time.Hour)
 	p.input.capture = func() (image.Image, error) { return screen, nil }
 	p.input.focus = func(got string) error {
 		if got != "101:Clicker Heroes" || window != "!outside-game" {

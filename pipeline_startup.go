@@ -20,11 +20,10 @@ func (p *gamePipeline) beginStartup() {
 	p.startup, p.startupPassive = startupHeroes, false
 	p.startupDeadline = time.Time{}
 	p.hero.startStartup()
-	p.ancient = ancientPlanner{}
 	p.state = [analysisCount]observation{}
 	p.queue = make(map[actionKind]gameAction)
 	p.export.requested = false
-	fmt.Println("startup: zone 1; starting affordable hero sweep")
+	fmt.Println("startup: starting affordable hero sweep")
 }
 
 func (p *gamePipeline) planStartup(now time.Time) bool {
@@ -37,28 +36,31 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 	if now.After(p.startupDeadline) || !p.hero.enabled {
 		reason := "startup did not complete; check Heroes and press F8 to retry"
 		if p.startupCheck {
-			reason = "startup zone remained unreadable; focus Heroes and press F8 to retry"
+			reason = "startup could not reach Heroes; focus the game and press F8 to retry"
 		}
 		p.controls.pause(reason)
 		return true
 	}
 	if p.startupCheck || !bootstrapHeroes(p.frame.context) {
+		if p.startupCheck && p.fishContext(p.frame.context) && !p.frame.context.heroes {
+			p.enqueue(gameAction{kind: visitHeroes, frame: p.frame, point: ancientTabPoint(p.frame.image, true)}, now)
+		}
 		return true
 	}
 	progress := p.state[progressionAnalysis]
-	if p.startupPassive && progress.progression.Known {
-		if p.startup == startupProgression && progress.progression.Enabled {
+	if p.startupPassive && (!p.options.progression || progress.progression.Known) {
+		if p.startup == startupProgression && (!p.options.progression || progress.progression.Enabled) {
 			p.startup = noStartup
 			p.startupDeadline = time.Time{}
 			p.progression = progressionPlanner{}
 			p.hero.interrupt()
 			p.state = [analysisCount]observation{}
 			p.queue = make(map[actionKind]gameAction)
-			p.export.requested = true
-			fmt.Println("startup: heroes and upgrades ready, progression enabled; requesting fresh save export")
+			p.export.requested = p.options.export != nil
+			fmt.Println("startup: heroes and upgrades ready; continuing automation")
 			return true
 		}
-		if !progress.progression.Enabled && p.progression.pending == nil && !now.Before(p.progression.nextAttempt) {
+		if p.options.progression && !progress.progression.Enabled && p.progression.pending == nil && !now.Before(p.progression.nextAttempt) {
 			p.enqueue(gameAction{kind: enableProgression, frame: progress.frame, progression: progress.progression}, now)
 		}
 	}
@@ -79,6 +81,12 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 		}
 		if out.found {
 			p.enqueue(gameAction{kind: buyHeroUpgrades, frame: out.frame, point: out.point}, now)
+		} else if out.upgradesKnown {
+			p.startup = startupProgression
+			p.startupDeadline = time.Time{}
+			p.hero.interrupt()
+			p.state[heroAnalysis] = observation{}
+			fmt.Println("startup: no available hero upgrades")
 		} else if out.hero.thumbFound && !out.hero.bottom {
 			p.enqueue(gameAction{kind: scrollHeroes, frame: out.frame, point: out.hero.thumb, target: image.Pt(out.hero.thumb.X, out.frame.context.bounds.Max.Y-1), hero: out.hero}, now)
 		} else {

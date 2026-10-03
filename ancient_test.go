@@ -669,7 +669,7 @@ func TestAncientTransaction(t *testing.T) {
 func TestAncientQueueIsolation(t *testing.T) {
 	now := time.Now()
 	controls := pauseControl{}
-	p := newGamePipeline(&controls, heroInput{}, pipelineReaders{}, pipelineOptions{ancientPlan: &ancientPlan{}})
+	p := newGamePipeline(&controls, heroInput{}, pipelineReaders{}, pipelineOptions{ancientPlan: &ancientPlan{Plan: ancientcalc.Plan{Rows: []ancientcalc.Purchase{{Name: "Atman"}}}}})
 	p.frame = testPipelineFrame()
 	p.frame.context.heroes = true
 	p.layout = p.frame.layout
@@ -1194,6 +1194,42 @@ func TestAncientNextPurchaseGuards(t *testing.T) {
 				}
 			} else if ok || !p.blocked {
 				t.Fatal("next purchase bypassed its pre-purchase guard", fault)
+			}
+		})
+	}
+}
+
+func TestEmptyAncientPlanSkipsVisit(t *testing.T) {
+	now := time.Now()
+	for _, tab := range []string{"heroes", "ancients", "dialog", "unknown"} {
+		t.Run(tab, func(t *testing.T) {
+			p := ancientPlanner{plan: &ancientPlan{}}
+			f := testPipelineFrame()
+			f.context.heroes = tab == "heroes"
+			f.context.ancients = tab == "ancients"
+			f.context.ancientDialog = tab == "dialog"
+			f.context.known = tab != "unknown"
+			a, ok := p.action(f, now)
+			switch tab {
+			case "heroes":
+				if ok || !p.finished || p.active || p.started {
+					t.Fatal("empty plan opened Ancients", a, ok)
+				}
+			case "ancients":
+				if !ok || a.ancient.step != returnAncientHeroes {
+					t.Fatal("empty plan did not return Heroes", a, ok)
+				}
+				p.sent(a, now)
+				f.id++
+				f.context.heroes, f.context.ancients = true, false
+				p.observe(ancientObservation{frame: f}, nil, now.Add(time.Second))
+				if !p.finished || p.blocked {
+					t.Fatal("empty plan required wallet OCR")
+				}
+			default:
+				if ok || p.finished {
+					t.Fatal("unsupported screen consumed plan", tab)
+				}
 			}
 		})
 	}

@@ -136,6 +136,7 @@ func TestStartupF8FishAndModal(t *testing.T) {
 	controls := &pauseControl{}
 	p := newGamePipeline(controls, heroInput{click: func(image.Point) error { t.Fatal("stale input executed"); return nil }}, pipelineReaders{}, pipelineOptions{heroes: true, progression: true, export: &saveExportOptions{}, fishInterval: time.Second})
 	p.frame, p.layout, p.startup = f, f.layout, startupHeroes
+	p.startupCheck = false
 	p.export.requested = false
 	p.hero.startStartup()
 	p.hero.startupDone["Treebeast"] = true
@@ -179,43 +180,106 @@ func TestStartupF8FishAndModal(t *testing.T) {
 	}
 }
 
-func TestStartupInitialZoneProbe(t *testing.T) {
+func TestStartupInitialCaptureWithoutZoneOCR(t *testing.T) {
 	ctx := context.Background()
 	screen := loadTestImage(t, "testdata/hero-startup-zero.png")
 	c := gameContext{known: true, heroes: true, bounds: screen.Bounds(), window: "game"}
-	for _, zone := range []int{1, 200, 0} {
-		now := time.Now()
-		p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return screen, nil }}, pipelineReaders{context: func(image.Image) (gameContext, error) { return c, nil }, ascension: func(_ context.Context, f gameFrame) (ascensionObservation, error) {
-			return ascensionObservation{frame: f, zone: zone}, nil
-		}}, pipelineOptions{heroes: true, progression: true, export: &saveExportOptions{}, fishInterval: time.Second})
-		jobs := make([]chan analysisJob, analysisCount)
-		for i := range jobs {
-			jobs[i] = make(chan analysisJob, 1)
-		}
-		if err := p.capture(ctx, now, jobs); err != nil {
-			t.Fatal(err)
-		}
-		p.plan(now)
-		if !p.startupCheck || p.export.active || len(jobs[exportAnalysis]) != 0 {
-			t.Fatal("export overtook the initial zone read")
-		}
-		out := p.analyze(ctx, ascensionAnalysis, <-jobs[ascensionAnalysis])
-		if err := p.accept(ctx, out, now); err != nil {
-			t.Fatal(err)
-		}
-		if zone == 0 {
-			if !p.startupCheck || p.export.active {
-				t.Fatal("unreadable zone authorized export")
-			}
-			p.startupDeadline = now.Add(-time.Second)
-			p.plan(now)
-			if !p.controls.isPaused() {
-				t.Fatal("initial zone retry had no bounded stop")
-			}
-			continue
-		}
-		if p.startupCheck || (zone == 1 && (p.startup != startupHeroes || p.export.requested)) || (zone > 1 && (p.startup != noStartup || !p.export.requested)) {
-			t.Fatal("wrong initial-zone handoff", zone, p.startup, p.export.requested)
-		}
+	now := time.Now()
+	p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return screen, nil }}, pipelineReaders{context: func(image.Image) (gameContext, error) { return c, nil }}, pipelineOptions{heroes: true, fishInterval: time.Second})
+	jobs := make([]chan analysisJob, analysisCount)
+	for i := range jobs {
+		jobs[i] = make(chan analysisJob, 1)
+	}
+	if err := p.capture(ctx, now, jobs); err != nil {
+		t.Fatal(err)
+	}
+	if p.startupCheck || p.startup != startupHeroes || len(jobs[heroAnalysis]) != 1 || len(jobs[ascensionAnalysis]) != 0 || len(jobs[exportAnalysis]) != 0 {
+		t.Fatal("initial hero setup required zone OCR or export")
+	}
+}
+
+func TestStartupWithoutExportOrProgression(t *testing.T) {
+	now := time.Now()
+	plan := &ancientPlan{}
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{ascension: readAscensionObservation}, pipelineOptions{heroes: true, ancientPlan: plan})
+	if !p.startupCheck {
+		t.Fatal("hero setup depends on export/progression flags")
+	}
+	p.frame = testPipelineFrame()
+	p.frame.context.heroes = true
+	p.layout = p.frame.layout
+	p.beginStartup()
+	if p.ancient.plan != plan {
+		t.Fatal("initial setup discarded supplied plan")
+	}
+	p.startup, p.startupPassive = startupProgression, true
+	p.plan(now)
+	if p.startup != noStartup || p.export.requested || p.controls.isPaused() {
+		t.Fatal("hero-only setup cannot finish")
+	}
+}
+
+func TestStartupVisitsHeroesWithoutInputThroughModal(t *testing.T) {
+	now := time.Now()
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{ascension: readAscensionObservation}, pipelineOptions{heroes: true, export: &saveExportOptions{}})
+	p.frame = testPipelineFrame()
+	p.layout = p.frame.layout
+	p.frame.context.ancients = true
+	p.plan(now)
+	a, ok := p.nextAction(now)
+	if !ok || a.kind != visitHeroes {
+		t.Fatal("startup did not return to Heroes", a, ok)
+	}
+	p.frame.context.ancientDialog = true
+	p.enqueue(a, now)
+	if _, ok := p.nextAction(now); ok {
+		t.Fatal("Heroes tab clicked through a modal")
+	}
+}
+
+func TestOrdinaryHeroUpgradeMaintenance(t *testing.T) {
+	requireAncientOCR(t)
+	now := time.Now()
+	screen := loadTestImage(t, "testdata/hero-startup-zero.png")
+	c, err := recognizedGame(screen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.window = "game"
+	p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return screen, nil }}, pipelineReaders{context: func(image.Image) (gameContext, error) { return c, nil }}, pipelineOptions{heroes: true, fishInterval: time.Second})
+	p.startupCheck = false
+	jobs := make([]chan analysisJob, analysisCount)
+	for i := range jobs {
+		jobs[i] = make(chan analysisJob, 1)
+	}
+	if err := p.capture(context.Background(), now, jobs); err != nil {
+		t.Fatal(err)
+	}
+	job := <-jobs[heroAnalysis]
+	if !job.upgrades || job.startup != noStartup {
+		t.Fatal("periodic bulk check missing")
+	}
+	out := p.analyze(context.Background(), heroAnalysis, job)
+	if out.err != nil || !out.found {
+		t.Fatal(out.err, out.found)
+	}
+	if err := p.accept(context.Background(), out, now); err != nil {
+		t.Fatal(err)
+	}
+	a, ok := p.nextAction(now)
+	if !ok || a.kind != buyHeroUpgrades {
+		t.Fatal("bulk upgrade maintenance not queued", a, ok)
+	}
+	p.actionCompleted(actionResult{action: a, acted: true}, now)
+	if p.startup != noStartup || p.export.requested {
+		t.Fatal("maintenance restarted setup/export")
+	}
+	p.nextCapture = time.Time{}
+	if err := p.capture(context.Background(), now.Add(time.Second), jobs); err != nil {
+		t.Fatal(err)
+	}
+	next := <-jobs[heroAnalysis]
+	if next.upgrades {
+		t.Fatal("bulk OCR repeated immediately")
 	}
 }

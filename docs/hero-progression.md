@@ -1,10 +1,12 @@
 # Hero progression
 
-The bot buys levels for the latest available hero and saves for the next one when its price is within ten times current gold. It does not return to earlier heroes, estimate DPS efficiency, or buy upgrades.
+At initial start and after a confirmed Ascension, `-hero-levels` sweeps from the top, hiring and leveling affordable heroes before purchasing available upgrades to unlock skills. The sweep stops at a recognized unowned successor whose price exceeds current gold. Ordinary play then buys levels for the latest available hero and saves for the next one when its price is within ten times current gold; it does not continuously revisit earlier heroes or estimate DPS efficiency.
+
+The bulk upgrade footer is checked every 30 seconds on shared frames, with a plain click when upgrades are available. A recognized disabled footer needs no click. With `-auto-clickers`, one available owned clicker is reserved for the footer when more than one is owned; the others go to the monster. Once the footer assignment is confirmed by a decreased free count, ordinary bulk OCR checks are unnecessary. Existing assignments are preserved, no clickers are purchased, and failed/unconfirmed footer placement retains ordinary clicks.
 
 ## Reading the game
 
-1. Require the full-screen Heroes tab, recognizable quantity bar, and scrollbar on the primary display. A changed or unknown layout skips the attempt. Lists with no recognizable thumb currently require further support.
+1. Require the full-screen Heroes tab, recognizable quantity bar, and scrollbar on the primary display. A changed or unknown layout skips the attempt. The initial short list can be recognized without a scrollbar; ordinary latest-hero navigation still requires one.
 2. Drag the scrollbar thumb only when it is above the bottom, and verify its final position. Scrolling does not depend on the selected purchase quantity.
 3. Keep `x1` selected; if another quantity is selected, cycle with `T` until the orange `x1` state is visible. This keyboard-only action does not wait for fish analysis. Each button then shows a numeric price instead of `MAX`. A blue button identifies the deepest available candidate. A following dark row with a level means a later owned hero cannot be leveled, so the bot waits. A following unowned row must have a clear empty level area. A missing or obscured successor of an owned candidate skips the attempt.
 4. Run Tesseract on cropped gold, price and level text regions. Gold and levels use white text masks. Prices use a yellow text mask with brightness adjusted for disabled buttons, a crop that excludes the coin and button border, and smooth enlargement. Level recognition isolates the text line and requires a readable `Lvl` label and integer value. Hero names are compared as static image regions to keep the selected row consistent across captures.
