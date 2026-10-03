@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"image/draw"
 	"maps"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -33,17 +34,23 @@ type heroAttempt struct {
 	attempts int
 	last     heroObservation
 }
+type heroDiagnostic struct {
+	before, after heroObservation
+	readError     error
+}
+
 type heroRunner struct {
-	startupDone  map[string]bool
-	startupTop   bool
-	enabled      bool
-	failures     int
-	nextScan     time.Time
-	latest       heroObservation
-	pending      *heroAttempt
-	quantityTaps int
-	parked       bool
-	onFailure    func(heroAttempt)
+	startupDone   map[string]bool
+	startupTop    bool
+	enabled       bool
+	failures      int
+	nextScan      time.Time
+	latest        heroObservation
+	pending       *heroAttempt
+	quantityTaps  int
+	parked        bool
+	lastReadError string
+	onDiagnostic  func(heroDiagnostic) bool
 }
 
 // A confirmed reset starts a new sweep. F8 interrupt preserves confirmed visits.
@@ -51,6 +58,7 @@ func (p *heroRunner) startStartup() {
 	p.interrupt()
 	p.startupDone = make(map[string]bool)
 	p.startupTop = false
+	p.lastReadError = ""
 }
 
 // The worker owns this snapshot; it never shares a mutable map with input.
@@ -78,9 +86,12 @@ func (p *heroRunner) obstructed(now time.Time) {
 	p.latest = heroObservation{}
 	p.nextScan = now.Add(5 * time.Second)
 }
-func (p *heroRunner) readFailed(err error, now time.Time) {
+func (p *heroRunner) readFailed(err error, out heroObservation, now time.Time) {
 	if p.pending != nil && p.pending.action.kind == buyHero {
 		return
+	}
+	if message := err.Error(); message != p.lastReadError && (p.onDiagnostic == nil || p.onDiagnostic(heroDiagnostic{after: out, readError: err})) {
+		p.lastReadError = message
 	}
 	fmt.Printf("hero numbers unreadable: %v; retrying in 30s\n", err)
 	p.nextScan = now.Add(30 * time.Second)
@@ -147,6 +158,7 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 	if !p.enabled {
 		return
 	}
+	p.lastReadError = ""
 	p.startupTop = p.startupTop || out.startupTop
 	if p.pending != nil {
 		pending := p.pending
@@ -233,8 +245,8 @@ func (p *heroRunner) finishFailure(fish observation, now time.Time) {
 	p.pending = nil
 	p.latest = heroObservation{}
 	p.nextScan = now.Add(30 * time.Second)
-	if p.onFailure != nil {
-		p.onFailure(*pending)
+	if p.onDiagnostic != nil {
+		p.onDiagnostic(heroDiagnostic{before: pending.action.hero, after: pending.last})
 	}
 	suffix := "retrying hero purchases in 30s"
 	if !p.enabled {
@@ -341,4 +353,36 @@ func saveHeroFailure(before, after heroObservation) {
 	} else {
 		fmt.Printf("saved hero failure screenshots: %s, %s\n", beforePath, afterPath)
 	}
+}
+
+func saveHeroReadFailure(frame gameFrame, err error) {
+	if frame.image == nil {
+		return
+	}
+	path := fmt.Sprintf("artifacts/hero-unreadable-%s.png", time.Now().Format("20060102-150405.000"))
+	if saveErr := saveImage(path, frame.image); saveErr != nil {
+		fmt.Printf("failed to save hero unreadable screenshot: %v\n", saveErr)
+	} else {
+		fmt.Printf("saved hero unreadable screenshot: %s (frame=%d, build=%s, error=%v)\n", path, frame.id, botBuildRevision(), err)
+	}
+}
+
+func botBuildRevision() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	revision, modified := "unknown", false
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			revision = setting.Value
+		case "vcs.modified":
+			modified = setting.Value == "true"
+		}
+	}
+	if modified {
+		revision += " (modified)"
+	}
+	return revision
 }

@@ -1,5 +1,21 @@
 # TODO
 
+## Hero recognition native acceptance
+
+- Run the following cases in the installed game with the integrated boundary reader and production action queue. Capture before/after evidence for any failed transition; fixture tests do not establish native input acceptance.
+
+| Case | Native acceptance gate |
+| --- | --- |
+| Viewport edges | Complete name/HIRE/LVL at the top, middle and bottom remains readable. A genuinely cropped pending row is brought into view; overlap does not reverse the sweep or skip the next hero. |
+| Card variants | Plain and gilded heroes, blue and dark HIRE/LVL UP buttons, short and long names, short and large levels. An unknown or obscured field is never treated as a new hero, level zero or completed startup. |
+| Purchases | HIRE to level 1, HIRE directly to many levels, owned MAX and expanded/moved cards. Confirm the same hero, retain visits and avoid duplicate MAX input. |
+| Gold and successor | Zero gold, affordable and unaffordable successors, short and growing lists. Finish only on readable evidence; do not read unrelated cards to decide a visible purchase. |
+| Obstructions | Fish over the caption/level/scrollbar, purchase tooltip and covering modal. Fish recovery stays independent; hero input waits for a covering modal. |
+| Navigation and pause | Partial unvisited/previously visited rows, missed drag/no motion, F8 during scrolling and purchasing. Preserve confirmed visits and recover without an unchanged-crop retry loop or repeated purchase. |
+
+- If `hero numbers unreadable` recurs, use the automatically saved `artifacts/hero-unreadable-*.png` and its log containing frame ID, build revision, failed region and OCR output. Collect this analyzed frame rather than a later manual screenshot; reproduce it on the same revision before changing the reader.
+- Complete the two consecutive Ascension/setup cycles tracked below. Request additional screenshots only for a UI state absent from the existing fixtures or automatically saved failure evidence.
+
 ## Startup and unattended Ascension validation
 
 - Verify the full affordable hero sweep in the installed game, including successive HIRE-to-LVL-UP/MAX transitions and overlap scrolling. If confirmation fails, capture before/after rows and logs.

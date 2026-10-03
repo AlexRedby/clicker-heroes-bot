@@ -192,7 +192,7 @@ type gamePipeline struct {
 	nextCapture, nextFish, nextProgression, nextMonster time.Time
 	busy                                                bool
 	settleUntil                                         time.Time
-	diagnostics                                         chan heroAttempt
+	diagnostics                                         chan heroDiagnostic
 	progressionJobs                                     chan analysisJob
 	focusFallback                                       bool
 	heroJobFrame                                        uint64
@@ -202,7 +202,7 @@ type gamePipeline struct {
 }
 
 func newGamePipeline(controls *pauseControl, input heroInput, readers pipelineReaders, options pipelineOptions) *gamePipeline {
-	p := &gamePipeline{controls: controls, input: input, readers: readers, options: options, hero: heroRunner{enabled: options.heroes}, queue: make(map[actionKind]gameAction), diagnostics: make(chan heroAttempt, 1)}
+	p := &gamePipeline{controls: controls, input: input, readers: readers, options: options, hero: heroRunner{enabled: options.heroes}, queue: make(map[actionKind]gameAction), diagnostics: make(chan heroDiagnostic, 1)}
 	p.clickers.footerAttempted = !options.heroes
 	p.ancient.plan = options.ancientPlan
 	p.outsiderBase = options.outsiderBase
@@ -211,11 +211,13 @@ func newGamePipeline(controls *pauseControl, input heroInput, readers pipelineRe
 	}
 	p.export.requested = options.export != nil
 	p.startupCheck = options.heroes
-	p.hero.onFailure = func(a heroAttempt) {
+	p.hero.onDiagnostic = func(a heroDiagnostic) bool {
 		select {
 		case p.diagnostics <- a:
+			return true
 		default:
 			fmt.Println("hero diagnostic worker busy; skipped screenshots")
+			return false
 		}
 	}
 	return p
@@ -378,7 +380,11 @@ func (p *gamePipeline) run(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		for failure := range p.diagnostics {
-			saveHeroFailure(failure.action.hero, failure.last)
+			if failure.readError != nil {
+				saveHeroReadFailure(failure.after.frame, failure.readError)
+			} else {
+				saveHeroFailure(failure.before, failure.after)
+			}
 		}
 	}()
 	results := make(chan observation, 8)
@@ -922,7 +928,9 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			fmt.Printf("mercenary panel unreadable: %v\n", out.err)
 		case heroAnalysis:
 			if p.hero.pending == nil {
-				p.hero.readFailed(out.err, now)
+				hero := out.hero
+				hero.frame = out.frame
+				p.hero.readFailed(out.err, hero, now)
 				return nil
 			}
 		case progressionAnalysis:
