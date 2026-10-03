@@ -1,19 +1,15 @@
 # TODO
 
-## Generated save cleanup
-
-- After successful automatic export decoding, delete only the exact newly created file absent from the snapshot taken before Save and still matching the consumed bytes. Preserve pre-existing, changed, symlinked, unreadable and failed exports; cover ordinary planning and relic-only checks, then review/build before integrating.
-
 ## Early progression after Ascension
 
-- Verify the minimal starting Heroes/first-hire UI on real post-reset frames; identify a passive-DPS hero and supported short-list geometry. Do not require the full skill-unlock or Auto Clicker-placement milestone for this early step.
-- Add a shared-frame, serialized-input early-start handoff after confirmed Ascension: bounded starting hero level purchases, then enable recognized disabled progression with A before fresh export and the Ancient batch. Preserve modal/F8/fish handling and avoid stale plan replay.
-- Keep passive game progression running during Ancient purchases; do not switch tabs or send unrelated hero inputs through a quantity dialog. After ordinary spending, resume existing hero automation without a blanket completion pause when startup is ready.
-- Verify reset -> early DPS -> progression -> fresh export -> Ancient purchases -> Heroes continuation, including empty plans, locked progression, no gold, interrupted input and fish obstructions. Run required-OCR tests/build and independent review; record remaining native UI gates before pushing main.
+- Use the supplied zero-gold and with-gold initial Heroes frames to support the short list. Capture ordinary skill-unlock rows and post-hire levels where the existing reader cannot identify them.
+- Connect startup purchases to shared capture and the serialized input queue: level all affordable heroes, use Buy Available Upgrades for ordinary skill unlocks, and finish only at a positively recognized unavailable successor. A single passive-DPS hero does not complete startup. Verify the game's bulk-button exclusion of ASCENSION before using it automatically.
+- Enable recognized progression during startup, then acquire a fresh export and spend Hero Souls while passive combat advances. Resume hero automation after spending once startup readiness is established, preserving F8, modal/fish guards and no replay of submitted Ancient purchases.
+- Verify no-gold startup, short/expanding lists, unavailable successors, empty Ancient plans, fish obstructions and interrupted input with required OCR tests/build and independent review. Validate the full handoff in the installed game.
 
 ## Unattended Ascension milestone
 
-Integration is waiting for real post-reset Heroes/ordinary-upgrade and existing Auto Clicker frames, plus Relics/junk-blocker evidence. The user cannot supply them yet and requested stopping dependent work. Keep reset/purchase completion pauses until the missing UI is verified.
+The initial zero-gold and with-gold Heroes frames are available. Ordinary upgrade/skill-unlock rows, existing Auto Clicker assignments and Relics/junk-blocker evidence remain necessary for the full unattended milestone. Keep completion pauses until startup is integrated and verified.
 
 - Recognize the native relic-junk blocker and block reset on nonempty or unknown junk with a specific reason. The integrated export preflight is advisory; equipment/salvage UI still requires real evidence.
 - Connect bootstrap to shared observations and serialized input: identify support hero rows, buy only missing levels/ordinary skill unlocks, and preserve the latest-hero policy. Never purchase the Ascension upgrade as an ordinary upgrade.
@@ -25,8 +21,8 @@ Integration is waiting for real post-reset Heroes/ordinary-upgrade and existing 
 ## R1 implementation in this worktree
 
 - Connect bootstrapPlanner to verified hero/upgrade readers and the shared action queue: targeted support visits, bounded clickHeroLevels purchases with existing heroRunner confirmation, ordinary upgrade clicks and F8/handoff callbacks. Integration remains owned by the main chat.
-- Obtain real initial short-list/long-thumb and first-hire frames before enabling new hero geometry; obtain a final Ace Scout Dorothy frame before enabling terminal-roster recognition.
-- Implement and confirm existing purchased Auto Clicker placement after native pool/target evidence is available; preserve the user's upgrades assignment and recognize existing hero/skill ownership. Do not buy clickers, reclaim all targets or use bulk upgrades without verified ASCENSION exclusion.
+- Verify post-hire level/ordinary upgrade recognition for the supplied initial short-list frames; obtain a final Ace Scout Dorothy frame before enabling terminal-roster recognition.
+- Recognize the owned Auto Clicker pool and place an available clicker on Buy Available Upgrades or click that recognized button through the shared queue, following the approved bulk-upgrade route. Preserve existing assignments; verify target/placement and ASCENSION exclusion semantics. Do not buy clickers or reclaim all targets.
 - Verify post-reset progression and Auto Clicker target/count behavior, and bulk-upgrade exclusion of ASCENSION, before wiring bootstrap into main.go/pipeline.go and removing restart pauses. Shared-file integration remains owned by the main chat.
 
 ## Remaining feature roadmap
