@@ -1,29 +1,12 @@
 # TODO
 
-## Early progression after Ascension
+## Startup and unattended Ascension validation
 
-- Use the supplied zero-gold and with-gold initial Heroes frames to support the short list. Capture ordinary skill-unlock rows and post-hire levels where the existing reader cannot identify them.
-- Connect startup purchases to shared capture and the serialized input queue: level all affordable heroes, use Buy Available Upgrades for ordinary skill unlocks, and finish only at a positively recognized unavailable successor. A single passive-DPS hero does not complete startup. Verify the game's bulk-button exclusion of ASCENSION before using it automatically.
-- Enable recognized progression during startup, then acquire a fresh export and spend Hero Souls while passive combat advances. Resume hero automation after spending once startup readiness is established, preserving F8, modal/fish guards and no replay of submitted Ancient purchases.
-- Verify no-gold startup, short/expanding lists, unavailable successors, empty Ancient plans, fish obstructions and interrupted input with required OCR tests/build and independent review. Validate the full handoff in the installed game.
-
-## Unattended Ascension milestone
-
-The initial zero-gold and with-gold Heroes frames are available. Ordinary upgrade/skill-unlock rows, existing Auto Clicker assignments and Relics/junk-blocker evidence remain necessary for the full unattended milestone. Keep completion pauses until startup is integrated and verified.
-
-- Recognize the native relic-junk blocker and block reset on nonempty or unknown junk with a specific reason. The integrated export preflight is advisory; equipment/salvage UI still requires real evidence.
-- Connect bootstrap to shared observations and serialized input: identify support hero rows, buy only missing levels/ordinary skill unlocks, and preserve the latest-hero policy. Never purchase the Ascension upgrade as an ordinary upgrade.
-- Replace reset/Ancient completion pauses with a fresh-export -> submitted Ancient spending -> Heroes bootstrap -> progression handoff; no stale spending-plan replay after F8 or failed input.
-- Add bounded failure/recovery handling and runnable regressions for two consecutive cycles, no-purchase plans, F8/context changes, unavailable gold, fish obstruction and missing UI evidence.
-- Run the full suite/build on OpenCV 4.13/Tesseract and review the integration independently; update README with the actual launch flags and remaining limitations.
-- Verify two consecutive cycles in the installed game once initial hero rows/upgrades, Auto Clicker targets and Relics/junk UI are available. Fixture tests are not native acceptance.
-
-## R1 implementation in this worktree
-
-- Connect bootstrapPlanner to verified hero/upgrade readers and the shared action queue: targeted support visits, bounded clickHeroLevels purchases with existing heroRunner confirmation, ordinary upgrade clicks and F8/handoff callbacks. Integration remains owned by the main chat.
-- Verify post-hire level/ordinary upgrade recognition for the supplied initial short-list frames; obtain a final Ace Scout Dorothy frame before enabling terminal-roster recognition.
-- Recognize the owned Auto Clicker pool and place an available clicker on Buy Available Upgrades or click that recognized button through the shared queue, following the approved bulk-upgrade route. Preserve existing assignments; verify target/placement and ASCENSION exclusion semantics. Do not buy clickers or reclaim all targets.
-- Verify post-reset progression and Auto Clicker target/count behavior, and bulk-upgrade exclusion of ASCENSION, before wiring bootstrap into main.go/pipeline.go and removing restart pauses. Shared-file integration remains owned by the main chat.
+- Verify native hire/MAX level confirmation and the full affordable hero sweep using the supplied initial frames. If confirmation fails, capture before/after rows and logs; positive post-hire levels in fixture tests use the existing level reader through controlled stubs.
+- Verify two consecutive installed-game cycles: combat wall -> confirmed Ascension -> affordable hero sweep -> Buy Available Upgrades -> enabled progression -> fresh export -> submitted Ancient purchases -> Heroes continuation. Include zero gold, short/expanding lists, no-purchase plans, F8, unreadable names/prices and fish over controls. Code/fixture tests are not native acceptance.
+- Recognize the owned Auto Clicker pool and place an available clicker on the approved target without buying new clickers or reclaiming existing assignments. Native placement/target evidence remains necessary; startup currently uses one recognized Buy Available Upgrades click through the shared queue.
+- Recognize the native relic-junk blocker and block reset on nonempty or unknown junk with a specific reason. The export preflight is advisory; equipment/salvage UI still needs evidence.
+- Obtain a final Ace Scout Dorothy frame before enabling terminal-roster recognition without a successor.
 
 ## Remaining feature roadmap
 
@@ -33,7 +16,7 @@ Goal: complete the unattended active-play loop using the existing shared capture
 
 | ID | Scope and deliverable | Priority | Completion gate |
 | --- | --- | --- | --- |
-| R1 | Ascension restart and hero bootstrap: short lists without a scrollbar, first hero purchases, hero skill/upgrades unlocks including Amenhotep, optional Buy Available Upgrades, existing Auto Clicker target setup, and the last hero without a successor. | First | A plan with ordered startup states and verified UI evidence; no regression to the ordinary latest-hero strategy; F8 and missing-input cases specified. Buy Available Upgrades remains optional when the user already assigns an Auto Clicker to it. |
+| R1 | Validate the integrated affordable hero/bulk-upgrade restart, place owned Auto Clickers, and recognize the last hero without a successor. | First | Two native cycles, verified post-hire/MAX confirmation and clicker targets, no regression to latest-hero leveling, F8/missing-input recovery, and terminal-roster evidence. |
 | R2 | Validate conservative Ancient price bounds in the installed game. | First | Compare Juggernaut/Solomon bulk purchases and Chor'gorloth discount/balance rounding to fresh before/after exports; preserve the reserve. |
 | R3 | Relic management: recognize the inventory/full-junk blocker, determine how equipment and junk handling fit before Ascension, and propose a minimal active-build policy. | First | Verified screens or exact missing-input list; explicit equipment and discard policy; unknown items are not silently destroyed. |
 | R4 | Gild redistribution: choose a good target consistent with latest-hero progression, calculate transfer cost from current save/state, and plan UI application. | Next | Keep earned gift opening separate; account for soul costs and reserves; no ruby spending and no repeated transfers to the same target. |
@@ -45,10 +28,10 @@ Goal: complete the unattended active-play loop using the existing shared capture
 
 ### Integration sequence (owned by the main chat)
 
-1. Close the bootstrap/relic native UI gates below and validate the integrated combat/Ancient changes. Keep R6 measurement independent from gameplay decisions.
-2. Implement the remaining bootstrap and native relic interactions in isolated worktrees; coordinate shared main.go/pipeline.go changes in the main chat.
-3. Replace the intentional pauses after reset and the Ancient batch with explicit bootstrap handoffs only after bootstrap, export/spending, required unlocks and relic blocking are reliable. A failed purchase must not be replayed from a stale plan.
-4. Verify two complete consecutive cycles: combat wall -> confirmed Ascension -> zone 1 -> fresh export -> Ancient purchases -> bootstrap/upgrades -> existing Auto Clicker targets -> automatic progression. Include F8 during transitions, missed input, fish over controls, Explorer focus restoration and unsupported dialogs. Code/fixture checks do not establish native game acceptance.
+1. Validate the integrated hero startup/combat/Ancient handoff and close the remaining Auto Clicker/relic native UI gates below. Keep R6 measurement independent from gameplay decisions.
+2. Implement owned Auto Clicker placement and native relic interactions in isolated worktrees; coordinate shared main.go/pipeline.go changes in the main chat.
+3. Retain bounded failure pauses and validate startup/export/spending handoffs. A failed purchase must not be replayed from a stale plan.
+4. Verify two complete consecutive cycles: combat wall -> confirmed Ascension -> zone 1 -> affordable hero sweep -> Buy Available Upgrades -> enabled progression -> fresh export -> Ancient purchases -> Heroes continuation. Include F8 during transitions, missed input, fish over controls, Explorer focus restoration and unsupported dialogs. Code/fixture checks do not establish native game acceptance.
 5. Add R4 when the repeated loop works. R7 remains independent platform work. Enable R8 automation only after the loop and recommendation/Outsider preview are accepted.
 
 The detailed unfinished implementation and live-validation gates below remain authoritative. Remove completed work; keep missing screenshot/native-game gates visible.
@@ -84,7 +67,6 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 - Verify that the faster scrollbar dragging remains reliable on Windows/macOS and that F8 taking effect after an ongoing native drag finishes is acceptable. Verify bottom-only scrolling, `T` selecting persistent `x1`, `Q` buying MAX levels and returning to `x1`, actual level confirmation, F8 interruption/resume, and simultaneous fish collection. Use saved before/after screenshots to diagnose any remaining unconfirmed purchase.
 - Verify opt-in `-windowed` on native Windows/macOS: permissions, screenshot-pixel to desktop-coordinate conversion, fish and monster clicks, scrollbar drags, hotkeys and F8. Cover Windows 100/125/150/200% DPI, macOS Retina, secondary displays with negative origins, movement/resize, lost focus and same-title windows. Confirm queued decisions are discarded and an uncertain Ancient purchase is not replayed; check export focus restoration and default primary-display behavior too. Geometry, compact-crop, HUD fixture and pipeline regressions pass; native installed-game acceptance remains open.
 - Capture real windowed HUDs and dialogs to validate the client-area/centered/bottom-aligned 16:9 candidates before broadening detection. Unknown, ambiguous, clipped or display-straddling windows must remain paused; the Heroes tab is still required for hero actions. After resizing with monster clicks enabled, obtain new crop coordinates and restart.
-- Support short hero lists without a scrollbar or with a thumb outside the current detector's accepted height range. Capture real examples before changing the detector; a wider height allowance can mistake the gold track border for a thumb.
 - Recognize a verified end of the complete hero roster if there is no successor. The current bot skips an owned candidate without a clearly identified next unowned row.
 
 ## Mercenaries
@@ -105,17 +87,15 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ### Automatic Ascension
 
-- Verify one live opt-in `-ascension` reset: the observed full-combat boss loss (or fallback stall), meaningful Hero Souls gain using the chosen bank/export baseline, red spiral -> independently verified Hero Souls reward -> green Yes -> zone 1 -> automatic pause. Test a missed click, manual cancellation and F8 with the dialog open. Real-frame recognition, modal isolation, reward changes and decision cancellation are covered by regression tests.
-- Capture the immediate post-reset HUD to verify zone-1 OCR and initial controls in the installed game. The first implementation pauses after reset; complete initial short-list hero buying, Amenhotep's Ascension unlock and Auto Clicker target setup before enabling repeated unattended runs.
+- Verify missed input, manual cancellation and F8 with the Ascension dialog open, followed by the integrated zone-1 hero/bulk-upgrade/export handoff. The user observed one successful full-combat-loss reset; that does not establish two consecutive unattended cycles.
 - Capture the relic-junk blocking screen and recognize/report it specifically; keep automatic relic destruction/equipment outside this mode. Unknown or blocked transitions currently time out to a pause.
-- Verify the Ascension/restart stages and fresh-export spending live before enabling their unattended integration.
 
 ### Hero Souls spending
 
 - Verify a live large Ancient purchase with six-significant-digit input and the 200 ms entry wait, including closed owned-dialog acknowledgement and F8 interruption. Confirm repeated fresh-export plans stop once large non-exponential increases fall below 0.1%.
 - Verify V custom-quantity opening in the running Windows game after the added 100 ms key-settling delay, using a fresh export after Atman's unintended level increase.
 - Verify one live `-ancients-save` batch with a fresh export, expanded Ancient cards, V custom quantity, actual text entry, one-shot OK submission acknowledged by a newer ordinary Ancients frame, fresh level/budget checks before each next purchase, one-notch wheel seeking by canonical alphabetical names, name-confirmed movement, bounded wheel-to-arrow recovery and scrollbar-arrow correction for clipped/bracketed/overshot rows and return to Heroes. Include F8, an open dialog timeout and a silently failed purchase that closes the dialog (allowed underbuy, no replay). Supplied frames and regressions cover recognition, budget protection, transaction ownership, stale input and interruption.
-- Verify live `-export-dir` acquisition on Windows: menu -> Save -> delayed Explorer foreground -> original game focus -> menu close -> fresh file -> current Hero Souls budget check -> Ancient batch. Verify truncated scientific wallet values against the export and use the `saved`/`read` diagnostics on a mismatch; pending Ascension souls must not authorize spending. Check menu closing while Save is highlighted, the configured export folder and filename, F8 during acquisition, a failed Save, blocked OK and the same sequence after Ascension. Automated regressions cover menu recognition, stale/partial exports, cancellation and queue isolation. Initial hero buying, Amenhotep unlock and Auto Clicker setup still gate unattended restart; consider gild transfers and relics after that loop works.
+- Verify live `-export-dir` acquisition on Windows: menu -> Save -> delayed Explorer foreground -> original game focus -> menu close -> fresh file -> current Hero Souls budget check -> Ancient batch. Verify truncated scientific wallet values against the export and use the `saved`/`read` diagnostics on a mismatch; pending Ascension souls must not authorize spending. Check menu closing while Save is highlighted, the configured export folder and filename, F8 during acquisition, a failed Save, blocked OK and the same sequence after Ascension. Automated regressions cover menu recognition, stale/partial exports, cancellation and queue isolation. Validate the integrated hero sweep/bulk-upgrade handoff and remaining Auto Clicker/relic gates before treating repeated restart cycles as native acceptance.
 
 ### Transcension
 

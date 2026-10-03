@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// Official client 6144 BuyAllAvailableUpgrades (WASM func 27528) skips
-// Ascension IDs 106 and 132 before PurchaseUpgrade. Use the footer, not skill icons.
+// Official client 6144 bulk entry (WASM 27529) calls the chain buyer (27528),
+// which skips Ascension IDs 106 and 132 before granting. Use the footer, not skill icons.
 func readHeroUpgradeButton(ctx context.Context, screen image.Image) (image.Point, bool, error) {
 	if !heroQuantityBarPresent(screen) {
 		return image.Point{}, false, nil

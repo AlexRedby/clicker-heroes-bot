@@ -208,3 +208,7 @@ func startupHeroListStable(before, after image.Image) bool {
 	z, zh, zf := startupHeroScrollbarThumb(after)
 	return af && zf && absDiff(a.Y-ah/2, z.Y-zh/2) <= max(3, before.Bounds().Dy()/100)
 }
+
+func bootstrapHeroes(c gameContext) bool {
+	return c.known && c.heroes && c.modal == noGildModal && !c.ascension && !c.ancients && !c.ancientDialog && !c.saveMenu && !c.questDialog && !c.mercenaries
+}

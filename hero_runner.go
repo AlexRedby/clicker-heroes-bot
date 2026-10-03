@@ -296,23 +296,6 @@ func clickHeroMax(ctx context.Context, input heroInput, button image.Point) erro
 	return clickHeroModified(ctx, input, button, "q")
 }
 
-// Requires a positively identified support row and persistent x1 quantity.
-func clickHeroLevels(ctx context.Context, input heroInput, button image.Point, missing int) error {
-	if missing <= 0 {
-		return fmt.Errorf("hero level deficit must be positive")
-	}
-	key := ""
-	switch {
-	case missing >= 100:
-		key = "ctrl"
-	case missing >= 25:
-		key = "z"
-	case missing >= 10:
-		key = "shift"
-	}
-	return clickHeroModified(ctx, input, button, key)
-}
-
 func clickHeroModified(ctx context.Context, input heroInput, button image.Point, key string) (err error) {
 	if key != "" {
 		defer func() { err = errors.Join(err, input.keyToggle(key, "up")) }()
