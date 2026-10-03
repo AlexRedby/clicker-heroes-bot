@@ -150,6 +150,9 @@ func TestAutoClickerNoReplayAndInputGuards(t *testing.T) {
 	if !ok || !autoClickerCommandStable(a, f) {
 		t.Fatal("valid native command rejected")
 	}
+	if !autoClickerPoolStable(s, s) || autoClickerPoolStable(nil, s) || autoClickerPoolStable(s, image.NewRGBA(image.Rect(0, 0, 1280, 720))) {
+		t.Fatal("pool-only frame reconciliation guards failed")
+	}
 	current := f
 	current.generation++
 	if autoClickerCommandStable(a, current) {
@@ -165,7 +168,7 @@ func TestAutoClickerNoReplayAndInputGuards(t *testing.T) {
 	draw.Draw(covered, covered.Bounds(), s, s.Bounds().Min, draw.Src)
 	draw.Draw(covered, autoClickerCountRegion(s), image.NewUniform(color.Black), image.Point{}, draw.Src)
 	current.image = covered
-	if autoClickerCommandStable(a, current) {
+	if autoClickerCommandStable(a, current) || autoClickerPoolStable(s, covered) || autoClickerPoolStable(covered, covered) {
 		t.Fatal("covered count accepted")
 	}
 	a.point = image.Pt(s.Bounds().Dx()*96/100, s.Bounds().Dy()*55/100)

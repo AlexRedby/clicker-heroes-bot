@@ -163,20 +163,32 @@ func autoClickerCommandStable(a autoClickerCommand, current gameFrame) bool {
 		current.context != a.frame.context || current.image == nil || current.image.Bounds() != a.frame.image.Bounds() {
 		return false
 	}
+	return autoClickerPoolStable(a.frame.image, current.image) && (a.target != autoClickerUpgrades || heroUpgradeButtonStable(a.frame.image, current.image, a.point))
+}
+
+// Reconcile pool OCR with a newer shared footer/capture frame without another OCR call.
+func autoClickerPoolStable(before, after image.Image) bool {
+	if before == nil || after == nil || before.Bounds() != after.Bounds() {
+		return false
+	}
 	// Counts are static outlined text: require the entire white glyph mask unchanged.
-	r := autoClickerCountRegion(a.frame.image)
+	r := autoClickerCountRegion(before)
+	count := 0
 	for y := r.Min.Y; y < r.Max.Y; y++ {
 		for x := r.Min.X; x < r.Max.X; x++ {
 			white := func(s image.Image) bool {
 				r, g, b := rgb(s.At(x, y))
 				return min(r, g, b) > 180 && max(r, g, b)-min(r, g, b) < 55
 			}
-			if white(a.frame.image) != white(current.image) {
+			if white(before) != white(after) {
 				return false
+			}
+			if white(before) {
+				count++
 			}
 		}
 	}
-	return a.target != autoClickerUpgrades || heroUpgradeButtonStable(a.frame.image, current.image, a.point)
+	return count > 0
 }
 
 // Official 6144: footer mouse-up (39010) uses C to call Add...Button (28424),
