@@ -2,7 +2,7 @@
 
 ## Startup and unattended Ascension validation
 
-- Verify native hire/MAX level confirmation and the full affordable hero sweep using the supplied initial frames. If confirmation fails, capture before/after rows and logs; positive post-hire levels in fixture tests use the existing level reader through controlled stubs.
+- Verify the full affordable hero sweep in the installed game, including successive HIRE-to-LVL-UP/MAX transitions and overlap scrolling. If confirmation fails, capture before/after rows and logs.
 - Verify two consecutive installed-game cycles: combat wall -> confirmed Ascension -> affordable hero sweep -> Buy Available Upgrades -> enabled progression -> fresh export -> submitted Ancient purchases -> Heroes continuation. Include zero gold, short/expanding lists, no-purchase plans, F8, unreadable names/prices and fish over controls. Code/fixture tests are not native acceptance.
 - Verify `-auto-clickers` placement in the installed game: available/owned count before and after C + click, monster and Buy Available Upgrades assignments, a sole clicker, already occupied footer, F8 and scene background changes. Pool recognition passes supplied native 3/3 frames and placement/queue acknowledgement is covered with modeled observations; actual assigned targets still need native evidence. Existing assignments must remain intact and rubies must not be spent.
 - Verify initial hero/skill upgrade setup at a later zone, including missing earlier heroes, already-disabled Buy Available Upgrades, and an empty Ancient plan that stays on Heroes. Confirm a placed footer clicker handles newly unlocked upgrades; ordinary clicks remain a periodic fallback.

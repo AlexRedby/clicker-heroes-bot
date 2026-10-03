@@ -221,3 +221,75 @@ func TestHeroTopScrollbarAfterAncientBatch(t *testing.T) {
 		t.Fatalf("queue rejected ordinary top-list drag: %+v %t", queued, ok)
 	}
 }
+
+func TestStartupHeroMaxHireVisitLedger(t *testing.T) {
+	for _, tc := range []struct {
+		name                     string
+		owned, stable            bool
+		before, after            int
+		wantPending, wantVisited bool
+	}{
+		{"bulk hire", false, true, 0, 10000, false, true},
+		{"single hire needs MAX", false, true, 0, 1, false, false},
+		{"owned MAX", true, true, 1, 10000, false, true},
+		{"missed hire", false, true, 0, 0, true, false},
+		{"unidentified row", false, false, 0, 10000, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			before := heroObservation{startup: true, startupName: "TheWanderingFisherman", owned: tc.owned, level: tc.before, button: image.Pt(204, 966), found: true, x1: true, thumbFound: true, frame: gameFrame{id: 1, at: now}}
+			a := gameAction{kind: buyHero, hero: before, frame: before.frame, point: before.button}
+			p := heroRunner{enabled: true}
+			p.sent(a, now)
+			after := before
+			after.frame.id = 2
+			after.frame.at = now.Add(time.Second)
+			after.button = image.Pt(204, 943)
+			after.level, after.owned, after.stable = tc.after, tc.after > 0, tc.stable
+			p.observe(after, observation{}, after.frame.at)
+			if (p.pending != nil) != tc.wantPending || p.startupDone[before.startupName] != tc.wantVisited || p.failures != 0 {
+				t.Fatalf("pending=%t visited=%t failures=%d", p.pending != nil, p.startupDone[before.startupName], p.failures)
+			}
+			p.interrupt()
+			if p.startupDone[before.startupName] != tc.wantVisited {
+				t.Fatal("F8 lost a confirmed startup visit")
+			}
+		})
+	}
+}
+
+func TestStartupHeroNativeMaxHireConfirmation(t *testing.T) {
+	requireAncientOCR(t)
+	ctx := context.Background()
+	now := time.Now()
+	frame := func(path string, id uint64) gameFrame {
+		s := loadTestImage(t, path)
+		return gameFrame{id: id, at: now.Add(time.Duration(id-1) * time.Second), image: s, context: gameContext{known: true, heroes: true, bounds: s.Bounds()}}
+	}
+	read := heroReaders{level: readHeroLevel, gold: readHeroGold, price: readHeroPrice}
+	p := heroRunner{enabled: true, startupTop: true, startupDone: map[string]bool{"BrittanyBeachPrincess": true}}
+	before, err := readStartupHeroObservation(ctx, frame("testdata/hero-startup-fisherman-before.png", 1), read, nil, p.startupVisits(), true)
+	if err != nil || !before.found || before.owned || before.level != 0 || before.startupName != "TheWanderingFisherman" {
+		t.Fatalf("native hire target: %+v %v", before, err)
+	}
+	p.observe(before, observation{}, now)
+	action, ok := p.action(now)
+	if !ok || action.kind != buyHero {
+		t.Fatalf("hire action: %+v %t", action, ok)
+	}
+	p.sent(action, now)
+	afterFrame := frame("testdata/hero-startup-fisherman-after.png", 2)
+	after, err := readStartupHeroObservation(ctx, afterFrame, read, &before, p.startupVisits(), true)
+	if err != nil || !after.stable || after.level != 10000 || after.button == before.button {
+		t.Fatalf("native hire result: %+v %v", after, err)
+	}
+	p.observe(after, observation{}, afterFrame.at)
+	if p.pending != nil || p.failures != 0 || !p.startupDone[before.startupName] {
+		t.Fatal("successful native MAX hire was not recorded")
+	}
+	p.interrupt()
+	next, err := readStartupHeroObservation(ctx, afterFrame, read, nil, p.startupVisits(), true)
+	if err != nil || !next.found || next.startupName != "BettyClicker" || next.owned {
+		t.Fatalf("next native hero after F8: %+v %v", next, err)
+	}
+}

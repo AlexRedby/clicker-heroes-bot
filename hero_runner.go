@@ -160,7 +160,8 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 			if out.stable && out.level > pending.action.hero.level {
 				fmt.Printf("leveled hero at (%d, %d)\n", out.button.X, out.button.Y)
 				p.failures = 0
-				if pending.action.hero.startup && pending.action.hero.owned {
+				// A MAX hire can already buy levels; a single-level hire still needs the owned-row pass.
+				if pending.action.hero.startup && (pending.action.hero.owned || out.level > 1) {
 					if p.startupDone == nil {
 						p.startupDone = make(map[string]bool)
 					}
