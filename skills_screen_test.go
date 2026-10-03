@@ -60,6 +60,20 @@ func TestReadSkillStatesRejectsUnknownIcons(t *testing.T) {
 	}
 }
 
+func TestReadSkillStatesWithoutToolbar(t *testing.T) {
+	for _, path := range []string{"testdata/hero-startup-zero.png", "testdata/hero-startup-gold.png"} {
+		original := loadTestImage(t, path)
+		for _, scale := range []int{1, 2} {
+			screen := image.NewRGBA(image.Rect(0, 0, original.Bounds().Dx()/scale, original.Bounds().Dy()/scale))
+			xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
+			states, err := readSkillStates(context.Background(), screen)
+			if err != nil || states != ([9]skillState{}) {
+				t.Fatalf("%s scale%d absent toolbar: states=%+v err=%v", path, scale, states, err)
+			}
+		}
+	}
+}
+
 func TestProgressionReaderUsesSharedBuffsAndModeOnly(t *testing.T) {
 	states := [9]skillState{
 		2: {Known: true, Active: true},

@@ -143,7 +143,7 @@ func (p *skillPlanner) observeFrame(states [9]skillState, frameID, _ uint64, now
 		}
 		p.pending = nil
 		p.keys = nil
-		fmt.Printf("skill %d activation not confirmed; retrying in 30s\n", key)
+		fmt.Printf("skill %d activation not confirmed; retrying in 30s (before=%+v, after=%+v, frames=%d/%d)\n", key, pending.before[key-1], states[key-1], pending.frameID, frameID)
 	}
 }
 func (p *skillPlanner) nextKey(states [9]skillState, frameID uint64, now time.Time) int {

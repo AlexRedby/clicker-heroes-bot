@@ -81,6 +81,25 @@ func skillGlow(screen image.Image, center image.Point) (active, energized bool) 
 	return energized || gold*5 > samples, energized
 }
 
+func skillButtonVisible(screen image.Image, center image.Point) bool {
+	w, h := screen.Bounds().Dx(), screen.Bounds().Dy()
+	for _, side := range [][2]int{{-22, -15}, {15, 22}} {
+		orange := 0
+		for y := center.Y - h*15/1000; y <= center.Y+h*15/1000; y++ {
+			for x := center.X + w*side[0]/1000; x <= center.X+w*side[1]/1000; x++ {
+				r, g, blue := rgb(screen.At(x, y))
+				if r > 180 && g > 75 && g < 200 && blue < 100 && r-g > 35 {
+					orange++
+				}
+			}
+		}
+		if orange < max(3, h/100) {
+			return false
+		}
+	}
+	return true
+}
+
 func readSkillStates(ctx context.Context, screen image.Image) ([9]skillState, error) {
 	var states [9]skillState
 	if screen == nil {
@@ -103,6 +122,11 @@ func readSkillStates(ctx context.Context, screen image.Image) ([9]skillState, er
 			if i != 5 && i < 7 {
 				states[i].Active, states[i].Energized = skillGlow(screen, center)
 			}
+			continue
+		}
+		// Background clouds can match Super Clicks' narrow ready strip.
+		// Require the button's orange sides before matching its artwork.
+		if !skillButtonVisible(screen, center) {
 			continue
 		}
 		region := image.Rect(center.X-w*17/1000, center.Y-h*29/1000, center.X+w*17/1000, center.Y-h*9/1000).Intersect(b)
