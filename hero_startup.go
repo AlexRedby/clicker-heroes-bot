@@ -8,7 +8,61 @@ import (
 	"image/draw"
 	"sort"
 	"strings"
+
+	"clicker-heroes-bot/internal/ancientcalc"
 )
+
+var startupHeroNames, startupHeroNamesErr = loadStartupHeroNames()
+
+func startupHeroLetters(name string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' {
+			return r
+		}
+		return -1
+	}, name)
+}
+
+func loadStartupHeroNames() (map[string]string, error) {
+	names, err := ancientcalc.HeroNames()
+	if err != nil {
+		return nil, err
+	}
+	keys := make(map[string]string, len(names))
+	for _, name := range names {
+		key := startupHeroLetters(name)
+		if name == "Cid, the Helpful Adventurer" {
+			key = "Cid,theHelpfulAdventurer"
+		}
+		keys[strings.ToLower(startupHeroLetters(name))] = key
+	}
+	return keys, nil
+}
+
+// A clipped field needs an overlapping view, not another OCR of the same crop.
+func startupHeroNavigate(out *heroObservation, button image.Point, thumbHeight, direction int) bool {
+	if !out.thumbFound {
+		return false
+	}
+	viewport := heroListViewport(out.frame.image)
+	if direction == 0 && button.Y-out.frame.image.Bounds().Dy()*7/100 < viewport.Min.Y {
+		direction = -1
+	}
+	if direction == 0 && button.Y+out.frame.image.Bounds().Dy()*3/100 > viewport.Max.Y {
+		direction = 1
+	}
+	if direction == 0 {
+		return false
+	}
+	b := out.frame.image.Bounds()
+	target := max(b.Min.Y+b.Dy()*4/10, min(out.thumb.Y+direction*max(3, thumbHeight/2), b.Min.Y+b.Dy()*965/1000-thumbHeight/2))
+	if target == out.thumb.Y {
+		return false
+	}
+	out.found, out.stable, out.startupComplete = false, false, false
+	out.startupScroll = image.Pt(out.thumb.X, target)
+	return true
+}
 
 // This initial/reset sweep levels each affordable row before allowing Ancient spending.
 // passiveReady is a combat fact; only startupComplete ends the hero sweep.
@@ -43,12 +97,22 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		out.passiveReady = out.passiveReady || out.owned && out.startupName != "Cid,theHelpfulAdventurer"
 		return out, err
 	}
-	buttons := findHeroLevelButtons(frame.image)
-	enabled := make(map[int]bool, len(buttons))
-	for _, button := range buttons {
-		enabled[button.Y] = true
+	var buttons []image.Point
+	enabled, edges := make(map[int]bool), make(map[int]int)
+	viewport := heroListViewport(frame.image)
+	for _, available := range []bool{true, false} {
+		for _, band := range findHeroButtonBands(frame.image, available) {
+			button := image.Pt(b.Min.X+b.Dx()*8/100, (band.Min.Y+band.Max.Y-1)/2)
+			buttons = append(buttons, button)
+			enabled[button.Y] = available
+			if band.Min.Y == viewport.Min.Y {
+				edges[button.Y] = -1
+			}
+			if band.Max.Y == viewport.Max.Y {
+				edges[button.Y] = 1
+			}
+		}
 	}
-	buttons = append(buttons, findHeroButtons(frame.image, false)...)
 	sort.Slice(buttons, func(i, j int) bool { return buttons[i].Y < buttons[j].Y })
 	if len(buttons) == 0 {
 		return out, nil
@@ -63,6 +127,10 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		}
 		name, err := readStartupHeroName(ctx, frame.image, buttons[0])
 		if err != nil {
+			if !started && out.thumbFound {
+				out.startupScroll = image.Pt(out.thumb.X, b.Min.Y+b.Dy()*4/10)
+				return out, nil
+			}
 			return out, err
 		}
 		if name != "Cid,theHelpfulAdventurer" {
@@ -74,8 +142,18 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		out.startupTop = true
 	}
 	for _, button := range buttons {
+		// Overlap scrolling exposes an already handled card at the top. Keep the sweep monotonic.
+		if started && edges[button.Y] < 0 {
+			continue
+		}
 		name, err := readStartupHeroName(ctx, frame.image, button)
 		if err != nil {
+			if started && button.Y-b.Dy()*7/100 < heroListViewport(frame.image).Min.Y {
+				continue
+			}
+			if startupHeroNavigate(&out, button, thumbHeight, edges[button.Y]) {
+				return out, nil
+			}
 			return out, err
 		}
 		if name == "" {
@@ -83,6 +161,12 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		}
 		level, err := readStartupHeroLevel(ctx, frame.image, button, read)
 		if err != nil {
+			if visited[name] && button.Y-b.Dy()*7/100 < heroListViewport(frame.image).Min.Y {
+				continue
+			}
+			if startupHeroNavigate(&out, button, thumbHeight, edges[button.Y]) {
+				return out, nil
+			}
 			return out, err
 		}
 		owned := level > 0
@@ -148,23 +232,28 @@ func readStartupHeroLevel(ctx context.Context, screen image.Image, button image.
 	b := screen.Bounds()
 	glyph := startupBareZeroGlyph(screen, button)
 	if glyph.Empty() {
-		return 0, fmt.Errorf("startup hero level at %v: %w", button, err)
+		return 0, fmt.Errorf("startup hero level at %v: HIRE glyph missing in %v; LVL: %w", button, startupBareZeroRegion(screen, button), err)
 	}
-	label := image.Rect(b.Min.X+b.Dx()*179/2560, glyph.Min.Y-b.Dy()*15/1440, b.Min.X+b.Dx()*294/2560, glyph.Max.Y+b.Dy()*6/1440).Intersect(b)
+	label := image.Rect(b.Min.X+b.Dx()*179/2560, glyph.Min.Y-b.Dy()*15/1440, b.Min.X+b.Dx()*294/2560, glyph.Max.Y+b.Dy()*6/1440)
+	if label.Intersect(heroListViewport(screen)) != label {
+		return 0, fmt.Errorf("startup hero HIRE at %v: clipped crop %v in %v", button, label, heroListViewport(screen))
+	}
 	caption := image.NewRGBA(image.Rect(0, 0, label.Dx(), label.Dy()))
 	draw.Draw(caption, caption.Bounds(), screen, label.Min, draw.Src)
 	// HIRE positively identifies an unhired row. Use a single-word retry for
 	// dark disabled buttons that line segmentation cannot read.
+	var raw []string
 	for _, psm := range []int{7, 8} {
 		hire, hireErr := readTextImage(ctx, caption, psm, "HIRELVUP")
 		if hireErr != nil {
-			return 0, hireErr
+			return 0, fmt.Errorf("startup hero HIRE at %v crop %v: %w", button, label, hireErr)
 		}
+		raw = append(raw, strings.TrimSpace(hire))
 		if strings.TrimSpace(hire) == "HIRE" {
 			return 0, nil
 		}
 	}
-	return 0, fmt.Errorf("startup hero level at %v: %w", button, err)
+	return 0, fmt.Errorf("startup hero HIRE at %v crop %v: unrecognized %q; LVL: %w", button, label, raw, err)
 }
 
 func startupBareZeroRegion(screen image.Image, button image.Point) image.Rectangle {
@@ -206,7 +295,48 @@ func startupBareZeroGlyph(screen image.Image, button image.Point) image.Rectangl
 
 func startupHeroNameRegion(screen image.Image, button image.Point) image.Rectangle {
 	b := screen.Bounds()
-	return image.Rect(b.Min.X+b.Dx()*17/100, button.Y-b.Dy()*7/100, b.Min.X+b.Dx()*365/1000, button.Y-b.Dy()*25/1000).Intersect(b)
+	search := image.Rect(b.Min.X+b.Dx()*17/100, button.Y-b.Dy()/10, b.Min.X+b.Dx()*365/1000, button.Y-b.Dy()/100).Intersect(heroListViewport(screen))
+	purple := 0
+	for y := search.Min.Y; y < search.Max.Y; y++ {
+		for x := search.Min.X; x < search.Max.X; x++ {
+			r, g, blue := rgb(screen.At(x, y))
+			if blue > 100 && blue > r+30 && blue > g+50 {
+				purple++
+			}
+		}
+	}
+	isPurple := purple > max(20, search.Dy())
+	start, last, bestStart, bestEnd := -1, -1, -1, -1
+	for y := search.Min.Y; y <= search.Max.Y+2; y++ {
+		ink := 0
+		if y < search.Max.Y {
+			for x := search.Min.X; x < search.Max.X; x++ {
+				r, g, blue := rgb(screen.At(x, y))
+				if isPurple && blue > 100 && blue > r+30 && blue > g+50 || !isPurple && min(r, g, blue) > 180 && max(r, g, blue)-min(r, g, blue) < 55 {
+					ink++
+				}
+			}
+		}
+		if ink >= max(2, b.Dx()/500) {
+			if start < 0 {
+				start = y
+			}
+			last = y
+			continue
+		}
+		if start >= 0 && y-last > 2 {
+			center := button.Y - b.Dy()/20
+			if last-start >= b.Dy()/100 && (bestStart < 0 || absDiff((start+last)/2, center) < absDiff((bestStart+bestEnd)/2, center)) {
+				bestStart, bestEnd = start, last
+			}
+			start = -1
+		}
+	}
+	if bestStart >= 0 {
+		search.Min.Y = max(search.Min.Y, bestStart-3)
+		search.Max.Y = min(search.Max.Y, bestEnd+4)
+	}
+	return search
 }
 
 func readStartupHeroName(ctx context.Context, screen image.Image, button image.Point) (string, error) {
@@ -232,7 +362,16 @@ func readStartupHeroName(ctx context.Context, screen image.Image, button image.P
 	} else {
 		raw, err = readGameText(ctx, screen, region, max(1, 2048/screen.Bounds().Dx()), 7, 180, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz, ")
 	}
-	return strings.ReplaceAll(strings.TrimSpace(raw), " ", ""), err
+	if err != nil {
+		return "", err
+	}
+	if startupHeroNamesErr != nil {
+		return "", startupHeroNamesErr
+	}
+	if name, ok := startupHeroNames[strings.ToLower(startupHeroLetters(raw))]; ok {
+		return name, nil
+	}
+	return "", fmt.Errorf("startup hero name at %v crop %v: unrecognized %q", button, region, strings.TrimSpace(raw))
 }
 
 // The positively identified name stays fixed even when the reset list grows.

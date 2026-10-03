@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
+	"strings"
 	"testing"
 	"time"
 )
@@ -378,5 +380,224 @@ func TestStartupHeroNativeMovedHire(t *testing.T) {
 	out, err := readStartupHeroObservation(ctx, wrong, read, &before, visited, true)
 	if err == nil && out.stable {
 		t.Fatal("different hero confirmed hire")
+	}
+}
+
+// Translate original card pixels while preserving the real HUD and scrollbar.
+// No text is synthesized; positive identity and level assertions use real OCR.
+func startupTranslatedCard(t *testing.T, path string, sourceY, targetY int, dark bool) image.Image {
+	t.Helper()
+	s := loadTestImage(t, path)
+	b := s.Bounds()
+	base := s
+	if b.Dx() == 2560 {
+		base = loadTestImage(t, "testdata/hero-startup-bottom-hire.png")
+	}
+	out := image.NewRGBA(b)
+	draw.Draw(out, b, base, b.Min, draw.Src)
+	viewport := heroListViewport(out)
+	viewport.Min.X, viewport.Max.X = b.Min.X+b.Dx()*35/1000, b.Min.X+b.Dx()*44/100
+	draw.Draw(out, viewport, image.NewUniform(color.RGBA{R: 255, G: 224, B: 95, A: 255}), image.Point{}, draw.Src)
+	source := image.Rect(viewport.Min.X, sourceY-b.Dy()*75/1000, viewport.Max.X, sourceY+b.Dy()*85/1000).Intersect(b)
+	destination := source.Add(image.Pt(0, targetY-sourceY)).Intersect(viewport)
+	draw.Draw(out, destination, s, destination.Min.Sub(image.Pt(0, targetY-sourceY)), draw.Src)
+	if dark {
+		for y := viewport.Min.Y; y < viewport.Max.Y; y++ {
+			for x := b.Min.X + b.Dx()*55/1000; x < b.Min.X+b.Dx()*140/1000; x++ {
+				r, g, blue := rgb(out.At(x, y))
+				if blue > 150 && blue > r+40 && blue >= g-10 && g > 90 {
+					out.Set(x, y, color.RGBA{R: 45, G: 60, B: 70, A: 255})
+				}
+			}
+		}
+	}
+	return out
+}
+
+func TestStartupHeroViewportMatrix(t *testing.T) {
+	requireAncientOCR(t)
+	ctx := context.Background()
+	read := heroReaders{level: readHeroLevel, gold: readHeroGold, price: readHeroPrice}
+	for _, card := range []struct {
+		path, name string
+		y, level   int
+	}{
+		{"testdata/hero-startup-zero.png", "Cid,theHelpfulAdventurer", 655, 0},
+		{"testdata/hero-startup-bottom-hire.png", "TheMaskedSamurai", 1337, 0},
+		{"testdata/hero-startup-bottom-hire.png", "BrittanyBeachPrincess", 709, 23975},
+		{"testdata/hero-nongilded-successor.jpg", "Skogur", 446, 99},
+		{"testdata/hero-nongilded-successor.jpg", "Moeru", 563, 0},
+	} {
+		for _, position := range []struct {
+			name string
+			y    int
+		}{{"top", 455}, {"middle", 638}, {"bottom", 929}} {
+			for _, dark := range []bool{false, true} {
+				// Moeru is an actual disabled fixture; preserve that native state.
+				if card.name == "Moeru" && !dark {
+					continue
+				}
+				t.Run(fmt.Sprintf("%s/%s/dark=%t", card.name, position.name, dark), func(t *testing.T) {
+					native := loadTestImage(t, card.path)
+					target := native.Bounds().Dy() * position.y / 1000
+					s := startupTranslatedCard(t, card.path, card.y, target, dark)
+					buttons := findHeroButtons(s, !dark)
+					if len(buttons) != 1 {
+						t.Fatalf("observed buttons: %v", buttons)
+					}
+					if opposite := findHeroButtons(s, dark); len(opposite) != 0 {
+						t.Fatalf("button classified twice: %v", opposite)
+					}
+					button := buttons[0]
+					name, err := readStartupHeroName(ctx, s, button)
+					if err != nil || name != card.name {
+						t.Fatalf("identity at %v: %q %v", button, name, err)
+					}
+					level, err := readStartupHeroLevel(ctx, s, button, read)
+					if err != nil || level != card.level {
+						t.Fatalf("level at %v: %d %v", button, level, err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestStartupHeroBoundaryNavigation(t *testing.T) {
+	requireAncientOCR(t)
+	ctx := context.Background()
+	read := heroReaders{level: readHeroLevel, gold: readHeroGold, price: readHeroPrice}
+	frame := func(s image.Image) gameFrame {
+		return gameFrame{id: 1, image: s, context: gameContext{known: true, heroes: true, bounds: s.Bounds()}}
+	}
+	s := loadTestImage(t, "testdata/hero-startup-bottom-hire.png")
+	visited := map[string]bool{"BrittanyBeachPrincess": true, "TheWanderingFisherman": true, "BettyClicker": true}
+	out, err := readStartupHeroObservation(ctx, frame(s), read, nil, visited, true)
+	if err != nil || !out.found || out.startupName != "TheMaskedSamurai" || out.button.Y <= 1327 || out.owned || out.level != 0 || out.startupComplete {
+		t.Fatalf("actual bottom frame: %+v %v", out, err)
+	}
+	// The old truncated-band point must not yield an invented roster identity.
+	// Name localization may recover the real hero, but arbitrary OCR is forbidden.
+	name, err := readStartupHeroName(ctx, s, image.Pt(204, 1327))
+	if err == nil && name != "TheMaskedSamurai" {
+		t.Fatalf("invented hero identity: %q", name)
+	}
+	bottom := startupTranslatedCard(t, "testdata/hero-startup-bottom-hire.png", 1337, 1435, false)
+	clipped, err := readStartupHeroObservation(ctx, frame(bottom), read, nil, nil, true)
+	if err != nil || clipped.found || clipped.startupComplete || clipped.startupScroll.Y <= clipped.thumb.Y {
+		t.Fatalf("bottom-clipped target: %+v %v", clipped, err)
+	}
+	// Initial mid-list startup seeks the top; no mid-list purchase can precede Cid.
+	initial, err := readStartupHeroObservation(ctx, frame(s), read, nil, nil, false)
+	if err != nil || initial.found || initial.startupComplete || initial.startupScroll.Y >= initial.thumb.Y || initial.startupScroll == (image.Point{}) {
+		t.Fatalf("initial top seek: %+v %v", initial, err)
+	}
+	// After a confirmed overlapping scroll, the incomplete top card is behind
+	// the sweep. It must not pull the scrollbar up and oscillate.
+	top := startupTranslatedCard(t, "testdata/hero-startup-bottom-hire.png", 709, 570, false)
+	mid := startupTranslatedCard(t, "testdata/hero-startup-bottom-hire.png", 1337, 920, false)
+	combined := image.NewRGBA(s.Bounds())
+	draw.Draw(combined, combined.Bounds(), top, top.Bounds().Min, draw.Src)
+	draw.Draw(combined, image.Rect(89, 810, 1126, 1050), mid, image.Pt(89, 810), draw.Src)
+	next, err := readStartupHeroObservation(ctx, frame(combined), read, nil, visited, true)
+	if err != nil || !next.found || next.startupName != "TheMaskedSamurai" || next.startupScroll != (image.Point{}) || next.startupComplete {
+		t.Fatalf("monotonic overlap: %+v %v", next, err)
+	}
+}
+
+func TestStartupHeroRosterIdentity(t *testing.T) {
+	if startupHeroNamesErr != nil || len(startupHeroNames) != 54 {
+		t.Fatalf("official roster unavailable: %d %v", len(startupHeroNames), startupHeroNamesErr)
+	}
+	for raw, want := range map[string]string{
+		"Cid, the Helpful Adventurer": "Cid,theHelpfulAdventurer",
+		"CidtheHelpfulAdventurer":     "Cid,theHelpfulAdventurer",
+		"Ivan, the Drunken Brawler":   "IvantheDrunkenBrawler",
+		"Brittany, Beach Princess":    "BrittanyBeachPrincess",
+		"The Masked Samurai":          "TheMaskedSamurai",
+	} {
+		if got := startupHeroNames[strings.ToLower(startupHeroLetters(raw))]; got != want {
+			t.Fatalf("%q mapped to %q, want %q", raw, got, want)
+		}
+	}
+	for _, raw := range []string{"hBoawlenalBeeen", "IvantheDrunkenBrawiler", "HIRE", "", "TheMaskedSamura"} {
+		if _, known := startupHeroNames[strings.ToLower(startupHeroLetters(raw))]; known {
+			t.Fatalf("unknown OCR identity accepted: %q", raw)
+		}
+	}
+}
+
+func TestStartupHeroViewportObstruction(t *testing.T) {
+	requireAncientOCR(t)
+	ctx := context.Background()
+	read := heroReaders{level: readHeroLevel, gold: readHeroGold, price: readHeroPrice}
+	for _, tc := range []struct {
+		name, path string
+		sourceY    int
+		field      string
+	}{
+		{"name", "testdata/hero-startup-bottom-hire.png", 1337, "name"},
+		{"HIRE", "testdata/hero-startup-bottom-hire.png", 1337, "caption"},
+		{"LVL", "testdata/hero-startup-bottom-hire.png", 709, "level"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := startupTranslatedCard(t, tc.path, tc.sourceY, 920, false)
+			button := findHeroButtons(s, true)[0]
+			region := startupHeroNameRegion(s, button)
+			switch tc.field {
+			case "caption":
+				glyph := startupBareZeroGlyph(s, button)
+				region = image.Rect(179, glyph.Min.Y-15, 294, glyph.Max.Y+6)
+			case "level":
+				region = image.Rect(665, button.Y-29, 973, button.Y+21)
+			}
+			covered := image.NewRGBA(s.Bounds())
+			draw.Draw(covered, covered.Bounds(), s, s.Bounds().Min, draw.Src)
+			fill := color.Color(color.Black)
+			if tc.field == "level" {
+				fill = color.RGBA{R: 255, G: 224, B: 95, A: 255}
+			}
+			draw.Draw(covered, region, image.NewUniform(fill), image.Point{}, draw.Src)
+			f := gameFrame{id: 1, image: covered, context: gameContext{known: true, heroes: true, bounds: covered.Bounds()}}
+			o, err := readStartupHeroObservation(ctx, f, read, nil, nil, true)
+			if err == nil || o.found || o.startupComplete || o.startupScroll != (image.Point{}) {
+				t.Fatalf("middle obstruction accepted: %+v %v", o, err)
+			}
+			if tc.field == "caption" && (!strings.Contains(err.Error(), "crop") || !strings.Contains(err.Error(), "unrecognized")) {
+				t.Fatalf("HIRE crop/raw evidence missing: %v", err)
+			}
+			// A blocked modal prevents all hero OCR and input decisions.
+			f.context.saveMenu = true
+			o, err = readStartupHeroObservation(ctx, f, heroReaders{}, nil, nil, true)
+			if err != nil || o.found || o.startupComplete || o.startupScroll != (image.Point{}) {
+				t.Fatalf("modal consumed hero fields: %+v %v", o, err)
+			}
+		})
+	}
+}
+
+func TestStartupHeroBoundaryHireConfirmation(t *testing.T) {
+	requireAncientOCR(t)
+	ctx := context.Background()
+	read := heroReaders{level: readHeroLevel, gold: readHeroGold, price: readHeroPrice}
+	frame := func(s image.Image, id uint64) gameFrame {
+		return gameFrame{id: id, image: s, context: gameContext{known: true, heroes: true, bounds: s.Bounds()}}
+	}
+	beforeFrame := frame(startupTranslatedCard(t, "testdata/hero-startup-fisherman-before.png", 966, 1337, false), 1)
+	before, err := readStartupHeroObservation(ctx, beforeFrame, read, nil, nil, true)
+	if err != nil || !before.found || before.owned || before.startupName != "TheWanderingFisherman" {
+		t.Fatalf("before boundary hire: %+v %v", before, err)
+	}
+	// Apply the same translation to the actual after frame; the real card/button
+	// geometry changes, preserving the native HIRE -> 10000 evidence.
+	afterFrame := frame(startupTranslatedCard(t, "testdata/hero-startup-fisherman-after.png", 943, 1337-(966-943), false), 2)
+	after, err := readStartupHeroObservation(ctx, afterFrame, read, &before, nil, true)
+	if err != nil || !after.stable || !after.owned || after.level != 10000 || after.startupName != before.startupName || after.button == before.button {
+		t.Fatalf("boundary hire confirmation: %+v %v", after, err)
+	}
+	clippedFrame := frame(startupTranslatedCard(t, "testdata/hero-startup-fisherman-after.png", 943, 1455, false), 3)
+	unknown, err := readStartupHeroObservation(ctx, clippedFrame, read, &before, nil, true)
+	if err == nil || unknown.owned || unknown.startupComplete {
+		t.Fatalf("clipped confirmation credited: %+v %v", unknown, err)
 	}
 }

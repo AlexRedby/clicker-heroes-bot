@@ -18,6 +18,25 @@ func findHeroLevelButtons(screen image.Image) []image.Point {
 }
 
 func findHeroButtons(screen image.Image, enabled bool) []image.Point {
+	bands := findHeroButtonBands(screen, enabled)
+	var buttons []image.Point
+	for _, band := range bands {
+		buttons = append(buttons, image.Pt(screen.Bounds().Min.X+screen.Bounds().Dx()*8/100, (band.Min.Y+band.Max.Y-1)/2))
+	}
+	return buttons
+}
+
+// Use the visible list, including the bottom edge, to measure a button's band.
+func heroListViewport(screen image.Image) image.Rectangle {
+	b := screen.Bounds()
+	top := b.Min.Y + b.Dy()/5
+	if heroQuantityBarPresent(screen) {
+		top = b.Min.Y + b.Dy()*38/100
+	}
+	return image.Rect(b.Min.X, top, b.Max.X, b.Max.Y)
+}
+
+func findHeroButtonBands(screen image.Image, enabled bool) []image.Rectangle {
 	if screen == nil {
 		return nil
 	}
@@ -30,9 +49,10 @@ func findHeroButtons(screen image.Image, enabled bool) []image.Point {
 		return nil
 	}
 	xStart, xEnd := bounds.Min.X+w*55/1000, bounds.Min.X+w*130/1000
-	yStart, yEnd := bounds.Min.Y+h/5, bounds.Min.Y+h*94/100
+	viewport := heroListViewport(screen)
+	yStart, yEnd := viewport.Min.Y, viewport.Max.Y
 	xStep, gap := max(1, w/500), max(3, h/150)
-	var buttons []image.Point
+	var buttons []image.Rectangle
 	start, last := -1, -1
 	for y := yStart; y <= yEnd+gap; y++ {
 		blue, samples := 0, 0
@@ -47,7 +67,7 @@ func findHeroButtons(screen image.Image, enabled bool) []image.Point {
 		}
 		threshold := 3
 		if !enabled {
-			threshold = 7
+			threshold = 5
 		}
 		if samples > 0 && blue*10 >= samples*threshold {
 			if start < 0 {
@@ -58,8 +78,8 @@ func findHeroButtons(screen image.Image, enabled bool) []image.Point {
 		}
 		if start >= 0 && y-last > gap {
 			center := (start + last) / 2
-			if last-start > h/40 && heroRowYellow(screen, center) {
-				buttons = append(buttons, image.Pt(bounds.Min.X+w*8/100, center))
+			if (last-start > h/40 || (start == yStart || last == yEnd-1) && last-start > h/100) && heroRowYellow(screen, center) {
+				buttons = append(buttons, image.Rect(xStart, start, xEnd, last+1))
 			}
 			start = -1
 		}
@@ -68,39 +88,12 @@ func findHeroButtons(screen image.Image, enabled bool) []image.Point {
 }
 
 func findNextHeroButton(screen image.Image, current image.Point) (image.Point, bool) {
-	if screen == nil || !heroTabSelected(screen) {
+	if screen == nil {
 		return image.Point{}, false
 	}
-	bounds := screen.Bounds()
-	w, h := bounds.Dx(), bounds.Dy()
-	xStart, xEnd := bounds.Min.X+w*55/1000, bounds.Min.X+w*130/1000
-	yStart, yEnd := current.Y+h/15, bounds.Min.Y+h*94/100
-	xStep, gap := max(1, w/500), max(3, h/150)
-	start, last := -1, -1
-	for y := yStart; y <= yEnd+gap; y++ {
-		dark, samples := 0, 0
-		if y < yEnd {
-			for x := xStart; x < xEnd; x += xStep {
-				r, g, b := rgb(screen.At(x, y))
-				if r < 150 && g < 150 && b < 150 {
-					dark++
-				}
-				samples++
-			}
-		}
-		if samples > 0 && dark*10 >= samples*7 {
-			if start < 0 {
-				start = y
-			}
-			last = y
-			continue
-		}
-		if start >= 0 && y-last > gap {
-			center := (start + last) / 2
-			if last-start > h/40 && heroRowYellow(screen, center) {
-				return image.Pt(bounds.Min.X+w*8/100, center), true
-			}
-			start = -1
+	for _, button := range findHeroButtons(screen, false) {
+		if button.Y >= current.Y+screen.Bounds().Dy()/15 {
+			return button, true
 		}
 	}
 	return image.Point{}, false

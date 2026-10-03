@@ -19,6 +19,21 @@ import (
 //go:embed assets/gild-heroes.json
 var gildHeroData []byte
 
+// HeroNames returns the official roster already embedded for gild planning.
+func HeroNames() ([]string, error) {
+	var heroes []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(gildHeroData, &heroes); err != nil {
+		return nil, err
+	}
+	names := make([]string, len(heroes))
+	for i, hero := range heroes {
+		names[i] = hero.Name
+	}
+	return names, nil
+}
+
 const maxGildInteger = 9007199254740991 // The client uses native doubles.
 
 type GildHero struct {
