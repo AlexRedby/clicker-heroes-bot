@@ -541,10 +541,11 @@ func planAncientsWithPrice(ctx context.Context, save ancientSave, reserve string
 	if spent.Sign() < 0 || spent.Cmp(available) > 0 {
 		return p, errors.New("calculated spend exceeds available Hero Souls")
 	}
-	p.Souls, p.Reserve, p.Spent, p.Remaining = aString(souls), aString(reserved), aString(spent), aString(aSub(souls, spent))
+	p.Souls, p.Reserve = aString(souls), aString(reserved)
 	if investedKnown {
 		p.Invested = aString(invested)
 	}
+	spent = aConst("0")
 	for _, def := range definitions.Ancients {
 		old := levels[def.ID]
 		if old == nil || old.Sign() == 0 {
@@ -563,8 +564,20 @@ func planAncientsWithPrice(ctx context.Context, save ancientSave, reserve string
 		if err != nil {
 			return p, err
 		}
+		// Filter only the finished input plan; preserve allocation and its price ceilings.
+		if def.Formula != "exponential" && old.Cmp(aConst("1e9")) >= 0 {
+			// Both decimal integers were validated by aInput/InputQuantity. Exact
+			// comparison keeps the 0.1% boundary despite binary rounding at huge levels.
+			current, _ := new(big.Rat).SetString(string(save.Ancients.Ancients[strconv.Itoa(def.ID)].Level))
+			entered, _ := new(big.Rat).SetString(text)
+			if new(big.Rat).Mul(entered, big.NewRat(1000, 1)).Cmp(current) < 0 {
+				continue
+			}
+		}
 
 		p.Rows = append(p.Rows, Purchase{def.ID, def.Name, aString(old), aString(target), text, aString(cost)})
+		spent = aAdd(spent, cost)
 	}
+	p.Spent, p.Remaining = aString(spent), aString(aSub(souls, spent))
 	return p, p.Validate()
 }

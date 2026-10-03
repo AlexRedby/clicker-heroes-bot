@@ -231,6 +231,143 @@ func TestAncientGuardedPolynomialAllocation(t *testing.T) {
 	}
 }
 
+func TestAncientMeaningfulPurchaseBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		name, current, delta string
+		keepFrags, atman     bool
+	}{
+		{"below-relative-minimum", "1000000000", "999999", false, false},
+		{"exact-relative-minimum", "1000000000", "1000000", true, false},
+		{"input-truncates-below-minimum", "1234567890", "1234568", false, false},
+		{"input-meets-minimum", "1234567890", "1234570", true, false},
+		{"small-and-exponential-plus-one", "1000000", "1", true, true},
+		{"huge-micro", "1e500", "1e496", false, false},
+		{"huge-meaningful", "1e500", "2e497", true, false},
+		{"huge-exact-entered-minimum", "1e167", "1.000001e164", true, false},
+		{"huge-exact-entered-minimum-170", "1e170", "1.000001e167", true, false},
+		{"huge-exact-entered-minimum-172", "1e172", "1.000001e169", true, false},
+		{"huge-exact-entered-minimum-1000", "1e1000", "1.000001e997", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old, delta := exactPlanAmount(t, tc.current), exactPlanAmount(t, tc.delta)
+			target := new(big.Rat).Add(old, delta)
+			// Independent exact integer prices select the allocator's desired base.
+			fragsCost := new(big.Rat).Quo(new(big.Rat).Sub(
+				new(big.Rat).Mul(target, new(big.Rat).Add(target, big.NewRat(1, 1))),
+				new(big.Rat).Mul(old, new(big.Rat).Add(old, big.NewRat(1, 1)))), big.NewRat(2, 1))
+			oldMorg := new(big.Rat).Mul(old, old)
+			morgCost := new(big.Rat).Sub(new(big.Rat).Mul(target, target), oldMorg)
+			wallet := new(big.Rat).Add(new(big.Rat).Add(fragsCost, morgCost), big.NewRat(100, 1))
+			save := smallAllocationSave(1, 0, true)
+			save.Ancients.Ancients["19"] = ancientSaveEntry{Level: json.Number(old.Num().String())}
+			save.Ancients.Ancients["16"] = ancientSaveEntry{Level: json.Number(oldMorg.Num().String())}
+			if tc.atman {
+				save.Ancients.Ancients["13"] = ancientSaveEntry{Level: "19"}
+				wallet.Add(wallet, big.NewRat(1048576, 1)) // 2^20 pays for Atman 19 -> 20.
+			}
+			save.HeroSouls = json.Number(wallet.Num().String())
+			p, err := planAncientsWithPrice(context.Background(), save, "100", 0, false, legacyAncientPrice)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertAncientPlanLedger(t, p)
+			foundFrags, foundAtman := false, false
+			for _, row := range p.Rows {
+				if row.ID == 19 {
+					foundFrags = true
+					if !strings.HasPrefix(tc.current, "1e") && (exactPlanAmount(t, row.Target).Cmp(target) != 0 || exactPlanAmount(t, row.Cost).Cmp(fragsCost) != 0) {
+						t.Fatal("retained allocator target or conservative price changed", row)
+					}
+					if strings.HasPrefix(tc.name, "huge-exact-entered-minimum") {
+						minimum := new(big.Rat).Quo(old, big.NewRat(1000, 1))
+						text, err := InputQuantity(minimum.Num().String())
+						if err != nil || row.Quantity != text {
+							t.Fatal("test did not reach the exact entered 0.1% boundary", row.Quantity, text, err)
+						}
+					}
+				}
+				if row.ID == 13 {
+					foundAtman = row.Quantity == "1" && row.Target == "20" && row.Cost == "1048576"
+				}
+			}
+			if foundFrags != tc.keepFrags || foundAtman != tc.atman {
+				t.Fatal("incorrect micro-purchase policy", p.Rows)
+			}
+			if tc.name == "huge-micro" && (len(p.Rows) != 0 || p.Spent != "0" || p.Remaining != p.Souls) {
+				t.Fatal("empty plan retained skipped spend or cancellation error", p)
+			}
+			if tc.name == "below-relative-minimum" {
+				if len(p.Rows) != 1 || p.Rows[0].ID != 16 || exactPlanAmount(t, p.Spent).Cmp(morgCost) != 0 || exactPlanAmount(t, p.Remaining).Cmp(new(big.Rat).Add(fragsCost, big.NewRat(100, 1))) != 0 {
+					t.Fatal("skipped estimate did not remain in the wallet", p)
+				}
+			}
+		})
+	}
+}
+
+func TestAncientRepeatedInputStopsMicroPurchases(t *testing.T) {
+	data, err := os.ReadFile("testdata/ancient-save.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	save, err := decodeAncientSave(context.Background(), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var definitions struct {
+		Ancients []ancientDefinition `json:"ancients"`
+	}
+	if err := json.Unmarshal(ancientDataJSON, &definitions); err != nil {
+		t.Fatal(err)
+	}
+	chor, err := aInput(string(save.Outsiders.Outsiders["2"].Level), "discount", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	multiplier := aPowInteger(aConst("0.95"), chor)
+	for run := 0; run < 4; run++ {
+		p, err := planAncients(context.Background(), save, "1%", 1, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertAncientPlanLedger(t, p)
+		if run >= 2 {
+			if len(p.Rows) != 0 || p.Spent != "0" || p.Remaining != p.Souls {
+				t.Fatal("repeat run still requests micro-purchases", run, p)
+			}
+			continue
+		}
+		if len(p.Rows) == 0 {
+			t.Fatal("meaningful initial allocation was skipped", run)
+		}
+		// Model six-digit entered integers and legacy charge estimates. This is
+		// a repeat-run regression, not installed-game balance calibration.
+		paid := aConst("0")
+		for _, row := range p.Rows {
+			old, _ := aInput(row.Current, "current", true)
+			entered, _ := aInput(row.Quantity, "quantity", true)
+			target := aAdd(old, entered)
+			for _, def := range definitions.Ancients {
+				if def.ID != row.ID {
+					continue
+				}
+				cost, err := legacyAncientPrice(def.Formula, old, target, multiplier)
+				if err != nil {
+					t.Fatal(err)
+				}
+				paid = aAdd(paid, cost)
+			}
+			key := strconv.Itoa(row.ID)
+			entry := save.Ancients.Ancients[key]
+			integer, _ := target.Int(nil)
+			entry.Level = json.Number(integer.String())
+			save.Ancients.Ancients[key] = entry
+		}
+		wallet, _ := aInput(p.Souls, "wallet", false)
+		save.HeroSouls = json.Number(aString(aSub(wallet, paid)))
+	}
+}
+
 func smallAllocationSave(wallet int, chor int, morgulis bool) ancientSave {
 	save := ancientSave{
 		HeroSouls: json.Number(strconv.Itoa(wallet)), HeroSoulsSacrificed: "0",
