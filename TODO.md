@@ -1,12 +1,5 @@
 # TODO
 
-## Current runtime errors
-
-- Reproduce the ordinary Heroes scrollbar rejection on the native top-list fixture, share the existing merged-arrow handling with startup and queue checks, and verify regular leveling can request the drag after an Ancient batch. Save the failed shared frame if recognition still fails in the installed game.
-- Integrate the Mercenary owner fix for CRLF TSV timer coordinates and noisy running-row timer labels; verify supplied log regressions and existing quest scenarios.
-- Review skill 7 activation confirmation with the combat owner; fix reproduced defects and retain a specific native evidence gate for unconfirmed behavior.
-- Run the combined OCR regression suite and build, review the changed paths, then commit and push the integrated fixes to main.
-
 ## Startup and unattended Ascension validation
 
 - Verify native hire/MAX level confirmation and the full affordable hero sweep using the supplied initial frames. If confirmation fails, capture before/after rows and logs; positive post-hire levels in fixture tests use the existing level reader through controlled stubs.
@@ -60,11 +53,13 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Active skills
 
+- Verify skill 7 after the Ancient-to-Heroes return at the reported zone 549. Absent-toolbar false ready detection is fixed, but the exact live transition remains unconfirmed; collect the expanded before/after state log and `artifacts/skill-7-unconfirmed.png` if it recurs.
+
 - Verify all states and skill transitions in the installed game, including ready icons after cooldown, continuous energized buffs, the second wave after Reload, Dark Ritual's capped no-op, and simultaneous fish/hero actions.
 
 ## Screen and live-game validation
 
-- Reproduce the reported failure to scroll from the top of the list using an actual pre-drag screenshot. Distinguish `hero scrollbar not recognized` from an emitted `dragged hero scrollbar` followed by missing bottom confirmation. The queue regression covers a relocated real thumb with slow SIFT, but does not establish that the reported live geometry is recognized.
+- Verify ordinary Heroes scrolling after an Ancient batch in the installed game. The native top-list fixture now passes the common arrow/thumb detector and queue guard. If recognition still fails, collect `artifacts/hero-scrollbar-unrecognized.png` and the log; a drag followed by a missing bottom confirmation is a separate input/transition failure.
 
 - Verify live recovery when a fish appears over the scrollbar or obscures purchase confirmation: collect it, resume hero actions, and avoid counting the obstruction as a failed purchase. Persistent visible fish should retry after five seconds; vanished fish must not be clicked again. Verify the same recovery on the Ancient scrollbar during a purchase batch: no false missing-row failure, no repeated purchase, and no fish input while a quantity/settings popup covers the game.
 
@@ -86,7 +81,6 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Native Ancient calculator review
 
-- Diagnose the live Dora exported-level mismatch during upward Argaiv seeking using the new stall frame; verify name/level row association and clipping before changing pre-purchase checks. Reproduce the root cause in a regression, review and integrate the fix.
 - Verify installed-binary identity and close the Hero Souls spending live gates below. Static web-client arithmetic checks do not establish native purchase acceptance.
 - Verify live navigation past a top-clipped Ancient level: keep its name as a navigation anchor, wait for a complete level crop before buying, and retain saved/read diagnostics for a genuine mismatch.
 
@@ -98,6 +92,8 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 - Capture the relic-junk blocking screen and recognize/report it specifically; keep automatic relic destruction/equipment outside this mode. Unknown or blocked transitions currently time out to a pause.
 
 ### Hero Souls spending
+
+- Verify benefit-based residual Morgulis purchases in the installed game with fresh before/after exports. Compare the native Soul damage bonus and billing to the guarded plan, confirm the optional explicit reserve and no repeated significant purchases without new souls. The Active allocation remains an approximate farming model, not a globally optimal damage/gold/skill solver.
 
 - Verify a live large Ancient purchase with six-significant-digit input and the 200 ms entry wait, including closed owned-dialog acknowledgement and F8 interruption. Confirm repeated fresh-export plans stop once large non-exponential increases fall below 0.1%.
 - Verify V custom-quantity opening in the running Windows game after the added 100 ms key-settling delay, using a fresh export after Atman's unintended level increase.

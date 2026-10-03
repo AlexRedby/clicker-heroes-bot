@@ -605,7 +605,7 @@ func planAncientsWithPrice(ctx context.Context, save ancientSave, reserve string
 			}
 			target := aMax(old, aRound(goal, true))
 			if def.ID != -1 && def.Formula != "exponential" && target.Cmp(aConst("1e9")) >= 0 && aSub(target, old).Cmp(aMax(aConst("4"), aMul(old, aConst("1e-10")))) < 0 {
-				// ponytail: skip unresolved client increments; interval pricing
+				// Skip unresolved client increments; interval pricing
 				// can support them once its endpoint errors are correlated.
 				target = old
 			}

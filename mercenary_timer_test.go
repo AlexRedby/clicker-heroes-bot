@@ -6,12 +6,16 @@ import (
 	"image"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func fakeMercenaryTesseract(t *testing.T, output string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is Unix only")
+	}
 	path := filepath.Join(t.TempDir(), "tesseract")
 	// The TSV is deliberately emitted verbatim. In particular, keep carriage
 	// returns in the OCR word text: they are part of the regression input.

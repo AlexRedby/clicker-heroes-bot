@@ -919,7 +919,16 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.fish.shouldClick(out.point, false)
 		}
 	case skillAnalysis:
+		pending := p.skill.pending
 		p.skill.observeFrame(out.skills, out.frame.id, out.frame.generation, now)
+		if pending != nil && p.skill.pending == nil && p.skill.retryAt[pending.key-1].After(now) && out.frame.image != nil {
+			path := fmt.Sprintf("artifacts/skill-%d-unconfirmed.png", pending.key)
+			if err := saveImage(path, out.frame.image); err != nil {
+				fmt.Printf("save skill failure screenshot: %v\n", err)
+			} else {
+				fmt.Printf("saved skill failure screenshot: %s\n", path)
+			}
+		}
 		if p.options.progression && p.progression.pending == nil && !now.Before(p.nextProgression) && p.progressionJobs != nil {
 			replaceJob(p.progressionJobs, analysisJob{frame: out.frame, skills: out.skills, modeOnly: p.progression.pending != nil})
 			delay := 2 * time.Second

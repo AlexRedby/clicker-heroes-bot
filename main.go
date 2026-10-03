@@ -31,7 +31,7 @@ func main() {
 	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot or preview JSON for transcension-plan mode")
 	save := flag.String("save", "", "exported save for preview modes, run Outsider roster, or Ascension invested-soul baseline (read only)")
 	outsiderShot := flag.String("screenshot", "", "existing Outsiders screenshot to reconcile with -save in transcension-plan mode (read only)")
-	ancientReserve := flag.String("ancient-reserve", "1%", "Hero Souls to reserve beyond the calculator soul bank")
+	ancientReserve := flag.String("ancient-reserve", "0", "Optional Hero Souls spending floor beyond the calculator soul bank")
 	ancientSkillRate := flag.Float64("ancient-skill-rate", 1, "calculator allocation to skill Ancients, from 0 to 1")
 	ancientBeyond8k := flag.Bool("ancient-beyond8k", false, "best hero is levelled beyond 8000; changes calculator gold allocation")
 	ancientSave := flag.String("ancients-save", "", "exported save for one Ancient purchase batch before normal run actions")
