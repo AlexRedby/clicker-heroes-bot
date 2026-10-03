@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"maps"
 	"sync"
 	"time"
 )
@@ -20,6 +21,9 @@ type heroObservation struct {
 	frame                                        gameFrame
 	button, thumb                                image.Point
 	thumbFound, bottom, x1, found, owned, stable bool
+	startup, passiveReady, startupComplete       bool
+	startupName                                  string
+	startupScroll                                image.Point
 	level                                        int
 	gold, nextPrice                              float64
 }
@@ -30,6 +34,7 @@ type heroAttempt struct {
 	last     heroObservation
 }
 type heroRunner struct {
+	startupDone  map[string]bool
 	enabled      bool
 	failures     int
 	nextScan     time.Time
@@ -39,6 +44,15 @@ type heroRunner struct {
 	parked       bool
 	onFailure    func(heroAttempt)
 }
+
+// A confirmed reset starts a new sweep. F8 interrupt preserves confirmed visits.
+func (p *heroRunner) startStartup() {
+	p.interrupt()
+	p.startupDone = make(map[string]bool)
+}
+
+// The worker owns this snapshot; it never shares a mutable map with input.
+func (p *heroRunner) startupVisits() map[string]bool { return maps.Clone(p.startupDone) }
 
 func (p *heroRunner) due(now time.Time) bool {
 	return p.enabled && !now.Before(p.nextScan) && !(p.pending != nil && p.pending.action.kind == buyHero && p.pending.attempts >= 5)
@@ -143,6 +157,12 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 			if out.stable && out.level > pending.action.hero.level {
 				fmt.Printf("leveled hero at (%d, %d)\n", out.button.X, out.button.Y)
 				p.failures = 0
+				if pending.action.hero.startup && pending.action.hero.owned {
+					if p.startupDone == nil {
+						p.startupDone = make(map[string]bool)
+					}
+					p.startupDone[pending.action.hero.startupName] = true
+				}
 				p.pending = nil
 				p.latest = heroObservation{}
 				p.nextScan = now
@@ -169,7 +189,8 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 			}
 			p.pending = nil
 		case scrollHeroes:
-			if !out.bottom {
+			movedStartup := pending.action.hero.startup && out.thumbFound && !startupHeroListStable(pending.action.frame.image, out.frame.image)
+			if !out.bottom && !movedStartup {
 				if pending.attempts >= 3 {
 					p.pending = nil
 					p.latest = heroObservation{}
@@ -224,7 +245,15 @@ func (p *heroRunner) action(now time.Time) (gameAction, bool) {
 	o := p.latest
 	a := gameAction{frame: o.frame, hero: o}
 	switch {
-	case !o.thumbFound:
+	case o.startup && !o.x1 && heroQuantityBarPresent(o.frame.image):
+		a.kind = selectQuantity
+	case o.startup && o.startupScroll != (image.Point{}):
+		a.kind, a.point, a.target = scrollHeroes, o.thumb, o.startupScroll
+	case o.startup && (o.startupComplete || !o.found):
+		p.nextScan = now.Add(time.Second)
+		p.latest = heroObservation{}
+		return a, false
+	case !o.startup && !o.thumbFound:
 		if p.parked {
 			fmt.Println("hero scrollbar not recognized; retrying in 30s")
 			p.nextScan = now.Add(30 * time.Second)
@@ -233,7 +262,7 @@ func (p *heroRunner) action(now time.Time) (gameAction, bool) {
 		}
 		a.kind = parkPointer
 		a.point = parkPoint(o.frame.context.bounds)
-	case !o.bottom:
+	case !o.startup && !o.bottom:
 		a.kind = scrollHeroes
 		a.point = o.thumb
 		a.target = image.Pt(o.thumb.X, o.frame.context.bounds.Max.Y-1)

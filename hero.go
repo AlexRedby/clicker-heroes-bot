@@ -6,35 +6,50 @@ import (
 )
 
 func findHeroLevelButton(screen image.Image) (image.Point, bool) {
-	if screen == nil {
+	buttons := findHeroLevelButtons(screen)
+	if len(buttons) == 0 {
 		return image.Point{}, false
+	}
+	return buttons[len(buttons)-1], true
+}
+
+func findHeroLevelButtons(screen image.Image) []image.Point {
+	return findHeroButtons(screen, true)
+}
+
+func findHeroButtons(screen image.Image, enabled bool) []image.Point {
+	if screen == nil {
+		return nil
 	}
 	bounds := screen.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	if w < 640 || h < 360 {
-		return image.Point{}, false
+		return nil
 	}
 	if !heroTabSelected(screen) {
-		return image.Point{}, false
+		return nil
 	}
 	xStart, xEnd := bounds.Min.X+w*55/1000, bounds.Min.X+w*130/1000
 	yStart, yEnd := bounds.Min.Y+h/5, bounds.Min.Y+h*94/100
 	xStep, gap := max(1, w/500), max(3, h/150)
-	var best image.Point
-	found := false
+	var buttons []image.Point
 	start, last := -1, -1
 	for y := yStart; y <= yEnd+gap; y++ {
 		blue, samples := 0, 0
 		if y < yEnd {
 			for x := xStart; x < xEnd; x += xStep {
 				r, g, b := rgb(screen.At(x, y))
-				if b > 150 && b > r+40 && b >= g-10 && g > 90 {
+				if enabled && b > 150 && b > r+40 && b >= g-10 && g > 90 || !enabled && r < 150 && g < 150 && b < 150 {
 					blue++
 				}
 				samples++
 			}
 		}
-		if samples > 0 && blue*10 >= samples*3 {
+		threshold := 3
+		if !enabled {
+			threshold = 7
+		}
+		if samples > 0 && blue*10 >= samples*threshold {
 			if start < 0 {
 				start = y
 			}
@@ -44,13 +59,12 @@ func findHeroLevelButton(screen image.Image) (image.Point, bool) {
 		if start >= 0 && y-last > gap {
 			center := (start + last) / 2
 			if last-start > h/40 && heroRowYellow(screen, center) {
-				best = image.Pt(bounds.Min.X+w*8/100, center)
-				found = true
+				buttons = append(buttons, image.Pt(bounds.Min.X+w*8/100, center))
 			}
 			start = -1
 		}
 	}
-	return best, found
+	return buttons
 }
 
 func findNextHeroButton(screen image.Image, current image.Point) (image.Point, bool) {
