@@ -94,3 +94,47 @@ func TestReadFreshExportDoesNotReuseUnchangedFile(t *testing.T) {
 		t.Fatalf("reused stale export: %q %v", path, err)
 	}
 }
+
+func TestGeneratedExportCleanupPreservesUnownedOrChangedFiles(t *testing.T) {
+	for _, name := range []string{"generated", "pre-existing", "missing-snapshot", "changed", "symlink", "cancelled"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "clickerHeroSave-new.txt")
+			consumed := []byte("consumed synthetic export")
+			if err := os.WriteFile(path, consumed, 0600); err != nil {
+				t.Fatal(err)
+			}
+			before := make(exportSnapshot)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			switch name {
+			case "pre-existing":
+				before[path] = exportFileStamp{}
+			case "missing-snapshot":
+				before = nil
+			case "changed":
+				if err := os.WriteFile(path, []byte("a newer user export"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "symlink":
+				target := filepath.Join(dir, "manual-save.txt")
+				if err := os.Rename(path, target); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, path); err != nil {
+					t.Fatal(err)
+				}
+			case "cancelled":
+				cancel()
+			}
+			removed, err := removeGeneratedExport(ctx, path, before, consumed)
+			if err != nil || removed != (name == "generated") {
+				t.Fatalf("removed=%t err=%v", removed, err)
+			}
+			_, statErr := os.Lstat(path)
+			if removed && !errors.Is(statErr, os.ErrNotExist) || !removed && statErr != nil {
+				t.Fatalf("unexpected file state: %v", statErr)
+			}
+		})
+	}
+}

@@ -251,6 +251,14 @@ func readExport(job exportJob) (exportResult, error) {
 			continue
 		}
 		result.relicErr = err
+		if err := job.ctx.Err(); err != nil {
+			return exportResult{}, err
+		}
+		if removed, err := removeGeneratedExport(job.ctx, path, job.before, data); err != nil {
+			fmt.Printf("save export: cleanup failed for %q: %v\n", path, err)
+		} else if removed {
+			fmt.Println("save export: removed generated export:", path)
+		}
 		return result, nil
 	}
 }

@@ -1,5 +1,16 @@
 # TODO
 
+## Generated save cleanup
+
+- After successful automatic export decoding, delete only the exact newly created file absent from the snapshot taken before Save and still matching the consumed bytes. Preserve pre-existing, changed, symlinked, unreadable and failed exports; cover ordinary planning and relic-only checks, then review/build before integrating.
+
+## Early progression after Ascension
+
+- Verify the minimal starting Heroes/first-hire UI on real post-reset frames; identify a passive-DPS hero and supported short-list geometry. Do not require the full skill-unlock or Auto Clicker-placement milestone for this early step.
+- Add a shared-frame, serialized-input early-start handoff after confirmed Ascension: bounded starting hero level purchases, then enable recognized disabled progression with A before fresh export and the Ancient batch. Preserve modal/F8/fish handling and avoid stale plan replay.
+- Keep passive game progression running during Ancient purchases; do not switch tabs or send unrelated hero inputs through a quantity dialog. After ordinary spending, resume existing hero automation without a blanket completion pause when startup is ready.
+- Verify reset -> early DPS -> progression -> fresh export -> Ancient purchases -> Heroes continuation, including empty plans, locked progression, no gold, interrupted input and fish obstructions. Run required-OCR tests/build and independent review; record remaining native UI gates before pushing main.
+
 ## Unattended Ascension milestone
 
 Integration is waiting for real post-reset Heroes/ordinary-upgrade and existing Auto Clicker frames, plus Relics/junk-blocker evidence. The user cannot supply them yet and requested stopping dependent work. Keep reset/purchase completion pauses until the missing UI is verified.
@@ -90,6 +101,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Native Ancient calculator review
 
+- Diagnose the live Dora exported-level mismatch during upward Argaiv seeking using the new stall frame; verify name/level row association and clipping before changing pre-purchase checks. Reproduce the root cause in a regression, review and integrate the fix.
 - Verify installed-binary identity and close the Hero Souls spending live gates below. Static web-client arithmetic checks do not establish native purchase acceptance.
 
 ## Prestige and later upgrades

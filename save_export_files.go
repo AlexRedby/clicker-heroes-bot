@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -144,4 +145,32 @@ func readStableExport(path string, expected exportFileStamp) ([]byte, error) {
 		return nil, errExportUnstable
 	}
 	return data, nil
+}
+
+// Cleanup applies only to a new file from an owned Save acquisition.
+func removeGeneratedExport(ctx context.Context, path string, before exportSnapshot, consumed []byte) (bool, error) {
+	if before == nil {
+		return false, nil
+	}
+	if _, existed := before[path]; existed {
+		return false, nil
+	}
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() {
+		return false, nil
+	}
+	current, err := readStableExport(path, exportFileStamp{size: info.Size(), modified: info.ModTime()})
+	if err != nil || !bytes.Equal(current, consumed) || ctx.Err() != nil {
+		return false, nil
+	}
+	if err := os.Remove(path); err != nil {
+		return false, err
+	}
+	return true, nil
 }

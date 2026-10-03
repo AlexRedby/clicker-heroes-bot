@@ -145,6 +145,12 @@ func TestSaveMenuRecognitionAndExclusiveExport(t *testing.T) {
 	if p.export.requested || p.export.active || p.ancient.plan == nil || p.ancient.plan.savePath != filepath.Join(dir, "clickerHeroSave-new.txt") || p.relicMessage == "" {
 		t.Fatal("fresh plan not installed")
 	}
+	if _, err := os.Stat(filepath.Join(dir, "clickerHeroSave-new.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("generated export was not removed", err)
+	}
+	if _, err := os.Stat(old); err != nil {
+		t.Fatal("pre-existing export was removed", err)
+	}
 	if p.ancient.plan.Gilds == nil || p.ancient.plan.GildError != "" || p.ancient.plan.Gilds.Cost != "160" || p.ancient.plan.Gilds.Reserve != "1.6" || p.ancient.plan.Gilds.SaveHash != p.ancient.plan.SaveHash {
 		t.Fatalf("fresh plan omitted gild preview: %+v error=%q", p.ancient.plan.Gilds, p.ancient.plan.GildError)
 	}
@@ -212,6 +218,8 @@ func TestExportReadWaitsForCompleteSave(t *testing.T) {
 }
 
 func TestExportStartsAfterConfirmedAscension(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{export: &saveExportOptions{dir: t.TempDir()}})
 	p.export.requested = false
 	p.export.relicsOnly = true
@@ -221,9 +229,23 @@ func TestExportStartsAfterConfirmedAscension(t *testing.T) {
 	p.layout = p.frame.layout
 	p.frame.context.heroes = true
 	p.ascension = ascensionPlanner{active: true, step: waitAscensionReset, lastInputFrame: 3}
-	err := p.accept(context.Background(), observation{kind: ascensionAnalysis, frame: p.frame, ascension: ascensionObservation{frame: p.frame, zone: 1}}, time.Now())
+	now := time.Now()
+	err := p.accept(context.Background(), observation{kind: ascensionAnalysis, frame: p.frame, ascension: ascensionObservation{frame: p.frame, zone: 1}}, now)
 	if err != nil || p.controls.isPaused() || !p.export.requested || p.export.relicsOnly || p.ancient.plan != nil || p.ascension.active {
 		t.Fatalf("post-reset export: %v", err)
+	}
+	path := filepath.Join(dir, "artifacts", "ascension-start-"+now.Format("20060102-150405.000")+".png")
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	saved, err := png.Decode(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Bounds() != p.frame.image.Bounds() {
+		t.Fatalf("startup screenshot bounds = %v", saved.Bounds())
 	}
 }
 
@@ -241,16 +263,15 @@ func TestReadOnlyRelicExportWaitsForCompleteSaveAndSkipsAncients(t *testing.T) {
 	go func() { time.Sleep(450 * time.Millisecond); done <- os.WriteFile(path, data, 0600) }()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	result, err := readExport(exportJob{ctx: ctx, relicsOnly: true, options: saveExportOptions{dir: dir, reserve: "invalid"}})
+	result, err := readExport(exportJob{ctx: ctx, before: make(exportSnapshot), relicsOnly: true, options: saveExportOptions{dir: dir, reserve: "invalid"}})
 	if writeErr := <-done; writeErr != nil {
 		t.Fatal(writeErr)
 	}
 	if err != nil || result.plan != nil || result.relics == nil || result.relicErr != nil || result.relics.Readiness != "unknown" || result.relics.Snapshot.Ascensions != 3 {
 		t.Fatalf("read-only result: %+v %v", result, err)
 	}
-	after, err := os.ReadFile(path)
-	if err != nil || string(after) != string(data) {
-		t.Fatal("preview changed the save")
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("owned relic-only export was not removed", err)
 	}
 }
 

@@ -745,6 +745,14 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 	}
 	if out.kind == ascensionAnalysis {
 		if p.ascension.observe(out.ascension, out.err, now) {
+			if out.frame.image != nil {
+				path := fmt.Sprintf("artifacts/ascension-start-%s.png", now.Format("20060102-150405.000"))
+				if err := saveImage(path, out.frame.image); err != nil {
+					fmt.Printf("failed to save Ascension startup screenshot: %v\n", err)
+				} else {
+					fmt.Println("saved Ascension startup screenshot:", path)
+				}
+			}
 			p.progression = progressionPlanner{}
 			p.skill.reset()
 			p.hero.failures, p.hero.enabled = 0, p.options.heroes
