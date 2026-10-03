@@ -313,6 +313,60 @@ func TestAncientFineSeekUsesNamesWithoutRepeatedWalletOCR(t *testing.T) {
 	}
 }
 
+func TestAncientClippedLevelKeepsNavigation(t *testing.T) {
+	requireAncientOCR(t)
+	original := loadTestImage(t, "testdata/ancient-dora-clipped-level.png")
+	for _, width := range []int{2560, 1280} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			screen := image.NewRGBA(image.Rect(0, 0, width, width*9/16))
+			xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
+			frame := gameFrame{id: 1, image: screen, context: gameContext{known: true, ancients: true, bounds: screen.Bounds()}}
+			out, err := readAncientObservation(context.Background(), frame)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Dora's button is complete, but clipped Lvl209 was read as LVI29.
+			if len(out.rows) != 2 || out.rows[0].name != "Energon" || out.rows[0].level != "201" || out.rows[1].name != "Fortuna" || out.rows[1].level != "219" {
+				t.Fatal("clipped level entered purchase rows or complete neighbors changed", out.rows)
+			}
+			doraVisible := false
+			for _, anchor := range out.anchors {
+				doraVisible = doraVisible || anchor.name == "Dora"
+			}
+			if width == 2560 && !doraVisible {
+				t.Fatal("native clipped Dora lost its navigation name", out.anchors)
+			}
+			plan := ancientPlan{Plan: ancientcalc.Plan{Reserve: "1", Owned: []ancientcalc.Level{{Name: "Dora"}, {Name: "Energon"}, {Name: "Fortuna"}}, Rows: []ancientcalc.Purchase{
+				{Name: "Argaiv", Current: "1", Quantity: "1", Cost: "1"},
+				{Name: "Dora", Current: "209", Quantity: "1", Cost: "1"},
+				{Name: "Fragsworth"}, {Name: "Fortuna"},
+			}}}
+			now := time.Now()
+			for _, doraTarget := range []bool{false, true} {
+				p := ancientPlanner{plan: &plan, active: true, budgetChecked: true, selected: -1, seekTarget: -1, done: map[int]bool{2: true, 3: true}}
+				if doraTarget {
+					p.done[0] = true
+				}
+				p.observe(out, nil, now)
+				a, ok := p.action(frame, now)
+				if !ok || a.ancient.step != scrollAncients || a.ancient.direction != -1 || a.ancient.fine != (doraTarget && doraVisible) || p.blocked || p.needFullRead {
+					t.Fatal("clipped level blocked navigation or requested numeric retries", doraTarget, a, p.failure, p.needFullRead)
+				}
+				if len(p.seekNames) < 2 || doraVisible && p.seekNames[0].name != "Dora" {
+					t.Fatal("clipped Dora lost its canonical navigation anchor", p.seekNames)
+				}
+			}
+			// A real mismatch on a fully visible row must still stop before input.
+			plan.Rows = []ancientcalc.Purchase{{Name: "Energon", Current: "200", Quantity: "1", Cost: "1"}}
+			p := ancientPlanner{plan: &plan, active: true, budgetChecked: true, selected: -1, done: map[int]bool{}}
+			p.observe(out, nil, now)
+			if _, ok := p.action(frame, now); ok || !p.blocked || !strings.Contains(p.failure, `saved="200", read="201"`) {
+				t.Fatal("visible level mismatch did not stop with saved/read diagnostics", p.failure)
+			}
+		})
+	}
+}
+
 func TestAncientUnknownNeighborsAreBounded(t *testing.T) {
 	for _, anchors := range [][]ancientNameAnchor{
 		{{"garbled", 700}},

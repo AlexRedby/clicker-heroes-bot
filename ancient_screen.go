@@ -88,7 +88,11 @@ func ancientButtons(screen image.Image) []image.Point {
 		}
 		if first >= 0 && y-last > gap {
 			if first > top+gap && last < bottom-gap && last-first > h*75/1000 && last-first < h/7 {
-				rows = append(rows, image.Pt(b.Min.X+w*95/1000, (first+last)/2))
+				point := image.Pt(b.Min.X+w*95/1000, (first+last)/2)
+				// A complete button can still have its level clipped by the list header.
+				if ancientLevelRegion(screen, point).Min.Y >= top {
+					rows = append(rows, point)
+				}
 			}
 			first = -1
 		}

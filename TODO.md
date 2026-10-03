@@ -103,6 +103,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 - Diagnose the live Dora exported-level mismatch during upward Argaiv seeking using the new stall frame; verify name/level row association and clipping before changing pre-purchase checks. Reproduce the root cause in a regression, review and integrate the fix.
 - Verify installed-binary identity and close the Hero Souls spending live gates below. Static web-client arithmetic checks do not establish native purchase acceptance.
+- Verify live navigation past a top-clipped Ancient level: keep its name as a navigation anchor, wait for a complete level crop before buying, and retain saved/read diagnostics for a genuine mismatch.
 
 ## Prestige and later upgrades
 

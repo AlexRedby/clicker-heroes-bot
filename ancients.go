@@ -532,7 +532,7 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 		p.retrySeek(now, false)
 		return gameAction{}, false
 	}
-	// Read numbers only when a remaining name belongs to a complete button.
+	// Read numbers only when a remaining name has a complete button and level crop.
 	for _, point := range ancientButtons(frame.image) {
 		region := ancientNameRegion(frame.image, point)
 		for _, anchor := range anchors {
@@ -559,7 +559,7 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 				continue
 			}
 			if !ancientDisplayMatches(row.level, buy.Current) {
-				p.fail("exported level differs for " + buy.Name)
+				p.fail(fmt.Sprintf("exported level differs for %s: saved=%q, read=%q", buy.Name, buy.Current, row.level))
 				return gameAction{}, false
 			}
 			souls, e1 := ancientcalc.Value(p.latest.souls)
