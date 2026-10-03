@@ -22,6 +22,31 @@ func TestAutoClickerNativePool(t *testing.T) {
 			raw, rawErr := readGameText(context.Background(), s, autoClickerCountRegion(s), max(2, 4096/s.Bounds().Dx()), 7, 180, "0123456789/")
 			t.Fatalf("%s pool=%+v error=%v icon=%t %v raw=%q %v", path, pool, err, icon, iconErr, raw, rawErr)
 		}
+		// Location pixels outside the extracted hand/pool artwork must not participate in recognition.
+		reference, err := templateImage("ui/autoclicker-pool.png")
+		if err != nil {
+			t.Fatal(err)
+		}
+		changed := image.NewRGBA(s.Bounds())
+		draw.Draw(changed, changed.Bounds(), s, s.Bounds().Min, draw.Src)
+		r := controlRect(s, image.Rect(1197, 368, 1257, 409))
+		masked := 0
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			for x := r.Min.X; x < r.Max.X; x++ {
+				_, _, _, alpha := reference.At(x-r.Min.X, y-r.Min.Y).RGBA()
+				if alpha == 0 {
+					changed.Set(x, y, color.RGBA{R: 203, G: 20, B: 206, A: 255})
+					masked++
+				}
+			}
+		}
+		if masked == 0 {
+			t.Fatal("pool asset has no transparent location mask")
+		}
+		frame.image = changed
+		if got, err := readAutoClickerPool(context.Background(), frame); err != nil || got != pool {
+			t.Fatalf("changed location rejected: %+v %v", got, err)
+		}
 		// The count alone cannot identify the owned pool when its icon is covered.
 		covered := image.NewRGBA(s.Bounds())
 		draw.Draw(covered, covered.Bounds(), s, s.Bounds().Min, draw.Src)
