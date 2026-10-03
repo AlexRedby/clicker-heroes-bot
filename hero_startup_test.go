@@ -497,13 +497,14 @@ func TestStartupHeroRosterIdentity(t *testing.T) {
 		"Ivan, the Drunken Brawler":   "IvantheDrunkenBrawler",
 		"Brittany, Beach Princess":    "BrittanyBeachPrincess",
 		"The Masked Samurai":          "TheMaskedSamurai",
+		"SirGeorgellKingsGuard":       "SirGeorgeIIKingsGuard",
 	} {
-		if got := startupHeroNames[strings.ToLower(startupHeroLetters(raw))]; got != want {
+		if got := startupHeroNames[startupHeroNameKey(raw)]; got != want {
 			t.Fatalf("%q mapped to %q, want %q", raw, got, want)
 		}
 	}
 	for _, raw := range []string{"hBoawlenalBeeen", "IvantheDrunkenBrawiler", "HIRE", "", "TheMaskedSamura"} {
-		if _, known := startupHeroNames[strings.ToLower(startupHeroLetters(raw))]; known {
+		if _, known := startupHeroNames[startupHeroNameKey(raw)]; known {
 			t.Fatalf("unknown OCR identity accepted: %q", raw)
 		}
 	}

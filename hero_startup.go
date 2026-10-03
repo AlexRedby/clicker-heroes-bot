@@ -33,7 +33,7 @@ func loadStartupHeroNames() (map[string]string, error) {
 		if name == "Cid, the Helpful Adventurer" {
 			key = "Cid,theHelpfulAdventurer"
 		}
-		keys[strings.ToLower(startupHeroLetters(name))] = key
+		keys[startupHeroNameKey(name)] = key
 	}
 	return keys, nil
 }
@@ -116,6 +116,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 	if len(buttons) == 0 {
 		return out, nil
 	}
+	firstName := ""
 	if !started || !out.thumbFound {
 		b := frame.image.Bounds()
 		if absDiff(buttons[0].Y, b.Min.Y+b.Dy()*455/1000) > b.Dy()/40 {
@@ -138,14 +139,30 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 			}
 			return out, nil
 		}
+		firstName = name
 		out.startupTop = true
+	}
+	// Inspect ownership on this frame before selecting a purchase. Cid can only
+	// be the first visible row; any lower owned row establishes passive damage.
+	kinds := make(map[int]heroButtonKind, len(buttons))
+	kindErrors := make(map[int]error, len(buttons))
+	affordable, ownershipKnown := false, true
+	for i, button := range buttons {
+		kinds[button.Y], kindErrors[button.Y] = startupHeroButtonKind(frame.image, button)
+		affordable = affordable || enabled[button.Y]
+		ownershipKnown = ownershipKnown && kindErrors[button.Y] == nil
+		out.passiveReady = out.passiveReady || i > 0 && kinds[button.Y] == heroButtonLevelUp
 	}
 	for _, button := range buttons {
 		// Overlap scrolling exposes an already handled card at the top. Keep the sweep monotonic.
 		if started && edges[button.Y] < 0 {
 			continue
 		}
-		name, err := readStartupHeroName(ctx, frame.image, button)
+		name := firstName
+		var err error
+		if button != buttons[0] || name == "" {
+			name, err = readStartupHeroName(ctx, frame.image, button)
+		}
 		if err != nil {
 			if started && button.Y-b.Dy()*7/100 < heroListViewport(frame.image).Min.Y {
 				continue
@@ -158,7 +175,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		if name == "" {
 			return out, fmt.Errorf("startup hero name missing at %v", button)
 		}
-		kind, err := startupHeroButtonKind(frame.image, button)
+		kind, err := kinds[button.Y], kindErrors[button.Y]
 		if err != nil {
 			if visited[name] && button.Y-b.Dy()*7/100 < viewport.Min.Y {
 				continue
@@ -200,6 +217,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 			return out, fmt.Errorf("startup gold: %w", err)
 		}
 		out.startupComplete = price > gold && out.passiveReady
+		out.startupNeedsGold = price > gold && !out.passiveReady && !affordable && ownershipKnown
 		return out, nil
 	}
 	if out.thumbFound && !out.bottom {
@@ -340,7 +358,7 @@ func readStartupHeroName(ctx context.Context, screen image.Image, button image.P
 	if startupHeroNamesErr != nil {
 		return "", startupHeroNamesErr
 	}
-	if name, ok := startupHeroNames[strings.ToLower(startupHeroLetters(raw))]; ok {
+	if name, ok := startupHeroNames[startupHeroNameKey(raw)]; ok {
 		return name, nil
 	}
 	return "", fmt.Errorf("startup hero name at %v crop %v: unrecognized %q", button, region, strings.TrimSpace(raw))

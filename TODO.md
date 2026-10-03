@@ -9,7 +9,7 @@
 | Viewport edges | Complete name/HIRE/LVL at the top, middle and bottom remains readable. A genuinely cropped pending row is brought into view; overlap does not reverse the sweep or skip the next hero. |
 | Card variants | Plain and gilded heroes, blue and dark HIRE/LVL UP buttons, short and long names, short and large levels. An unknown or obscured field is never treated as a new hero, level zero or completed startup. |
 | Purchases | HIRE to level 1, HIRE directly to many levels, owned MAX and expanded/moved cards. Confirm the same hero, retain visits and avoid duplicate MAX input. |
-| Gold and successor | Zero gold, affordable and unaffordable successors, short and growing lists. Finish only on readable evidence; do not read unrelated cards to decide a visible purchase. |
+| Gold and successor | Zero gold, affordable and unaffordable successors, short and growing lists. Starter clicks stop for an affordable purchase, an owned passive hero, pending input or unknown ownership/gold. Finish only on readable evidence; do not read unrelated numerical levels to decide a visible purchase. |
 | Obstructions | Fish over the caption/level/scrollbar, purchase tooltip and covering modal. Fish recovery stays independent; hero input waits for a covering modal. |
 | Navigation and pause | Partial unvisited/previously visited rows, missed drag/no motion, F8 during scrolling and purchasing. Preserve confirmed visits and recover without an unchanged-crop retry loop or repeated purchase. |
 

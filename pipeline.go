@@ -927,6 +927,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			out.mercenary = mercenaryObservation{frame: out.frame, selected: -1}
 			fmt.Printf("mercenary panel unreadable: %v\n", out.err)
 		case heroAnalysis:
+			p.state[heroAnalysis] = observation{}
 			if p.hero.pending == nil {
 				hero := out.hero
 				hero.frame = out.frame
@@ -1094,7 +1095,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if kind == clickMonster && p.startup != noStartup && (p.startup != startupHeroes || p.startupPassive || !bootstrapHeroes(p.frame.context)) {
+		if kind == clickMonster && p.startup != noStartup && !p.startupNeedsSeedClicks() {
 			delete(p.queue, kind)
 			continue
 		}

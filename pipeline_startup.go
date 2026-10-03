@@ -69,7 +69,7 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 		if action, ok := p.hero.action(now); ok {
 			p.enqueue(action, now)
 		}
-		if !p.startupPassive && !now.Before(p.nextMonster) {
+		if p.startupNeedsSeedClicks() && !now.Before(p.nextMonster) {
 			point := p.frame.context.bounds.Min.Add(image.Pt(p.frame.context.bounds.Dx()*3/4, p.frame.context.bounds.Dy()/2))
 			p.enqueue(gameAction{kind: clickMonster, frame: p.frame, point: point}, now)
 			p.nextMonster = now.Add(time.Second)
@@ -96,4 +96,13 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 		}
 	}
 	return true
+}
+
+// Seed clicks earn starter gold only after a successful read proves it is needed.
+func (p *gamePipeline) startupNeedsSeedClicks() bool {
+	out := p.state[heroAnalysis]
+	return p.startup == startupHeroes && !p.startupPassive && p.hero.pending == nil &&
+		bootstrapHeroes(p.frame.context) && out.err == nil && out.frame.id != 0 &&
+		out.frame.layout == p.layout && out.frame.generation == p.generation &&
+		out.hero.startupNeedsGold && !out.hero.found && out.hero.startupScroll == (image.Point{})
 }

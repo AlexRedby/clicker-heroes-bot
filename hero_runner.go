@@ -23,6 +23,7 @@ type heroObservation struct {
 	button, thumb                                      image.Point
 	thumbFound, bottom, x1, found, owned, stable       bool
 	startup, passiveReady, startupComplete, startupTop bool
+	startupNeedsGold                                   bool
 	startupName                                        string
 	startupScroll                                      image.Point
 	level                                              int

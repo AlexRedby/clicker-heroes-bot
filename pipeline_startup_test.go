@@ -139,7 +139,7 @@ func TestStartupF8FishAndModal(t *testing.T) {
 	p.startupCheck = false
 	p.export.requested = false
 	p.hero.startStartup()
-	p.hero.startupDone["Treebeast"] = true
+	p.state[heroAnalysis] = observation{frame: f, hero: heroObservation{frame: f, startup: true, startupNeedsGold: true}}
 	p.plan(now)
 	if _, ok := p.queue[clickMonster]; !ok {
 		t.Fatal("zero-DPS startup cannot earn gold")
@@ -161,6 +161,7 @@ func TestStartupF8FishAndModal(t *testing.T) {
 	if _, ok := p.queue[enableProgression]; !ok || p.export.requested {
 		t.Fatal("early progression did not enable before export")
 	}
+	p.hero.startupDone["Treebeast"] = true
 	p.hero.enabled = false
 	controls.toggle()
 	p.reset(controls.snapshot())
