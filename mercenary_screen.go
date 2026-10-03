@@ -186,7 +186,9 @@ func mercenaryRows(screen image.Image) []image.Point {
 
 var mercenaryDurationText = regexp.MustCompile(`(?i)^time:\s*([0-9]{1,4})\s+(minute|hour|day)s?$`)
 var mercenaryRewardText = regexp.MustCompile(`(?i)^reward:\s*(.+)$`)
-var mercenaryTimer = regexp.MustCompile(`^[0-9]{1,2}:[0-5][0-9](?::[0-5][0-9])?$`)
+
+// OCR can append an isolated colon from the timer bar; other suffixes are invalid.
+var mercenaryTimer = regexp.MustCompile(`^[0-9]{1,2}:[0-5][0-9](?::[0-5][0-9])?(?:\s+:)?$`)
 
 func parseMercenaryDuration(raw string) (time.Duration, bool) {
 	raw = strings.Join(strings.Fields(raw), " ")
@@ -280,12 +282,14 @@ func readMercenaryObservation(ctx context.Context, frame gameFrame) (mercenaryOb
 				}
 				y, yErr := strconv.Atoi(fields[7])
 				height, hErr := strconv.Atoi(fields[9])
-				index := (y - gameTextPadding) / (scale * (cropHeight + 2))
-				if yErr != nil || hErr != nil || height <= 0 || y < gameTextPadding || index < 0 || index >= len(labels) ||
-					y+height > gameTextPadding+scale*(index*(cropHeight+2)+cropHeight) {
+				// OCR bounds may cross a separator; the word center identifies its row.
+				center := y + height/2
+				index := (center - gameTextPadding) / (scale * (cropHeight + 2))
+				if yErr != nil || hErr != nil || height <= 0 || height > scale*cropHeight || y < gameTextPadding || index < 0 || index >= len(labels) ||
+					center >= gameTextPadding+scale*(index*(cropHeight+2)+cropHeight) || y+height > gameTextPadding+scale*buttons.Bounds().Dy() {
 					return out, fmt.Errorf("ambiguous mercenary OCR word position %q", line)
 				}
-				labels[index] += " " + fields[11]
+				labels[index] += " " + strings.TrimSpace(fields[11])
 			}
 		}
 		for i, point := range rows {
