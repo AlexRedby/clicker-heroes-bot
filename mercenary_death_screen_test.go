@@ -33,7 +33,7 @@ func TestMercenaryDeadPortraitOnRealFrames(t *testing.T) {
 	}
 }
 
-func TestMercenaryAllDeadRosterNeedsNoOCR(t *testing.T) {
+func TestMercenaryAllDeadRosterWithUnreadableRecoveryTraits(t *testing.T) {
 	im := loadTestImage(t, "testdata/mercenary-dead.png")
 	rows := mercenaryRows(im)
 	screen := image.NewRGBA(im.Bounds())
@@ -48,7 +48,7 @@ func TestMercenaryAllDeadRosterNeedsNoOCR(t *testing.T) {
 	t.Cleanup(func() { tesseractExecutable = original })
 	o, err := readMercenaryObservation(context.Background(), gameFrame{image: screen})
 	if err != nil || !o.readable || len(o.dead) != len(rows) || len(o.collect)+len(o.start)+len(o.running) != 0 {
-		t.Fatalf("all-dead roster required OCR or exposed a target: %+v err=%v", o, err)
+		t.Fatalf("unreadable recovery traits blocked all-dead roster or exposed a target: %+v err=%v", o, err)
 	}
 }
 

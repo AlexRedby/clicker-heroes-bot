@@ -17,6 +17,8 @@ type mercenaryObservation struct {
 	notify                  bool
 	collect, start, running []image.Point
 	dead                    []image.Point
+	deadCards               []mercenaryDeadCard
+	recovery                *mercenaryRecoveryPrompt
 	thumb                   image.Point
 	thumbFound, top, bottom bool
 	quests                  []mercenaryQuest
@@ -37,16 +39,21 @@ const (
 	scrollMercenariesBottom
 	returnToHeroes
 	claimAndOpenMercenaryQuest
+	openMercenaryRecovery
+	confirmMercenaryRecovery
+	cancelMercenaryRecovery
 )
 
 type mercenaryCommand struct {
-	step  mercenaryStep
-	quest int
+	step     mercenaryStep
+	quest    int
+	recovery mercenaryRecoveryMethod
 }
 
 type mercenaryAttempt struct {
-	action gameAction
-	until  time.Time
+	action   gameAction
+	until    time.Time
+	recovery *mercenaryRecoveryPrompt
 }
 
 type mercenaryPlanner struct {
@@ -65,6 +72,9 @@ type mercenaryPlanner struct {
 	collectOnly           bool
 	questRow              image.Point
 	deathLogged           bool
+	recoveryRow           *mercenaryDeadCard
+	recoveryMethod        mercenaryRecoveryMethod
+	recoverySubmitted     bool
 }
 
 func mercenaryQuestRank(q mercenaryQuest) int {
@@ -133,11 +143,15 @@ func (p *mercenaryPlanner) expects(c gameContext, now time.Time) bool {
 		return now.Before(p.contextUntil)
 	}
 	if p.pending == nil {
-		return p.active && c.known && c.mercenaries && !c.questDialog
+		return p.active && c.known && c.mercenaries && !c.questDialog && !c.mercenaryDialog
 	}
 	switch p.pending.action.mercenary.step {
 	case openMercenaries, claimMercenaryReward, selectMercenaryQuest, closeMercenaryQuest, scrollMercenariesTop, scrollMercenariesBottom:
-		return c.known && c.mercenaries && !c.questDialog
+		return c.known && c.mercenaries && !c.questDialog && !c.mercenaryDialog
+	case openMercenaryRecovery:
+		return c.known && c.mercenaryDialog
+	case confirmMercenaryRecovery, cancelMercenaryRecovery:
+		return c.known && c.mercenaries && !c.questDialog && !c.mercenaryDialog
 	case openMercenaryQuest, claimAndOpenMercenaryQuest:
 		return c.known && c.questDialog
 	case returnToHeroes:
@@ -147,7 +161,9 @@ func (p *mercenaryPlanner) expects(c gameContext, now time.Time) bool {
 }
 
 func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
-	if o.frame.id <= p.latest.frame.id {
+	// A captured closure carries no row data. Its asynchronous readable result
+	// may arrive with the same frame ID and must replace that placeholder.
+	if o.frame.id < p.latest.frame.id || (o.frame.id == p.latest.frame.id && (!o.readable || p.latest.readable)) {
 		return
 	}
 	if p.pending != nil {
@@ -156,17 +172,22 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 			return
 		}
 		confirmed := false
+		mainRoster := o.frame.context.mercenaries && !o.frame.context.questDialog && !o.frame.context.mercenaryDialog
 		switch a.mercenary.step {
 		case openMercenaries:
-			confirmed = o.frame.context.mercenaries && !o.frame.context.questDialog
+			confirmed = mainRoster
 		case claimMercenaryReward:
-			confirmed = o.frame.context.mercenaries && !o.frame.context.questDialog
+			confirmed = mainRoster
 		case openMercenaryQuest, claimAndOpenMercenaryQuest:
 			confirmed = o.frame.context.questDialog
 		case selectMercenaryQuest:
-			confirmed = o.frame.context.mercenaries && !o.frame.context.questDialog
+			confirmed = mainRoster
 		case closeMercenaryQuest:
-			confirmed = o.frame.context.mercenaries && !o.frame.context.questDialog
+			confirmed = mainRoster
+		case openMercenaryRecovery:
+			confirmed = o.frame.context.mercenaryDialog && o.recovery != nil && o.recovery.method == a.mercenary.recovery
+		case confirmMercenaryRecovery, cancelMercenaryRecovery:
+			confirmed = mainRoster
 		case scrollMercenariesTop:
 			confirmed = o.readable && o.top
 		case scrollMercenariesBottom:
@@ -183,7 +204,7 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 			p.aborting = true
 			p.collectOnly = false
 			// A failed close/return must not cause a rapid retry loop.
-			if a.mercenary.step == closeMercenaryQuest || a.mercenary.step == returnToHeroes {
+			if a.mercenary.step == closeMercenaryQuest || a.mercenary.step == returnToHeroes || a.mercenary.step == cancelMercenaryRecovery {
 				p.active = false
 				p.nextScan = now.Add(time.Minute)
 			}
@@ -199,6 +220,8 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 				p.questRow = image.Point{}
 				p.roster = nil
 				p.deathLogged = false
+				p.recoveryRow = nil
+				p.recoverySubmitted = false
 				p.nextScan = now.Add(time.Minute)
 			case closeMercenaryQuest:
 				// Only a confirmed closed quest lets us resume safe reward collection.
@@ -210,6 +233,16 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 				}
 			case selectMercenaryQuest:
 				p.questRow = image.Point{}
+			case confirmMercenaryRecovery:
+				// Recovery can reorder every row. Only its confirmed closure retires
+				// the old click plan; a fresh roster read supplies the new positions.
+				p.roster = nil
+				p.topVisited, p.bottomVisited = false, false
+				p.recoveryRow = nil
+				p.recoverySubmitted = false
+			case cancelMercenaryRecovery:
+				p.recoveryRow = nil
+				p.recoverySubmitted = false
 			}
 		}
 	}
@@ -226,14 +259,15 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 	}
 	p.latest = o
 	if o.readable && len(o.dead) > 0 && !p.deathLogged {
-		fmt.Printf("mercenary death detected at %v; skipping dead cards without revive or bury\n", o.dead)
+		fmt.Printf("mercenary death detected at %v; checking verified recovery traits and controls\n", o.dead)
 		p.deathLogged = true
 	}
-	if p.roster == nil && o.readable && o.frame.context.mercenaries && !o.frame.context.questDialog {
+	if p.roster == nil && o.readable && o.frame.context.mercenaries && !o.frame.context.questDialog && !o.frame.context.mercenaryDialog {
 		roster := o
 		roster.collect = append([]image.Point(nil), o.collect...)
 		roster.start = append([]image.Point(nil), o.start...)
 		roster.dead = append([]image.Point(nil), o.dead...)
+		roster.deadCards = append([]mercenaryDeadCard(nil), o.deadCards...)
 		p.roster = &roster
 	}
 }
@@ -241,7 +275,14 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 // Keep the known click plan current without reading buttons or timers again.
 func (p *mercenaryPlanner) captured(frame gameFrame, now time.Time) {
 	c := frame.context
-	if c.mercenaries && !c.questDialog && p.roster != nil {
+	if p.pending != nil && (p.pending.action.mercenary.step == confirmMercenaryRecovery || p.pending.action.mercenary.step == cancelMercenaryRecovery) {
+		// Do not acknowledge a roster-changing action using cached row contents.
+		o := mercenaryObservation{frame: frame, selected: -1}
+		if c.mercenaryDialog {
+			o.recovery, o.readable = p.pending.recovery, p.pending.recovery != nil
+		}
+		p.observe(o, now)
+	} else if c.mercenaries && !c.questDialog && !c.mercenaryDialog && p.roster != nil {
 		o := *p.roster
 		o.frame = frame
 		p.observe(o, now)
@@ -251,6 +292,12 @@ func (p *mercenaryPlanner) captured(frame gameFrame, now time.Time) {
 }
 
 func (p *mercenaryPlanner) needsRead(c gameContext) bool {
+	if c.mercenaryDialog {
+		if p.pending != nil && (p.pending.action.mercenary.step == confirmMercenaryRecovery || p.pending.action.mercenary.step == cancelMercenaryRecovery) {
+			return false
+		}
+		return p.latest.frame.id == 0 || !p.latest.readable || p.latest.recovery == nil
+	}
 	if c.questDialog {
 		if p.pending != nil && (p.pending.action.mercenary.step == selectMercenaryQuest || p.pending.action.mercenary.step == closeMercenaryQuest) {
 			return false
@@ -271,6 +318,8 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 	}
 	c := o.frame.context
 	if !p.active {
+		p.recoveryRow = nil
+		p.recoverySubmitted = false
 		if c.heroes && o.notify && p.notificationConfirmed {
 			a.mercenary.step = openMercenaries
 			a.point = mercenaryPoint(c.bounds, 383, 200)
@@ -281,6 +330,20 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 		}
 		// Also service a roster left open by the user or an interrupted run.
 		p.active, p.returnHeroes, p.topVisited, p.bottomVisited, p.aborting, p.collectOnly = true, true, false, false, false, false
+	}
+	if c.mercenaryDialog {
+		if o.recovery == nil {
+			return a, false // Never guess a control on an unknown prompt.
+		}
+		a.mercenary.step, a.point = cancelMercenaryRecovery, o.recovery.no
+		if p.recoveryRow != nil && !p.recoverySubmitted && !p.aborting {
+			decision := chooseMercenaryRecovery(p.recoveryRow.traits, o.recovery.budget)
+			if decision.method == p.recoveryMethod && decision.method == o.recovery.method {
+				a.mercenary.step, a.point = confirmMercenaryRecovery, o.recovery.yes
+				a.mercenary.recovery = decision.method
+			}
+		}
+		return a, true
 	}
 	// Buttons can be briefly unreadable while a reward or tab animates. Wait
 	// for a fresh readable frame before abandoning the visit; never click guesses.
@@ -330,6 +393,33 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 			a.mercenary.step, a.point = openMercenaryQuest, o.start[0]
 			return a, true
 		}
+		if !p.aborting {
+			for _, card := range o.deadCards {
+				// The native extra-life chooser is still unverified. Never open
+				// its green control or bury a mercenary with remaining lives.
+				if !card.traits.Known || card.traits.ExtraLives > 0 {
+					continue
+				}
+				decision := chooseMercenaryRecovery(card.traits, mercenaryRecoveryBudget{})
+				point, method := card.revive, mercenaryRecoveryRubies
+				if decision.method == mercenaryRecoveryBury {
+					point, method = card.bury, mercenaryRecoveryBury
+				} else if decision.method != mercenaryRecoveryInspect {
+					continue
+				}
+				if point != (image.Point{}) {
+					if o.frame.image != nil && p.roster != nil && p.roster.frame.image != nil {
+						b := c.bounds
+						region := image.Rect(b.Min.X+b.Dx()*92/1000, card.row.Y-b.Dy()*40/1000, b.Min.X+b.Dx()*220/1000, card.row.Y+b.Dy()*60/1000)
+						if !mercenaryRegionStable(p.roster.frame.image, o.frame.image, region, 170) || mercenaryDeadControl(o.frame.image, card.row, method) != point {
+							continue // A changed cached trait/control cannot authorize recovery.
+						}
+					}
+					a.mercenary.step, a.mercenary.recovery, a.point, a.target = openMercenaryRecovery, method, point, card.row
+					return a, true
+				}
+			}
+		}
 		if o.thumbFound && !o.bottom && !p.bottomVisited {
 			a.mercenary.step, a.point = scrollMercenariesBottom, o.thumb
 			a.target = mercenaryPoint(c.bounds, 458, 964)
@@ -347,8 +437,9 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 }
 
 func (p *mercenaryPlanner) sent(a gameAction, now time.Time) {
+	prompt := p.latest.recovery
 	p.latest = mercenaryObservation{}
-	p.pending = &mercenaryAttempt{a, now.Add(5 * time.Second)}
+	p.pending = &mercenaryAttempt{action: a, until: now.Add(5 * time.Second), recovery: prompt}
 	p.nextScan = now.Add(200 * time.Millisecond)
 	switch a.mercenary.step {
 	case openMercenaries:
@@ -356,6 +447,8 @@ func (p *mercenaryPlanner) sent(a gameAction, now time.Time) {
 		p.bottomVisited = false
 		p.collectOnly = false
 		p.deathLogged = false
+		p.recoveryRow = nil
+		p.recoverySubmitted = false
 		p.roster = nil
 	case openMercenaryQuest, claimAndOpenMercenaryQuest:
 		p.questRow = a.point
@@ -367,6 +460,22 @@ func (p *mercenaryPlanner) sent(a gameAction, now time.Time) {
 		p.consumeRow(a.point)
 	case scrollMercenariesTop, scrollMercenariesBottom:
 		p.roster = nil
+	case openMercenaryRecovery:
+		p.recoveryMethod, p.recoverySubmitted = a.mercenary.recovery, false
+		if p.roster != nil {
+			for i, card := range p.roster.deadCards {
+				if card.row == a.target {
+					p.recoveryRow = &card
+					// This visit attempts this card once, including after No or a
+					// missed input. Ordinary living row plans remain untouched.
+					p.roster.deadCards = append(p.roster.deadCards[:i], p.roster.deadCards[i+1:]...)
+					break
+				}
+			}
+		}
+	case confirmMercenaryRecovery:
+		p.recoverySubmitted = true
+		fmt.Printf("mercenary recovery confirmed once: method=%d\n", a.mercenary.recovery)
 	}
 }
 
@@ -398,6 +507,29 @@ func mercenaryActionStable(a gameAction, current gameFrame) bool {
 		// The tab stays fixed while its notification moves between captures.
 		return mercenaryNotification(current.image)
 	}
+	if a.mercenary.step == openMercenaryRecovery {
+		if current.image == nil || !mercenaryDead(current.image, a.target) || mercenaryDeadControl(current.image, a.target, a.mercenary.recovery) != a.point {
+			return false
+		}
+		b := current.context.bounds
+		region := image.Rect(b.Min.X+b.Dx()*92/1000, a.target.Y-b.Dy()*40/1000, b.Min.X+b.Dx()*220/1000, a.target.Y+b.Dy()*60/1000)
+		return mercenaryRegionStable(a.frame.image, current.image, region, 170)
+	}
+	if a.mercenary.step == confirmMercenaryRecovery || a.mercenary.step == cancelMercenaryRecovery {
+		if mercenaryRecoveryDialogMethod(current.image) == mercenaryRecoverySkip {
+			return false
+		}
+		b := current.context.bounds
+		region := image.Rectangle{Min: mercenaryPoint(b, 318, 416), Max: mercenaryPoint(b, 683, 460)}
+		if !mercenaryRegionStable(a.frame.image, current.image, region, 0) {
+			return false
+		}
+		if a.mercenary.step == confirmMercenaryRecovery && a.mercenary.recovery == mercenaryRecoveryRubies {
+			region = image.Rectangle{Min: mercenaryPoint(b, 39, 303), Max: mercenaryPoint(b, 145, 334)}
+			return mercenaryRegionStable(a.frame.image, current.image, region, 80)
+		}
+		return true
+	}
 	if a.mercenary.step != selectMercenaryQuest {
 		return true
 	}
@@ -407,13 +539,26 @@ func mercenaryActionStable(a gameAction, current gameFrame) bool {
 	b := current.context.bounds
 	// Offer text must still match the decision before the first selection click.
 	region := image.Rectangle{Min: mercenaryPoint(b, 255, 209), Max: mercenaryPoint(b, 595, 799)}
+	return mercenaryRegionStable(a.frame.image, current.image, region, 170)
+}
+
+func mercenaryRegionStable(before, after image.Image, region image.Rectangle, threshold int) bool {
+	if before == nil || after == nil || before.Bounds() != after.Bounds() {
+		return false
+	}
+	b := after.Bounds()
 	changed, total := 0, 0
 	for y := region.Min.Y; y < region.Max.Y; y += max(1, b.Dy()/500) {
 		for x := region.Min.X; x < region.Max.X; x += max(1, b.Dx()/800) {
-			r, g, blue := rgb(a.frame.image.At(x, y))
-			cr, cg, cb := rgb(current.image.At(x, y))
-			white := min(r, g, blue) > 170 && max(r, g, blue)-min(r, g, blue) < 55
-			currentWhite := min(cr, cg, cb) > 170 && max(cr, cg, cb)-min(cr, cg, cb) < 55
+			r, g, blue := rgb(before.At(x, y))
+			cr, cg, cb := rgb(after.At(x, y))
+			white := min(r, g, blue) > threshold && max(r, g, blue)-min(r, g, blue) < 55
+			currentWhite := min(cr, cg, cb) > threshold && max(cr, cg, cb)-min(cr, cg, cb) < 55
+			if threshold == 0 {
+				// On the cream prompt, its black glyph outlines distinguish text
+				// from the equally bright background and catch changed prices.
+				white, currentWhite = max(r, g, blue) < 80, max(cr, cg, cb) < 80
+			}
 			if white || currentWhite {
 				total++
 				if white != currentWhite {
@@ -421,6 +566,9 @@ func mercenaryActionStable(a gameAction, current gameFrame) bool {
 				}
 			}
 		}
+	}
+	if threshold == 0 {
+		return total > 0 && changed == 0
 	}
 	return total > 0 && changed*100 < total
 }

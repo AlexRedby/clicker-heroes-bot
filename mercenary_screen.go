@@ -258,6 +258,16 @@ func readMercenaryObservation(ctx context.Context, frame gameFrame) (mercenaryOb
 	screen := frame.image
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
+	if mercenaryRecoveryDialog(screen) {
+		var err error
+		out.recovery, err = readMercenaryRecoveryPrompt(ctx, screen)
+		// A verified No button remains safe even if price/balance OCR fails.
+		out.readable = out.recovery != nil
+		if err != nil {
+			fmt.Printf("mercenary recovery unreadable; cancelling: %v\n", err)
+		}
+		return out, nil
+	}
 	if !mercenaryQuestDialog(screen) {
 		if !mercenaryTabSelected(screen) {
 			out.notify = mercenaryNotification(screen)
@@ -272,6 +282,11 @@ func readMercenaryObservation(ctx context.Context, frame gameFrame) (mercenaryOb
 		for _, point := range rows {
 			if mercenaryDead(screen, point) {
 				out.dead = append(out.dead, point)
+				card, err := readMercenaryDeadCard(ctx, screen, point)
+				out.deadCards = append(out.deadCards, card)
+				if err != nil {
+					fmt.Printf("mercenary recovery deferred at %v: %v\n", point, err)
+				}
 			} else {
 				living = append(living, point)
 			}
