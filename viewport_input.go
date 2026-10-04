@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"runtime"
 	"time"
 
 	"github.com/go-vgo/robotgo"
@@ -43,11 +42,7 @@ func bindViewportInput(ctx context.Context, base heroInput, g viewportGeometry) 
 		robotgo.Move(target.X, target.Y)
 		return nil
 	}
-	settle := func(p image.Point, delay time.Duration) error {
-		if err := move(p); err != nil {
-			return err
-		}
-		time.Sleep(delay)
+	verify := func(p image.Point) error {
 		if _, err := argument(p); err != nil {
 			return err
 		}
@@ -63,6 +58,13 @@ func bindViewportInput(ctx context.Context, base heroInput, g viewportGeometry) 
 			return fmt.Errorf("native cursor %v did not reach %v", actual, want)
 		}
 		return nil
+	}
+	settle := func(p image.Point, delay time.Duration) error {
+		if err := move(p); err != nil {
+			return err
+		}
+		time.Sleep(delay)
+		return verify(p)
 	}
 	base.bind = nil
 	base.move = move
@@ -91,24 +93,7 @@ func bindViewportInput(ctx context.Context, base heroInput, g viewportGeometry) 
 		return guard()
 	}
 	base.drag = func(from, to image.Point) error {
-		// Validate both endpoints before mouse-down. Keep RobotGo's native drag.
-		if _, err := argument(to); err != nil {
-			return err
-		}
-		if err := settle(from, 100*time.Millisecond); err != nil {
-			return err
-		}
-		target, err := argument(to)
-		if err != nil {
-			return err
-		}
-		defer robotgo.Toggle("left", "up")
-		high := 0.75
-		if runtime.GOOS == "windows" {
-			high = 1.25
-		}
-		robotgo.DragSmooth(target.X, target.Y, 0.25, high)
-		return guard()
+		return runNativeDrag(ctx, from, to, robotDragInput(move, argument, verify, guard))
 	}
 	keyTap, keyToggle, typeText := base.keyTap, base.keyToggle, base.typeText
 	base.keyTap = func(key string) error {

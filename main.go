@@ -527,22 +527,7 @@ func runBot(options pipelineOptions, duration time.Duration, stats bool) error {
 		keyToggle: func(key, state string) error { return robotgo.KeyToggle(key, state) },
 		typeText:  func(text string) error { robotgo.TypeStr(text); return nil },
 		drag: func(from, to image.Point) error {
-			if err := moveAt(from); err != nil {
-				return err
-			}
-			target, err := mousePoint(to)
-			if err != nil {
-				return err
-			}
-			time.Sleep(100 * time.Millisecond)
-			highDelay := 0.75
-			if runtime.GOOS == "windows" {
-				// RobotGo truncates Windows Sleep to integer milliseconds: keep
-				// 1 ms on a quarter of steps instead of removing the delay entirely.
-				highDelay = 1.25
-			}
-			robotgo.DragSmooth(target.X, target.Y, 0.25, highDelay)
-			return nil
+			return runNativeDrag(ctx, from, to, robotDragInput(moveAt, mousePoint, nil, nil))
 		},
 	}
 	controls := pauseControl{paused: true}
