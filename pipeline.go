@@ -276,7 +276,7 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 	case progressionAnalysis:
 		out.progression, out.err = p.readers.progression(ctx, job.frame.image, job.skills, job.modeOnly)
 	case heroAnalysis:
-		if job.startup == startupPrepare || job.startup == startupUpgrades || job.upgrades {
+		if job.startup == startupUpgrades || job.upgrades {
 			out.hero = heroObservation{frame: job.frame, startup: true, x1: heroQuantitySelected(job.frame.image, 122)}
 			var height int
 			out.hero.thumb, height, out.hero.thumbFound = heroScrollbarThumb(job.frame.image)
@@ -1100,7 +1100,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if kind == buyHeroUpgrades && ((p.startup != startupPrepare && p.startup != startupUpgrades && p.startup != noStartup) || !bootstrapHeroes(p.frame.context) || !heroUpgradeButtonStable(action.frame.image, p.frame.image, action.point)) {
+		if kind == buyHeroUpgrades && ((p.startup != startupUpgrades && p.startup != noStartup) || !bootstrapHeroes(p.frame.context) || !heroUpgradeButtonStable(action.frame.image, p.frame.image, action.point)) {
 			delete(p.queue, kind)
 			p.hero.latest = heroObservation{}
 			p.hero.nextScan = now

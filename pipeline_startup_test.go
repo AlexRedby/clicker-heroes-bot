@@ -33,7 +33,7 @@ func TestStartupPipelineHandoff(t *testing.T) {
 	if err := p.accept(ctx, observation{kind: ascensionAnalysis, frame: frame, ascension: ascensionObservation{frame: frame, zone: 1}}, now); err != nil {
 		t.Fatal(err)
 	}
-	if p.startup != startupPrepare || p.export.requested || p.ancient.plan != nil || p.controls.isPaused() {
+	if p.startup != startupHeroes || p.export.requested || p.ancient.plan != nil || p.controls.isPaused() {
 		t.Fatal("reset did not defer Ancient export for startup")
 	}
 	jobs := make([]chan analysisJob, analysisCount)
@@ -45,11 +45,9 @@ func TestStartupPipelineHandoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	job := <-jobs[heroAnalysis]
-	if job.startup != startupPrepare || len(jobs[exportAnalysis]) != 0 || len(jobs[skillAnalysis]) != 0 {
+	if job.startup != startupHeroes || len(jobs[exportAnalysis]) != 0 || len(jobs[skillAnalysis]) != 0 {
 		t.Fatal("wrong startup worker scheduling")
 	}
-	// Complete the initial footer pass before the skill sweep.
-	p.finishStartupUpgradePass()
 	frame.id++
 	frame.at = now.Add(time.Second)
 	p.frame = frame
@@ -200,7 +198,7 @@ func TestStartupInitialCaptureWithoutZoneOCR(t *testing.T) {
 	if err := p.capture(ctx, now, jobs); err != nil {
 		t.Fatal(err)
 	}
-	if p.startupCheck || p.startup != startupPrepare || len(jobs[heroAnalysis]) != 1 || len(jobs[ascensionAnalysis]) != 0 || len(jobs[exportAnalysis]) != 0 {
+	if p.startupCheck || p.startup != startupHeroes || len(jobs[heroAnalysis]) != 1 || len(jobs[ascensionAnalysis]) != 0 || len(jobs[exportAnalysis]) != 0 {
 		t.Fatal("initial hero setup required zone OCR or export")
 	}
 }
@@ -291,8 +289,7 @@ func TestOrdinaryHeroUpgradeMaintenance(t *testing.T) {
 	}
 }
 
-func TestStartupBuysUnlockedUpgradesBeforeLevelInputs(t *testing.T) {
-	requireAncientOCR(t)
+func TestStartupSeeksTopWithoutInitialFooterPass(t *testing.T) {
 	f := startupFrame(t, "testdata/hero-tsuchi-x1.png")
 	f.layout = 1
 	c, err := recognizedGame(f.image)
@@ -300,28 +297,19 @@ func TestStartupBuysUnlockedUpgradesBeforeLevelInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.context = c
-	clicks := 0
-	p := newGamePipeline(&pauseControl{}, heroInput{click: func(image.Point) error { clicks++; return nil }, move: func(image.Point) error { return nil }, keyToggle: func(string, string) error { t.Fatal("upgrade footer used level modifier"); return nil }}, pipelineReaders{heroes: noStartupOCR(t)}, pipelineOptions{heroes: true})
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{heroes: noStartupOCR(t)}, pipelineOptions{heroes: true})
 	p.frame, p.layout = f, f.layout
 	p.beginStartup()
-	out := p.analyze(context.Background(), heroAnalysis, analysisJob{frame: f, startup: startupPrepare})
-	if out.err != nil || !out.found {
-		t.Fatalf("initial footer: %+v %v", out, out.err)
+	out := p.analyze(context.Background(), heroAnalysis, analysisJob{frame: f, startup: p.startup})
+	if out.err != nil || out.found || out.hero.startupScroll == (image.Point{}) {
+		t.Fatalf("initial top seek: %+v %v", out.hero, out.err)
 	}
 	if err = p.accept(context.Background(), out, f.at); err != nil {
 		t.Fatal(err)
 	}
 	p.plan(f.at)
 	a, ok := p.nextAction(f.at)
-	if !ok || a.kind != buyHeroUpgrades {
-		t.Fatalf("startup bought levels first: %+v %t", a, ok)
-	}
-	acted, err := p.execute(context.Background(), a)
-	if err != nil || !acted || clicks != 1 {
-		t.Fatalf("footer input: %t %v %d", acted, err, clicks)
-	}
-	p.actionCompleted(actionResult{action: a}, f.at)
-	if p.startup != startupHeroes || p.hero.sweep != (startupSweep{}) {
-		t.Fatal("initial footer bypassed skill sweep")
+	if !ok || a.kind != scrollHeroes || a.target.Y >= a.point.Y {
+		t.Fatalf("initial startup must seek top, not footer: %+v %t", a, ok)
 	}
 }

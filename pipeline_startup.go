@@ -10,7 +10,6 @@ type startupPhase uint8
 
 const (
 	noStartup startupPhase = iota
-	startupPrepare
 	startupHeroes
 	startupUpgrades
 	startupProgression
@@ -18,7 +17,7 @@ const (
 
 func (p *gamePipeline) beginStartup() {
 	p.startupCheck = false
-	p.startup, p.startupPassive = startupPrepare, false
+	p.startup, p.startupPassive = startupHeroes, false
 	p.startupDeadline = time.Time{}
 	p.hero.startStartup()
 	p.state = [analysisCount]observation{}
@@ -75,7 +74,7 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 			p.enqueue(gameAction{kind: clickMonster, frame: p.frame, point: point}, now)
 			p.nextMonster = now.Add(time.Second)
 		}
-	case startupPrepare, startupUpgrades:
+	case startupUpgrades:
 		out := p.state[heroAnalysis]
 		if out.frame.id == 0 || p.hero.pending != nil || !p.hero.due(now) {
 			return true
@@ -104,16 +103,10 @@ func (p *gamePipeline) startupNeedsSeedClicks() bool {
 		out.hero.startupNeedsGold && !out.hero.found && out.hero.startupScroll == (image.Point{})
 }
 
-// Purchase already unlocked upgrades before spending on missing skill levels.
-// The second footer pass buys upgrades unlocked by the bounded sweep.
+// The footer pass buys upgrades unlocked by the bounded level sweep.
 func (p *gamePipeline) finishStartupUpgradePass() {
-	if p.startup == startupPrepare {
-		p.startup = startupHeroes
-		fmt.Println("startup: available upgrades handled; starting skill sweep")
-	} else {
-		p.startup = startupProgression
-		fmt.Println("startup: upgrades handled; waiting for progression")
-	}
+	p.startup = startupProgression
+	fmt.Println("startup: upgrades handled; waiting for progression")
 	p.startupDeadline = time.Time{}
 	p.hero.interrupt()
 	p.state[heroAnalysis] = observation{}

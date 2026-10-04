@@ -203,3 +203,19 @@ func TestStartupClippedTopCaptionIsNavigationOnly(t *testing.T) {
 		t.Fatalf("clipped top row must not be purchased or block navigation: %+v %v", out, err)
 	}
 }
+
+func TestStartupUnlockedWithoutChecksSkipped(t *testing.T) {
+	f := startupFrame(t, "testdata/hero-startup-bottom-hire.png")
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	if err != nil || !out.found || out.owned || absDiff(out.button.Y, 1337) > 4 {
+		t.Fatalf("unlocked Fisherman/Betty must be skipped without checks: %+v %v", out, err)
+	}
+}
+
+func TestStartupLockedUpgradeRequestsMAXWithoutOCR(t *testing.T) {
+	f := startupFrame(t, "testdata/hero-nongilded-successor.jpg")
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	if err != nil || !out.found || !out.owned || absDiff(out.button.Y, 446) > 3 {
+		t.Fatalf("locked Skogur must request levels: %+v %v", out, err)
+	}
+}

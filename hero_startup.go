@@ -103,21 +103,17 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		}
 		owned := r.kind == heroButtonLevelUp
 		if owned {
-			complete, visible, err := readHeroUpgradeState(frame.image, r.button)
+			if y+b.Dy()*85/1000 >= viewport.Max.Y {
+				break
+			}
+			if !r.available {
+				continue
+			}
+			locked, err := heroHasLockedUpgrade(frame.image, r.button)
 			if err != nil {
 				return out, err
 			}
-			if complete {
-				continue
-			}
-			if !visible {
-				if y+b.Dy()*85/1000 >= viewport.Max.Y {
-					break
-				}
-				// A covering tooltip is not a reason to repeatedly level this row.
-				continue
-			}
-			if !r.available {
+			if !locked {
 				continue
 			}
 		}
