@@ -93,6 +93,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		// At the top Cid is the first card; every subsequent owned row has DPS.
 		out.passiveReady = out.passiveReady || rows[i].kind == heroButtonLevelUp && (i > 0 || out.thumbFound && out.thumb.Y-height/2 > b.Min.Y+b.Dy()*435/1000)
 	}
+	clipped := false
 	for _, r := range rows {
 		y := r.button.Y
 		if r.band.Min.Y <= viewport.Min.Y+edgeGap {
@@ -103,6 +104,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		}
 		if r.kind == heroButtonUnknown {
 			if r.band.Max.Y >= viewport.Max.Y-edgeGap {
+				clipped = true
 				break
 			}
 			return out, fmt.Errorf("startup hero button at %v: caption is obscured", r.button)
@@ -110,6 +112,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		owned := r.kind == heroButtonLevelUp
 		if owned {
 			if y+b.Dy()*85/1000 >= viewport.Max.Y {
+				clipped = true
 				break
 			}
 			if !r.available {
@@ -122,6 +125,11 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 			if !locked {
 				continue
 			}
+		} else if !heroPriceRegion(frame.image, r.button).In(viewport) {
+			// HIRE can remain readable when its price extends below the screen.
+			// Bring that price into view before buying or checking affordability.
+			clipped = true
+			break
 		}
 		if r.available {
 			if absDiff(y, out.sweep.y) > b.Dy()/20 {
@@ -143,7 +151,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		out.startupNeedsGold = price > gold && !out.passiveReady && !affordable && ownershipKnown
 		return out, nil
 	}
-	if out.bottom {
+	if out.bottom && !clipped {
 		out.startupComplete = out.passiveReady
 		return out, nil
 	}

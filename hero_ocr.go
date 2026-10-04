@@ -236,6 +236,17 @@ func readHeroPrice(ctx context.Context, screen image.Image, button image.Point) 
 	if screen == nil {
 		return 0, fmt.Errorf("nil OCR screen")
 	}
+	w := screen.Bounds().Dx()
+	// Large captures already have readable glyphs; oversizing this font can lose the entire line.
+	scale := 1
+	if w < 2048 {
+		scale = max(3, 6144/w)
+	}
+	return readGameNumber(ctx, screen, heroPriceRegion(screen, button), scale, 7, 0)
+}
+
+// Retain the full region so callers can reject prices clipped by the viewport.
+func heroPriceRegion(screen image.Image, button image.Point) image.Rectangle {
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
 	start, end, top, bottom := 52, 126, 18, 56
@@ -254,13 +265,7 @@ func readHeroPrice(ctx context.Context, screen image.Image, button image.Point) 
 		// Stop above the gold border; it otherwise raises the disabled-text mask threshold.
 		top, bottom = 7, 35
 	}
-	region := image.Rect(b.Min.X+w*start/1000, button.Y+h*top/1000, b.Min.X+w*end/1000, button.Y+h*bottom/1000)
-	// Large captures already have readable glyphs; oversizing this font can lose the entire line.
-	scale := 1
-	if w < 2048 {
-		scale = max(3, 6144/w)
-	}
-	return readGameNumber(ctx, screen, region, scale, 7, 0)
+	return image.Rect(b.Min.X+w*start/1000, button.Y+h*top/1000, b.Min.X+w*end/1000, button.Y+h*bottom/1000)
 }
 
 func readHeroLevel(ctx context.Context, screen image.Image, button image.Point) (int, error) {
