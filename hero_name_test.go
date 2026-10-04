@@ -12,8 +12,12 @@ func TestStartupHeroNameKey(t *testing.T) {
 	}{
 		{"SirGeorgellKingsGuard", "sirgeorgeiikingsguard"},
 		{"Sir George II, King's Guard", "sirgeorgeiikingsguard"},
-		{"CID, the Helpful Adventurer", "cidtheheipfuiadventurer"},
+		{"CID, the Helpful Adventurer", "eidtheheipfuiadventurer"},
 		{"The Masked Samurai", "themaskedsamurai"},
+		{"NatalialeeApprentice", "nataiiaieeapprentiee"},
+		{"Natalia, Ice Apprentice", "nataiiaieeapprentiee"},
+		{"ReferiJeratorleeWizard", "referijeratorieewizard"},
+		{"Referi Jerator, Ice Wizard", "referijeratorieewizard"},
 		{"Aphrodite, Goddess of Love", "aphroditegoddessofiove"},
 	} {
 		if got := startupHeroNameKey(test.raw); got != test.want {
@@ -59,6 +63,30 @@ func TestStartupHeroNameKeyRejectsTruncatedOrArbitraryNames(t *testing.T) {
 	} {
 		if key := startupHeroNameKey(raw); known[key] {
 			t.Errorf("arbitrary or truncated OCR text %q produced known key %q", raw, key)
+		}
+	}
+}
+
+func TestStartupHeroIceOCRMatchesOnlyExpectedRosterEntry(t *testing.T) {
+	names, err := ancientcalc.HeroNames()
+	if err != nil {
+		t.Fatal(err)
+	}
+	known := make(map[string]string, len(names))
+	for _, name := range names {
+		known[startupHeroNameKey(name)] = name
+	}
+	for raw, expected := range map[string]string{
+		"NatalialeeApprentice":   "Natalia, Ice Apprentice",
+		"ReferiJeratorleeWizard": "Referi Jerator, Ice Wizard",
+	} {
+		if got := known[startupHeroNameKey(raw)]; got != expected {
+			t.Fatalf("%q matched %q, want %q", raw, got, expected)
+		}
+	}
+	for _, raw := range []string{"lee", "Natalialee", "ReferiJeratorleeWizar", "HIRE"} {
+		if got := known[startupHeroNameKey(raw)]; got != "" {
+			t.Fatalf("incomplete caption %q matched %q", raw, got)
 		}
 	}
 }

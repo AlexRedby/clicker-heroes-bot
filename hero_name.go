@@ -1,7 +1,7 @@
 package main
 
 // startupHeroNameKey returns the comparison key used for startup hero names.
-// It deliberately handles only the common OCR ambiguity between I and l.
+// It handles the OCR ambiguities I/l and c/e without approximate name search.
 func startupHeroNameKey(raw string) string {
 	key := make([]byte, 0, len(raw))
 	for i := 0; i < len(raw); i++ {
@@ -13,8 +13,11 @@ func startupHeroNameKey(raw string) string {
 		default:
 			continue
 		}
-		if c == 'l' {
+		switch c {
+		case 'l':
 			c = 'i'
+		case 'c':
+			c = 'e'
 		}
 		key = append(key, c)
 	}
