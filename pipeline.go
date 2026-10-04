@@ -699,7 +699,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		}
 		if p.ancient.active && p.ancient.jobFrame == 0 && !now.Before(p.ancient.nextRead) && c.window != "!outside-game" {
 			p.ancient.jobFrame = p.frame.id
-			replaceJob(jobs[ancientAnalysis], analysisJob{frame: p.frame, modeOnly: p.ancient.pending != nil && p.ancient.pending.ancient.step == confirmAncientQuantity, ancientNames: p.ancient.budgetChecked && p.ancient.selected < 0 && !p.ancient.needFullRead})
+			replaceJob(jobs[ancientAnalysis], analysisJob{frame: p.frame, modeOnly: p.ancient.pending != nil && p.ancient.pending.ancient.step == confirmAncientQuantity, ancientNames: p.ancient.selected < 0 && !p.ancient.needFullRead})
 			p.ancient.nextRead = now.Add(300 * time.Millisecond)
 		}
 		if c.ancientDialog || p.ancient.active || (p.ancient.plan != nil && !p.ancient.finished) {

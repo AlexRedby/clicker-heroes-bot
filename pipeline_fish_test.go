@@ -418,7 +418,7 @@ func testAncientScrollWithSlowFish(t *testing.T, stalledWheel bool) {
 		},
 	}, pipelineOptions{fishInterval: time.Second})
 	p.frame, p.layout = frame, frame.layout
-	p.ancient = ancientPlanner{active: true, budgetChecked: true, selected: -1,
+	p.ancient = ancientPlanner{active: true, selected: -1,
 		plan: &ancientPlan{Plan: ancientcalc.Plan{Owned: []ancientcalc.Level{{Name: "Argaiv"}}, Rows: []ancientcalc.Purchase{{Name: "Atman"}}}}, done: map[int]bool{}}
 	// A previous negative observation has expired, and the new scan cannot finish.
 	old := frame

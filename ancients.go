@@ -179,6 +179,39 @@ func ancientDisplayMatches(display, exact string) bool {
 	return diff.Cmp(lower) >= 0 && diff.Cmp(unit) < 0
 }
 
+// Decimal plan amounts are subtracted exactly; row costs already include wallet loss.
+func ancientBudgetValue(value string) (*big.Rat, error) {
+	if _, err := ancientcalc.Value(value); err != nil {
+		return nil, err
+	}
+	n, ok := new(big.Rat).SetString(value)
+	if !ok {
+		return nil, fmt.Errorf("invalid Ancient budget amount %q", value)
+	}
+	return n, nil
+}
+
+func (p *ancientPlanner) remainingSouls() (*big.Rat, error) {
+	remaining, err := ancientBudgetValue(p.plan.Souls)
+	if err != nil {
+		return nil, err
+	}
+	for i, row := range p.plan.Rows {
+		if !p.done[i] {
+			continue
+		}
+		cost, err := ancientBudgetValue(row.Cost)
+		if err != nil {
+			return nil, err
+		}
+		remaining.Sub(remaining, cost)
+	}
+	if remaining.Sign() < 0 {
+		return nil, fmt.Errorf("submitted Ancient costs exceed exported Hero Souls")
+	}
+	return remaining, nil
+}
+
 type ancientStep uint8
 
 const (
@@ -200,7 +233,7 @@ type ancientCommand struct {
 type ancientPlanner struct {
 	plan                                                                               *ancientPlan
 	active, started, finished, blocked                                                 bool
-	budgetChecked, quantityEntered, needFullRead                                       bool
+	quantityEntered, needFullRead                                                      bool
 	seekArrows                                                                         bool
 	seekTarget, seekDirection, seekClicks, seekStalls, seekTurns, seekLocal, seekReads int
 	seekReadFrame                                                                      uint64
@@ -356,11 +389,12 @@ func (p *ancientPlanner) observe(out ancientObservation, err error, now time.Tim
 		return
 	}
 	p.latest = out
-	if !out.namesOnly && out.souls != "" {
+	fullPanel := !out.namesOnly && out.frame.context.ancients && !out.frame.context.ancientDialog
+	if fullPanel {
 		p.needFullRead = false
 	}
 	if p.pending == nil {
-		if !out.namesOnly && out.souls != "" || out.frame.context.ancientDialog {
+		if fullPanel || out.frame.context.ancientDialog {
 			p.deadline = time.Time{}
 		}
 		return
@@ -517,13 +551,6 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 	if !frame.context.ancients {
 		return gameAction{}, false
 	}
-	if !p.budgetChecked {
-		if !ancientDisplayMatches(p.latest.souls, p.plan.Souls) {
-			p.fail(fmt.Sprintf("exported Hero Souls do not match the current game: saved=%q, read=%q", p.plan.Souls, p.latest.souls))
-			return gameAction{}, false
-		}
-		p.budgetChecked = true
-	}
 	if len(p.done) == len(p.plan.Rows) {
 		return makeAction(returnAncientHeroes, ancientTabPoint(frame.image, true))
 	}
@@ -574,13 +601,18 @@ func (p *ancientPlanner) action(frame gameFrame, now time.Time) (gameAction, boo
 				p.fail(fmt.Sprintf("exported level differs for %s: saved=%q, read=%q", buy.Name, buy.Current, row.level))
 				return gameAction{}, false
 			}
-			souls, e1 := ancientcalc.Value(p.latest.souls)
-			reserve, e2 := ancientcalc.Value(p.plan.Reserve)
-			cost, e3 := ancientcalc.Value(buy.Cost)
-			if e1 != nil || e2 != nil || e3 != nil || souls.Cmp(new(big.Float).SetPrec(256).Add(reserve, cost)) < 0 {
-				p.fail("insufficient observed Hero Souls for " + buy.Name)
+			remaining, e1 := p.remainingSouls()
+			reserve, e2 := ancientBudgetValue(p.plan.Reserve)
+			cost, e3 := ancientBudgetValue(buy.Cost)
+			if e1 != nil || e2 != nil || e3 != nil {
+				p.fail(fmt.Sprintf("invalid planned Hero Souls budget for %s: remaining=%v, reserve=%v, cost=%v", buy.Name, e1, e2, e3))
 				return gameAction{}, false
 			}
+			if remaining.Cmp(new(big.Rat).Add(reserve, cost)) < 0 {
+				p.fail(fmt.Sprintf("insufficient planned Hero Souls for %s: remaining=%s, cost=%q, reserve=%q", buy.Name, remaining.RatString(), buy.Cost, p.plan.Reserve))
+				return gameAction{}, false
+			}
+
 			var err error
 			p.quantity, err = ancientcalc.InputQuantity(buy.Quantity)
 			if err != nil {

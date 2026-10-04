@@ -197,7 +197,7 @@ func TestAncientAlphabeticalSeek(t *testing.T) {
 				draw.Draw(screen, screen.Bounds(), base, image.Point{}, draw.Src)
 				strip := image.Rect(83, 288, 90, 691)
 				draw.Draw(screen, strip, image.NewUniform(color.Black), image.Point{}, draw.Src)
-				out := ancientObservation{frame: frame, namesOnly: p.budgetChecked && p.selected < 0 && !p.needFullRead}
+				out := ancientObservation{frame: frame, namesOnly: p.selected < 0 && !p.needFullRead}
 				for i, name := range roster {
 					y := 300 + i*148 - offset
 					button := image.Rect(83, y+31, 90, y+89).Intersect(strip)
@@ -208,7 +208,6 @@ func TestAncientAlphabeticalSeek(t *testing.T) {
 				}
 				frame.image, out.frame.image = screen, screen
 				if !out.namesOnly {
-					out.souls = fmt.Sprint(1000 - len(p.done))
 					for _, point := range ancientButtons(screen) {
 						region := ancientNameRegion(screen, point)
 						for _, anchor := range out.anchors {
@@ -244,7 +243,7 @@ func TestAncientAlphabeticalSeek(t *testing.T) {
 						t.Fatal("name-only or repeated purchase", p.selected)
 					}
 					// The separate transaction tests cover V/entry/OK; feed its owned
-					// one-shot submission here, then require a fresh wallet next time.
+					// one-shot submission here, then require a fresh level read next time.
 					owner := frame
 					owner.context.ancients, owner.context.ancientDialog = false, true
 					p.sent(gameAction{frame: owner, ancient: ancientCommand{step: confirmAncientQuantity}}, now)
@@ -276,7 +275,7 @@ func TestAncientAlphabeticalSeek(t *testing.T) {
 	}
 }
 
-func TestAncientFineSeekUsesNamesWithoutRepeatedWalletOCR(t *testing.T) {
+func TestAncientFineSeekUsesNamesWithoutLevelOCR(t *testing.T) {
 	requireAncientOCR(t)
 	screen := loadTestImage(t, "testdata/ancient-dora-submitted.png")
 	frame := gameFrame{id: 1, image: screen, context: gameContext{known: true, ancients: true, bounds: screen.Bounds()}}
@@ -292,13 +291,13 @@ func TestAncientFineSeekUsesNamesWithoutRepeatedWalletOCR(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := ancientPlan{Plan: ancientcalc.Plan{Owned: []ancientcalc.Level{{Name: "Chronos"}, {Name: "Dogcog"}, {Name: "Dora"}}, Rows: []ancientcalc.Purchase{{Name: "Dora"}}}}
-	p := ancientPlanner{plan: &plan, active: true, budgetChecked: true, selected: -1, done: map[int]bool{}}
+	p := ancientPlanner{plan: &plan, active: true, selected: -1, done: map[int]bool{}}
 	now := time.Now()
 	for range 2 {
 		p.observe(out, nil, now)
 		a, ok := p.action(out.frame, now)
 		if !ok || a.ancient.step != scrollAncients || !a.ancient.fine || a.ancient.direction != 1 || p.needFullRead {
-			t.Fatal("clipped name waited for wallet/level OCR", a, p.needFullRead)
+			t.Fatal("clipped name waited for level OCR", a, p.needFullRead)
 		}
 		p.sent(a, now)
 		now = now.Add(time.Second)
@@ -343,7 +342,7 @@ func TestAncientClippedLevelKeepsNavigation(t *testing.T) {
 			}}}
 			now := time.Now()
 			for _, doraTarget := range []bool{false, true} {
-				p := ancientPlanner{plan: &plan, active: true, budgetChecked: true, selected: -1, seekTarget: -1, done: map[int]bool{2: true, 3: true}}
+				p := ancientPlanner{plan: &plan, active: true, selected: -1, seekTarget: -1, done: map[int]bool{2: true, 3: true}}
 				if doraTarget {
 					p.done[0] = true
 				}
@@ -358,7 +357,7 @@ func TestAncientClippedLevelKeepsNavigation(t *testing.T) {
 			}
 			// A real mismatch on a fully visible row must still stop before input.
 			plan.Rows = []ancientcalc.Purchase{{Name: "Energon", Current: "200", Quantity: "1", Cost: "1"}}
-			p := ancientPlanner{plan: &plan, active: true, budgetChecked: true, selected: -1, done: map[int]bool{}}
+			p := ancientPlanner{plan: &plan, active: true, selected: -1, done: map[int]bool{}}
 			p.observe(out, nil, now)
 			if _, ok := p.action(frame, now); ok || !p.blocked || !strings.Contains(p.failure, `saved="200", read="201"`) {
 				t.Fatal("visible level mismatch did not stop with saved/read diagnostics", p.failure)
@@ -373,7 +372,7 @@ func TestAncientUnknownNeighborsAreBounded(t *testing.T) {
 		{{"Dora", 700}, {"Atman", 1000}},
 	} {
 		plan := ancientPlan{Plan: ancientcalc.Plan{Owned: []ancientcalc.Level{{Name: "Atman"}, {Name: "Dora"}}, Rows: []ancientcalc.Purchase{{Name: "Atman"}}}}
-		p := ancientPlanner{plan: &plan, active: true, budgetChecked: true, selected: -1, done: map[int]bool{}}
+		p := ancientPlanner{plan: &plan, active: true, selected: -1, done: map[int]bool{}}
 		now := time.Now()
 		for i := 1; i <= 5 && !p.blocked; i++ {
 			frame := gameFrame{id: uint64(i), context: gameContext{known: true, ancients: true}}
@@ -474,10 +473,7 @@ func TestAncientRealScreen(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if out.souls != "1.755e58" {
-				t.Fatal("current wallet confused with pending Ascension souls", out.souls)
-			}
-			t.Logf("souls=%s rows=%+v anchors=%v", out.souls, out.rows, out.anchors)
+			t.Logf("rows=%+v anchors=%v", out.rows, out.anchors)
 			if len(out.rows) != 3 || out.rows[0].name != "Argaiv" || out.rows[0].level != "1.000e28" || out.rows[1].name != "Atman" || out.rows[1].level != "164" {
 				t.Fatal("Ancient row recognition", out.rows)
 			}
@@ -588,7 +584,7 @@ func TestAncientTransaction(t *testing.T) {
 	frame.id++
 	frame.context.heroes = false
 	frame.context.ancients = true
-	out := ancientObservation{frame: frame, souls: "1.755e58", rows: []ancientScreenRow{{"Argaiv", "1.000e28", image.Pt(243, 711)}}}
+	out := ancientObservation{frame: frame, rows: []ancientScreenRow{{"Argaiv", "1.000e28", image.Pt(243, 711)}}}
 	p.observe(out, nil, now.Add(time.Second))
 	a, ok = p.action(frame, now.Add(time.Second))
 	if !ok || a.ancient.step != openAncientQuantity {
@@ -643,14 +639,11 @@ func TestAncientTransaction(t *testing.T) {
 		t.Fatal("finished batch replayed")
 	}
 
-	for _, fault := range []string{"souls", "level", "pause"} {
+	for _, fault := range []string{"level", "pause"} {
 		t.Run(fault, func(t *testing.T) {
 			q := ancientPlanner{plan: &plan, active: true, started: true, selected: -1, done: map[int]bool{}}
 			bad := out
 			bad.rows = []ancientScreenRow{{"Argaiv", "1.000e28", image.Pt(243, 711)}}
-			if fault == "souls" {
-				bad.souls = "1e57"
-			}
 			if fault == "level" {
 				bad.rows[0].level = "3e28"
 			}
@@ -739,7 +732,7 @@ func TestAncientHalfSizeScreen(t *testing.T) {
 				if !c.ancientDialog || !out.okay {
 					t.Fatal("quantity dialog", c, out)
 				}
-			} else if !c.ancients || out.souls != "1.755e58" || len(out.rows) != 3 || out.rows[0].name != "Argaiv" || out.rows[1].name != "Atman" {
+			} else if !c.ancients || len(out.rows) != 3 || out.rows[0].name != "Argaiv" || out.rows[1].name != "Atman" {
 				t.Fatal("Ancient rows", c, out.rows)
 			}
 		})
@@ -836,14 +829,14 @@ func TestAncientDisplayPrecision(t *testing.T) {
 		display, exact string
 		matches        bool
 	}{
-		{"6.556e65", "6.55659294544822e65", true}, // Reported plan total, truncated HUD.
-		{"6.557e65", "6.55659294544822e65", true}, // Rounded HUD remains supported.
+		{"6.556e65", "6.55659294544822e65", true}, // Truncated level.
+		{"6.557e65", "6.55659294544822e65", true}, // Rounded level.
 		{"6.556e65", "6.556999e65", true},
 		{"6.556e65", "6.557e65", false},
 		{"6.556e65", "6.5554e65", false},
 		{"6.556e65", "6.55659294544822e64", false},
 		{"6.556e65", "6.558e65", false},
-		{"1.755e58", "6.55659294544822e65", false}, // Bank must not match pending souls.
+		{"1.755e58", "6.55659294544822e65", false},
 		{"1.00E+03", "1009", true},
 		{"1.00e00003", "1009", true},
 		{"1.00E+03", "1010", false},
@@ -856,26 +849,6 @@ func TestAncientDisplayPrecision(t *testing.T) {
 		if got := ancientDisplayMatches(tc.display, tc.exact); got != tc.matches {
 			t.Errorf("display=%q exact=%q: match=%t, want %t", tc.display, tc.exact, got, tc.matches)
 		}
-	}
-}
-
-func TestAncientWalletGateUsesDisplayedPrecision(t *testing.T) {
-	frame := testPipelineFrame()
-	frame.context.heroes, frame.context.ancients = false, true
-	plan := ancientPlan{Plan: ancientcalc.Plan{Souls: "6.55659294544822e65", Reserve: "6.55659294544822e63", Rows: []ancientcalc.Purchase{{ID: 1, Name: "Argaiv", Current: "1e28", Target: "2e28", Quantity: "1e28", Cost: "1e56"}}}}
-	for _, read := range []string{"6.556e65", "1.755e58"} {
-		t.Run(read, func(t *testing.T) {
-			p := ancientPlanner{plan: &plan, active: true, started: true, selected: -1, done: map[int]bool{}}
-			p.observe(ancientObservation{frame: frame, souls: read, rows: []ancientScreenRow{{"Argaiv", "1.000e28", image.Pt(204, 500)}}}, nil, time.Now())
-			a, ok := p.action(frame, time.Now())
-			if read == "6.556e65" {
-				if !ok || a.ancient.step != openAncientQuantity || p.blocked {
-					t.Fatalf("fresh truncated wallet blocked: %s", p.failure)
-				}
-			} else if ok || !p.blocked || !strings.Contains(p.failure, plan.Souls) || !strings.Contains(p.failure, read) {
-				t.Fatalf("stale wallet allowed or missing diagnostics: action=%t failure=%s", ok, p.failure)
-			}
-		})
 	}
 }
 
@@ -1019,8 +992,8 @@ func TestAncientSubmissionSkipsOCR(t *testing.T) {
 			}
 			c.window = "game"
 			controls := pauseControl{}
-			plan := ancientPlan{Plan: ancientcalc.Plan{Reserve: "1", Rows: []ancientcalc.Purchase{
-				{Name: tc.name, Current: tc.current, Quantity: tc.quantity},
+			plan := ancientPlan{Plan: ancientcalc.Plan{Souls: "11", Reserve: "1", Rows: []ancientcalc.Purchase{
+				{Name: tc.name, Current: tc.current, Quantity: tc.quantity, Cost: "1"},
 				{Name: "Dogcog", Current: "100", Quantity: "1", Cost: "1"},
 			}}}
 			p := newGamePipeline(&controls, heroInput{capture: func() (image.Image, error) { return screen, nil }}, pipelineReaders{
@@ -1032,7 +1005,6 @@ func TestAncientSubmissionSkipsOCR(t *testing.T) {
 			p.frame = gameFrame{id: 1, layout: 1, image: screen, context: owner}
 			p.layout = 1
 			p.ancient.active, p.ancient.started = true, true
-			p.ancient.budgetChecked = true
 			p.ancient.selected, p.ancient.quantity = 0, tc.quantity
 			p.ancient.done = map[int]bool{}
 			p.actionCompleted(actionResult{action: gameAction{kind: handleAncient, frame: p.frame, ancient: ancientCommand{step: confirmAncientQuantity, quantity: tc.quantity}}}, now)
@@ -1048,7 +1020,7 @@ func TestAncientSubmissionSkipsOCR(t *testing.T) {
 				t.Fatal("closed-dialog capture did not schedule a new context-only frame", job)
 			}
 			out := p.analyze(context.Background(), ancientAnalysis, job)
-			if out.err != nil || len(out.ancient.rows) != 0 || out.ancient.souls != "" {
+			if out.err != nil || len(out.ancient.rows) != 0 {
 				t.Fatal("acknowledgement read purchase results", out)
 			}
 			stale := out
@@ -1064,7 +1036,7 @@ func TestAncientSubmissionSkipsOCR(t *testing.T) {
 			reads := 0
 			p.readers.ancients = func(_ context.Context, frame gameFrame) (ancientObservation, error) {
 				reads++
-				return ancientObservation{frame: frame, souls: "10", rows: []ancientScreenRow{{name: "Dogcog", level: "100", point: image.Pt(243, 711)}}}, nil
+				return ancientObservation{frame: frame, rows: []ancientScreenRow{{name: "Dogcog", level: "100", point: image.Pt(243, 711)}}}, nil
 			}
 			if err := p.capture(context.Background(), now.Add(2*time.Second), jobs); err != nil {
 				t.Fatal(err)
@@ -1166,12 +1138,12 @@ func TestAncientSubmissionRejectsUnownedFrames(t *testing.T) {
 func TestAncientNextPurchaseGuards(t *testing.T) {
 	for _, fault := range []string{"none", "case", "balance", "level", "quantity"} {
 		t.Run(fault, func(t *testing.T) {
-			plan := ancientPlan{Plan: ancientcalc.Plan{Reserve: "5", Rows: []ancientcalc.Purchase{
-				{Name: "Dora"},
+			plan := ancientPlan{Plan: ancientcalc.Plan{Souls: "11", Reserve: "5", Rows: []ancientcalc.Purchase{
+				{Name: "Dora", Cost: "1"},
 				{Name: "Dogcog", Current: "1e28", Target: "10000000000000000000000000001", Quantity: "1", Cost: "1"},
 			}}}
 			frame := gameFrame{id: 10, context: gameContext{known: true, ancients: true}}
-			out := ancientObservation{frame: frame, souls: "10", rows: []ancientScreenRow{{name: "Dogcog", level: "1.000e28"}}}
+			out := ancientObservation{frame: frame, rows: []ancientScreenRow{{name: "Dogcog", level: "1.000e28"}}}
 			switch fault {
 			case "case":
 				out.rows[0].name = "dogcog"
@@ -1179,13 +1151,13 @@ func TestAncientNextPurchaseGuards(t *testing.T) {
 					t.Fatal("case-only OCR difference erased a readable row")
 				}
 			case "balance":
-				out.souls = "5"
+				plan.Souls = "5"
 			case "level":
 				out.rows[0].level = "2.000e28"
 			case "quantity":
 				plan.Rows[1].Quantity = "0"
 			}
-			p := ancientPlanner{plan: &plan, active: true, started: true, budgetChecked: true, selected: -1, done: map[int]bool{0: true}}
+			p := ancientPlanner{plan: &plan, active: true, started: true, selected: -1, done: map[int]bool{0: true}}
 			p.observe(out, nil, time.Now())
 			a, ok := p.action(frame, time.Now())
 			if fault == "none" || fault == "case" {
@@ -1224,7 +1196,7 @@ func TestEmptyAncientPlanSkipsVisit(t *testing.T) {
 				f.context.heroes, f.context.ancients = true, false
 				p.observe(ancientObservation{frame: f}, nil, now.Add(time.Second))
 				if !p.finished || p.blocked {
-					t.Fatal("empty plan required wallet OCR")
+					t.Fatal("empty plan required panel OCR")
 				}
 			default:
 				if ok || p.finished {

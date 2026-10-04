@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"image"
 	"regexp"
 	"strings"
@@ -118,7 +117,6 @@ type ancientNameAnchor struct {
 }
 type ancientObservation struct {
 	frame     gameFrame
-	souls     string
 	rows      []ancientScreenRow
 	anchors   []ancientNameAnchor
 	namesOnly bool
@@ -196,15 +194,6 @@ func readAncientObservation(ctx context.Context, frame gameFrame) (ancientObserv
 		return out, err
 	}
 	out.anchors = names.anchors
-	raw, err := readGameText(ctx, screen, controlRect(screen, image.Rect(410, 172, 591, 199)), max(1, 2560/screen.Bounds().Dx()), 7, 180, "0123456789.eEabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ")
-	if err != nil {
-		return out, err
-	}
-	match := ascensionRewardLabel.FindStringSubmatch(strings.TrimSpace(raw))
-	if match == nil {
-		return out, fmt.Errorf("unreadable Ancient soul budget %q", strings.TrimSpace(raw))
-	}
-	out.souls = match[1]
 	for _, point := range ancientButtons(screen) {
 		var name string
 		for _, anchor := range out.anchors {
