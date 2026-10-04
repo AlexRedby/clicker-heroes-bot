@@ -75,7 +75,7 @@ func (v *windowCapture) capture() (image.Image, error) {
 		return unavailable("game viewport context not recognized")
 	}
 	// A normal HUD must keep its anchors; existing modals may dim them.
-	if !c.saveMenu && !c.ancientDialog && !c.ascension && !c.questDialog && c.modal == noGildModal && !viewportHUD(crop) {
+	if !c.saveMenu && !c.ancientDialog && !c.ascension && !c.questDialog && !c.mercenaryDialog && !c.relicJunk && c.modal == noGildModal && !viewportHUD(crop) {
 		return unavailable("game viewport anchors changed")
 	}
 	if geometry != v.geometry {
