@@ -7,7 +7,6 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"maps"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -19,15 +18,15 @@ type heroReaders struct {
 	level func(context.Context, image.Image, image.Point) (int, error)
 }
 type heroObservation struct {
-	frame                                              gameFrame
-	button, thumb                                      image.Point
-	thumbFound, bottom, x1, found, owned, stable       bool
-	startup, passiveReady, startupComplete, startupTop bool
-	startupNeedsGold                                   bool
-	startupName                                        string
-	startupScroll                                      image.Point
-	level                                              int
-	gold, nextPrice                                    float64
+	frame                                        gameFrame
+	button, thumb                                image.Point
+	thumbFound, bottom, x1, found, owned, stable bool
+	startup, passiveReady, startupComplete       bool
+	startupNeedsGold                             bool
+	sweep                                        startupSweep
+	startupScroll                                image.Point
+	level                                        int
+	gold, nextPrice                              float64
 }
 type heroAttempt struct {
 	action   gameAction
@@ -41,8 +40,7 @@ type heroDiagnostic struct {
 }
 
 type heroRunner struct {
-	startupDone   map[string]bool
-	startupTop    bool
+	sweep         startupSweep
 	enabled       bool
 	failures      int
 	nextScan      time.Time
@@ -54,16 +52,12 @@ type heroRunner struct {
 	onDiagnostic  func(heroDiagnostic) bool
 }
 
-// A confirmed reset starts a new sweep. F8 interrupt preserves confirmed visits.
+// A reset starts a new bounded sweep. F8 preserves its viewport cursor.
 func (p *heroRunner) startStartup() {
 	p.interrupt()
-	p.startupDone = make(map[string]bool)
-	p.startupTop = false
+	p.sweep = startupSweep{}
 	p.lastReadError = ""
 }
-
-// The worker owns this snapshot; it never shares a mutable map with input.
-func (p *heroRunner) startupVisits() map[string]bool { return maps.Clone(p.startupDone) }
 
 func (p *heroRunner) due(now time.Time) bool {
 	return p.enabled && !now.Before(p.nextScan) && !(p.pending != nil && p.pending.action.kind == buyHero && p.pending.attempts >= 5)
@@ -160,7 +154,9 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 		return
 	}
 	p.lastReadError = ""
-	p.startupTop = p.startupTop || out.startupTop
+	if out.startup {
+		p.sweep = out.sweep
+	}
 	if p.pending != nil {
 		pending := p.pending
 		if out.frame.id <= pending.action.frame.id || out.frame.at.Before(pending.afterAt) {
@@ -170,16 +166,15 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 		pending.attempts++
 		switch pending.action.kind {
 		case buyHero:
+			if pending.action.hero.startup {
+				p.pending = nil
+				p.latest = out
+				p.nextScan = now
+				return
+			}
 			if out.stable && out.level > pending.action.hero.level {
 				fmt.Printf("leveled hero at (%d, %d)\n", out.button.X, out.button.Y)
 				p.failures = 0
-				// A MAX hire can already buy levels; a single-level hire still needs the owned-row pass.
-				if pending.action.hero.startup && (pending.action.hero.owned || out.level > 1) {
-					if p.startupDone == nil {
-						p.startupDone = make(map[string]bool)
-					}
-					p.startupDone[pending.action.hero.startupName] = true
-				}
 				p.pending = nil
 				p.latest = heroObservation{}
 				p.nextScan = now
@@ -217,6 +212,12 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 				return
 			}
 			p.pending = nil
+			if pending.action.hero.startup {
+				p.sweep.y, p.sweep.attempts = 0, 0
+				out.sweep = p.sweep
+				out.found = false
+				p.nextScan = now
+			}
 		case parkPointer:
 			p.pending = nil
 		}
@@ -304,6 +305,10 @@ func (p *heroRunner) action(now time.Time) (gameAction, bool) {
 	return a, true
 }
 func (p *heroRunner) sent(a gameAction, now time.Time) {
+	if a.kind == buyHero && a.hero.startup {
+		p.sweep = a.hero.sweep
+		p.sweep.attempts++
+	}
 	p.latest = heroObservation{}
 	p.pending = &heroAttempt{action: a, afterAt: now.Add(200 * time.Millisecond)}
 	p.nextScan = now.Add(200 * time.Millisecond)

@@ -6,20 +6,20 @@
 
 | Case | Native acceptance gate |
 | --- | --- |
-| Viewport edges | Complete name/HIRE/LVL at the top, middle and bottom remains readable. A genuinely cropped pending row is brought into view; overlap does not reverse the sweep or skip the next hero. |
-| Card variants | Plain and gilded heroes, blue and dark HIRE/LVL UP buttons, short and long names, short and large levels. An unknown or obscured field is never treated as a new hero, level zero or completed startup. |
-| Purchases | HIRE to level 1, HIRE directly to many levels, owned MAX and expanded/moved cards. Confirm the same hero, retain visits and avoid duplicate MAX input. |
-| Gold and successor | Zero gold, affordable and unaffordable successors, short and growing lists. Starter clicks stop for an affordable purchase, an owned passive hero, pending input or unknown ownership/gold. Finish only on readable evidence; do not read unrelated numerical levels to decide a visible purchase. |
+| Viewport edges | Complete HIRE/LVL UP captions and upgrade strips at the top, middle and bottom are recognized. Clipped rows are brought into view; overlap advances the bounded sweep. |
+| Card variants | Plain/gilded cards, blue/dark captions, purchased green checks, a single locked slot and partial/covered strips. Startup must not read names or levels; green icon artwork must not count as a check. |
+| Purchases | Initial available upgrades are bought before levels. Fully purchased rows receive no input; incomplete rows get at most two Ctrl+100 inputs per viewport, including missed clicks and expanded cards. Ordinary latest-hero Q confirmation still works. |
+| Gold and successor | Zero gold, affordable and unaffordable successors, short and growing lists. Starter clicks stop for an affordable purchase, an owned passive hero, pending input or unknown ownership/gold. Startup reads only a locked successor price/gold when needed; numeric level OCR belongs to ordinary latest-hero play. |
 | Obstructions | Fish over the caption/level/scrollbar, purchase tooltip and covering modal. Fish recovery stays independent; hero input waits for a covering modal. |
-| Navigation and pause | Partial unvisited/previously visited rows, missed drag/no motion, F8 during scrolling and purchasing. Preserve confirmed visits and recover without an unchanged-crop retry loop or repeated purchase. |
+| Navigation and pause | Partial/overlapping rows, missed drag/no motion, F8 during scrolling/purchasing. Preserve the viewport cursor and attempt count; advance after two inputs instead of looping on one hero. |
 
 - If `hero numbers unreadable` recurs, use the automatically saved `artifacts/hero-unreadable-*.png` and its log containing frame ID, build revision, failed region and OCR output. Collect this analyzed frame rather than a later manual screenshot; reproduce it on the same revision before changing the reader.
 - Complete the two consecutive Ascension/setup cycles tracked below. Request additional screenshots only for a UI state absent from the existing fixtures or automatically saved failure evidence.
 
 ## Startup and unattended Ascension validation
 
-- Verify the full affordable hero sweep in the installed game, including successive HIRE-to-LVL-UP/MAX transitions and overlap scrolling. If confirmation fails, capture before/after rows and logs.
-- Verify two consecutive installed-game cycles: combat wall -> confirmed Ascension -> affordable hero sweep -> Buy Available Upgrades -> enabled progression -> fresh export -> submitted Ancient purchases -> Heroes continuation. Include zero gold, short/expanding lists, no-purchase plans, F8, unreadable names/prices and fish over controls. Code/fixture tests are not native acceptance.
+- Verify bounded startup skill setup in the installed game, including already purchased rows, one-slot low-level rows, missing hires, limited gold, two Ctrl+100 inputs, overlap scrolling and final Buy Available Upgrades. Capture before/after rows if a skill remains locked.
+- Verify two consecutive installed-game cycles: combat wall -> confirmed Ascension -> available upgrades -> bounded skill sweep -> newly available upgrades -> enabled progression -> fresh export -> submitted Ancient purchases -> Heroes continuation. Include zero gold, short/expanding lists, no-purchase plans, F8, obscured upgrade strips/unreadable prices and fish over controls. Code/fixture tests are not native acceptance.
 - Verify `-auto-clickers` placement in the installed game: available/owned count before and after C + click, monster and Buy Available Upgrades assignments, a sole clicker, already occupied footer, F8 and scene background changes. Pool recognition passes supplied native 3/3 frames and placement/queue acknowledgement is covered with modeled observations; actual assigned targets still need native evidence. Existing assignments must remain intact and rubies must not be spent.
 - Verify initial hero/skill upgrade setup at a later zone, including missing earlier heroes, already-disabled Buy Available Upgrades, and an empty Ancient plan that stays on Heroes. Confirm a placed footer clicker handles newly unlocked upgrades; ordinary clicks remain a periodic fallback.
 - Recognize the native relic-junk blocker and block reset on nonempty or unknown junk with a specific reason. The export preflight is advisory; equipment/salvage UI still needs evidence.
@@ -33,7 +33,7 @@ Goal: complete the unattended active-play loop using the existing shared capture
 
 | ID | Scope and deliverable | Priority | Completion gate |
 | --- | --- | --- | --- |
-| R1 | Validate the integrated affordable hero/bulk-upgrade restart, place owned Auto Clickers, and recognize the last hero without a successor. | First | Two native cycles, verified post-hire/MAX confirmation and clicker targets, no regression to latest-hero leveling, F8/missing-input recovery, and terminal-roster evidence. |
+| R1 | Validate the integrated bounded hero skill restart, place owned Auto Clickers, and recognize the last hero without a successor. | First | Two native cycles, verified bounded startup inputs and ordinary Q confirmation and clicker targets, no regression to latest-hero leveling, F8/missing-input recovery, and terminal-roster evidence. |
 | R2 | Validate conservative Ancient price bounds in the installed game. | First | Compare Juggernaut/Solomon bulk purchases and Chor'gorloth discount/balance rounding to fresh before/after exports; preserve the reserve. |
 | R3 | Relic management: recognize the inventory/full-junk blocker, determine how equipment and junk handling fit before Ascension, and propose a minimal active-build policy. | First | Verified screens or exact missing-input list; explicit equipment and discard policy; unknown items are not silently destroyed. |
 | R4 | Gild redistribution: choose a good target consistent with latest-hero progression, calculate transfer cost from current save/state, and plan UI application. | Next | Keep earned gift opening separate; account for soul costs and reserves; no ruby spending and no repeated transfers to the same target. |
@@ -48,7 +48,7 @@ Goal: complete the unattended active-play loop using the existing shared capture
 1. Validate the integrated hero startup/combat/Ancient handoff and close the remaining Auto Clicker/relic native UI gates below. Keep R6 measurement independent from gameplay decisions.
 2. Validate the integrated owned Auto Clicker placement and obtain native relic interaction evidence; coordinate shared main.go/pipeline.go changes in the main chat.
 3. Retain bounded failure pauses and validate startup/export/spending handoffs. A failed purchase must not be replayed from a stale plan.
-4. Verify two complete consecutive cycles: combat wall -> confirmed Ascension -> zone 1 -> affordable hero sweep -> Buy Available Upgrades -> enabled progression -> fresh export -> Ancient purchases -> Heroes continuation. Include F8 during transitions, missed input, fish over controls, Explorer focus restoration and unsupported dialogs. Code/fixture checks do not establish native game acceptance.
+4. Verify two complete consecutive cycles: combat wall -> confirmed Ascension -> zone 1 -> available upgrades -> bounded skill sweep -> newly available upgrades -> enabled progression -> fresh export -> Ancient purchases -> Heroes continuation. Include F8 during transitions, missed input, fish over controls, Explorer focus restoration and unsupported dialogs. Code/fixture checks do not establish native game acceptance.
 5. Add R4 when the repeated loop works. R7 remains independent platform work. Enable R8 automation only after the loop and recommendation/Outsider preview are accepted.
 
 The detailed unfinished implementation and live-validation gates below remain authoritative. Remove completed work; keep missing screenshot/native-game gates visible.

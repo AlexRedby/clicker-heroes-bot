@@ -10,6 +10,7 @@ type startupPhase uint8
 
 const (
 	noStartup startupPhase = iota
+	startupPrepare
 	startupHeroes
 	startupUpgrades
 	startupProgression
@@ -17,13 +18,13 @@ const (
 
 func (p *gamePipeline) beginStartup() {
 	p.startupCheck = false
-	p.startup, p.startupPassive = startupHeroes, false
+	p.startup, p.startupPassive = startupPrepare, false
 	p.startupDeadline = time.Time{}
 	p.hero.startStartup()
 	p.state = [analysisCount]observation{}
 	p.queue = make(map[actionKind]gameAction)
 	p.export.requested = false
-	fmt.Println("startup: starting affordable hero sweep")
+	fmt.Println("startup: starting bounded hero skill setup")
 }
 
 func (p *gamePipeline) planStartup(now time.Time) bool {
@@ -74,7 +75,7 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 			p.enqueue(gameAction{kind: clickMonster, frame: p.frame, point: point}, now)
 			p.nextMonster = now.Add(time.Second)
 		}
-	case startupUpgrades:
+	case startupPrepare, startupUpgrades:
 		out := p.state[heroAnalysis]
 		if out.frame.id == 0 || p.hero.pending != nil || !p.hero.due(now) {
 			return true
@@ -82,11 +83,7 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 		if out.found {
 			p.enqueue(gameAction{kind: buyHeroUpgrades, frame: out.frame, point: out.point}, now)
 		} else if out.upgradesKnown {
-			p.startup = startupProgression
-			p.startupDeadline = time.Time{}
-			p.hero.interrupt()
-			p.state[heroAnalysis] = observation{}
-			fmt.Println("startup: no available hero upgrades")
+			p.finishStartupUpgradePass()
 		} else if out.hero.thumbFound && !out.hero.bottom {
 			p.enqueue(gameAction{kind: scrollHeroes, frame: out.frame, point: out.hero.thumb, target: image.Pt(out.hero.thumb.X, out.frame.context.bounds.Max.Y-1), hero: out.hero}, now)
 		} else {
@@ -105,4 +102,22 @@ func (p *gamePipeline) startupNeedsSeedClicks() bool {
 		bootstrapHeroes(p.frame.context) && out.err == nil && out.frame.id != 0 &&
 		out.frame.layout == p.layout && out.frame.generation == p.generation &&
 		out.hero.startupNeedsGold && !out.hero.found && out.hero.startupScroll == (image.Point{})
+}
+
+// Purchase already unlocked upgrades before spending on missing skill levels.
+// The second footer pass buys upgrades unlocked by the bounded sweep.
+func (p *gamePipeline) finishStartupUpgradePass() {
+	if p.startup == startupPrepare {
+		p.startup = startupHeroes
+		fmt.Println("startup: available upgrades handled; starting skill sweep")
+	} else {
+		p.startup = startupProgression
+		fmt.Println("startup: upgrades handled; waiting for progression")
+	}
+	p.startupDeadline = time.Time{}
+	p.hero.interrupt()
+	p.state[heroAnalysis] = observation{}
+	p.barriers[heroAnalysis] = p.frame.id + 1
+	p.heroJobFrame = 0
+	p.queue = make(map[actionKind]gameAction)
 }

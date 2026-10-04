@@ -1,10 +1,15 @@
 # Hero progression
 
-At initial start and after a confirmed Ascension, `-hero-levels` sweeps from the top, hiring and leveling affordable heroes before purchasing available upgrades to unlock skills. The sweep stops at a recognized unowned successor whose price exceeds current gold. Ordinary play then buys levels for the latest available hero and saves for the next one when its price is within ten times current gold; it does not continuously revisit earlier heroes or estimate DPS efficiency.
+At initial start and after a confirmed Ascension, `-hero-levels` buys already available upgrades before scanning, then sweeps from the top for missing hires and skill upgrades. OpenCV recognizes button captions and purchased green check shapes. Rows with all upgrades purchased are skipped. Other affordable rows receive at most two Ctrl+click purchases (up to 100 levels each) before the cursor advances. Startup does not read hero names or numerical levels, maintain a named roster, or insist on purchase confirmation. This bounded setup covers early active skills through level 100 and early ordinary upgrades through level 150; later heroes' large milestones belong to normal latest-hero leveling.
+
+The sweep scrolls with overlap and waits for observed movement before resetting its cursor. F8 preserves the cursor and attempt count; Ascension resets them. Once an unowned successor's price exceeds gold and a passive hero is recognized, or the bottom is reached, it buys newly available upgrades and enables progression. Zero-gold starter clicks require observed need and stop once a passive hero exists. Startup shares the capture/action pipeline and covering modals block its input.
+
+Ordinary play buys levels for the latest available hero, prioritizes an affordable successor and saves for the next one when its price is within ten times current gold. It does not revisit earlier heroes or estimate DPS efficiency.
+
 
 The bulk upgrade footer is checked every 30 seconds on shared frames, with a plain click when upgrades are available. A recognized disabled footer needs no click. With `-auto-clickers`, one available owned clicker is reserved for the footer when more than one is owned; the others go to the monster. Once the footer assignment is confirmed by a decreased free count, ordinary bulk OCR checks are unnecessary. Existing assignments are preserved, no clickers are purchased, and failed/unconfirmed footer placement retains ordinary clicks.
 
-## Reading the game
+## Ordinary latest-hero play
 
 1. Require the full-screen Heroes tab, recognizable quantity bar, and scrollbar on the primary display. A changed or unknown layout skips the attempt. The initial short list can be recognized without a scrollbar; ordinary latest-hero navigation still requires one.
 2. Drag the scrollbar thumb only when it is above the bottom, and verify its final position. Scrolling does not depend on the selected purchase quantity.

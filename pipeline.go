@@ -64,18 +64,17 @@ type gameFrame struct {
 	context                gameContext
 }
 type analysisJob struct {
-	frame         gameFrame
-	export        *exportJob
-	heroBefore    *heroObservation
-	startup       startupPhase
-	startupVisits map[string]bool
-	startupTop    bool
-	upgrades      bool
-	modeOnly      bool
-	ancientNames  bool
-	economy       bool
-	skills        [9]skillState
-	outsiderBase  *ancientcalc.TranscensionPreview
+	frame        gameFrame
+	export       *exportJob
+	heroBefore   *heroObservation
+	startup      startupPhase
+	sweep        startupSweep
+	upgrades     bool
+	modeOnly     bool
+	ancientNames bool
+	economy      bool
+	skills       [9]skillState
+	outsiderBase *ancientcalc.TranscensionPreview
 }
 type observation struct {
 	kind          analysisKind
@@ -277,15 +276,17 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 	case progressionAnalysis:
 		out.progression, out.err = p.readers.progression(ctx, job.frame.image, job.skills, job.modeOnly)
 	case heroAnalysis:
-		if job.startup == startupUpgrades || job.upgrades {
+		if job.startup == startupPrepare || job.startup == startupUpgrades || job.upgrades {
 			out.hero = heroObservation{frame: job.frame, startup: true, x1: heroQuantitySelected(job.frame.image, 122)}
 			var height int
 			out.hero.thumb, height, out.hero.thumbFound = heroScrollbarThumb(job.frame.image)
 			b := job.frame.image.Bounds()
 			out.hero.bottom = out.hero.thumbFound && absDiff(out.hero.thumb.Y+height/2, b.Min.Y+b.Dy()*965/1000) <= max(3, b.Dy()/100)
-			out.point, out.upgradesKnown, out.found, out.err = readHeroUpgradeFooter(ctx, job.frame.image)
+			if !out.hero.thumbFound || out.hero.bottom {
+				out.point, out.upgradesKnown, out.found, out.err = readHeroUpgradeFooter(ctx, job.frame.image)
+			}
 		} else if job.startup == startupHeroes {
-			out.hero, out.err = readStartupHeroObservation(ctx, job.frame, p.readers.heroes, job.heroBefore, job.startupVisits, job.startupTop)
+			out.hero, out.err = readStartupHeroObservation(ctx, job.frame, p.readers.heroes, job.heroBefore, job.sweep)
 		} else {
 			out.hero, out.err = readHeroObservation(ctx, job.frame, p.readers.heroes, job.heroBefore)
 		}
@@ -633,7 +634,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			if bootstrapHeroes(c) {
 				if p.startup != startupProgression && p.hero.due(now) && p.heroJobFrame == 0 && (p.hero.latest.frame.id == 0 || p.hero.pending != nil) {
 					p.heroJobFrame = p.frame.id
-					replaceJob(jobs[heroAnalysis], analysisJob{frame: p.frame, startup: p.startup, heroBefore: p.hero.before(), startupVisits: p.hero.startupVisits(), startupTop: p.hero.startupTop})
+					replaceJob(jobs[heroAnalysis], analysisJob{frame: p.frame, startup: p.startup, heroBefore: p.hero.before(), sweep: p.hero.sweep})
 				}
 				if p.options.progression && p.startupPassive && !now.Before(p.nextProgression) {
 					replaceJob(jobs[progressionAnalysis], analysisJob{frame: p.frame, modeOnly: true})
@@ -1003,7 +1004,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 				p.barriers[heroAnalysis] = p.frame.id + 1
 				p.heroJobFrame = 0
 				p.queue = make(map[actionKind]gameAction)
-				fmt.Println("startup: affordable hero sweep complete; seeking Buy Available Upgrades")
+				fmt.Println("startup: skill setup sweep complete; seeking Buy Available Upgrades")
 			}
 		}
 	case progressionAnalysis:
@@ -1099,7 +1100,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if kind == buyHeroUpgrades && ((p.startup != startupUpgrades && p.startup != noStartup) || !bootstrapHeroes(p.frame.context) || !heroUpgradeButtonStable(action.frame.image, p.frame.image, action.point)) {
+		if kind == buyHeroUpgrades && ((p.startup != startupPrepare && p.startup != startupUpgrades && p.startup != noStartup) || !bootstrapHeroes(p.frame.context) || !heroUpgradeButtonStable(action.frame.image, p.frame.image, action.point)) {
 			delete(p.queue, kind)
 			p.hero.latest = heroObservation{}
 			p.hero.nextScan = now
@@ -1325,7 +1326,11 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			}
 			return input.move(parkPoint(a.frame.context.bounds))
 		case buyHero:
-			if err := clickHeroMax(ctx, input, a.point); err != nil {
+			key := "q"
+			if a.hero.startup {
+				key = "ctrl"
+			}
+			if err := clickHeroModified(ctx, input, a.point, key); err != nil {
 				return err
 			}
 			return input.move(parkPoint(a.frame.context.bounds))
@@ -1473,16 +1478,16 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 			fmt.Println("bought available hero upgrades")
 			break
 		}
-		p.startup = startupProgression
-		p.startupDeadline = time.Time{}
-		p.hero.interrupt()
-		p.queue = make(map[actionKind]gameAction)
+		p.finishStartupUpgradePass()
 		invalidate(heroAnalysis)
 		invalidate(progressionAnalysis)
 		p.nextProgression = time.Time{}
-		fmt.Println("startup: clicked Buy Available Upgrades; waiting for enabled progression")
+
 	case buyHero, scrollHeroes, selectQuantity, parkPointer:
 		p.hero.sent(a, now)
+		if a.kind == buyHero && a.hero.startup {
+			fmt.Printf("startup: submitted Ctrl+100 at (%d, %d), attempt %d/2\n", a.point.X, a.point.Y, p.hero.sweep.attempts)
+		}
 		if a.kind == scrollHeroes {
 			fmt.Printf("dragged hero scrollbar from (%d, %d); waiting for bottom confirmation\n", a.point.X, a.point.Y)
 		}

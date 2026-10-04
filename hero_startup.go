@@ -4,69 +4,19 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"image/color"
 	"sort"
-	"strings"
-
-	"clicker-heroes-bot/internal/ancientcalc"
 )
 
-var startupHeroNames, startupHeroNamesErr = loadStartupHeroNames()
-
-func startupHeroLetters(name string) string {
-	return strings.Map(func(r rune) rune {
-		if r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' {
-			return r
-		}
-		return -1
-	}, name)
+// A sweep owns only a viewport cursor, not a roster or OCR-derived identity.
+// Two 100-level inputs cover the early heroes' skill/upgrade requirements.
+// Later hero milestones belong to ordinary latest-hero progression.
+type startupSweep struct {
+	top         bool
+	y, attempts int
 }
 
-func loadStartupHeroNames() (map[string]string, error) {
-	names, err := ancientcalc.HeroNames()
-	if err != nil {
-		return nil, err
-	}
-	keys := make(map[string]string, len(names))
-	for _, name := range names {
-		key := startupHeroLetters(name)
-		if name == "Cid, the Helpful Adventurer" {
-			key = "Cid,theHelpfulAdventurer"
-		}
-		keys[startupHeroNameKey(name)] = key
-	}
-	return keys, nil
-}
-
-// A clipped field needs an overlapping view, not another OCR of the same crop.
-func startupHeroNavigate(out *heroObservation, button image.Point, thumbHeight, direction int) bool {
-	if !out.thumbFound {
-		return false
-	}
-	viewport := heroListViewport(out.frame.image)
-	if direction == 0 && button.Y-out.frame.image.Bounds().Dy()*7/100 < viewport.Min.Y {
-		direction = -1
-	}
-	if direction == 0 && button.Y+out.frame.image.Bounds().Dy()*3/100 > viewport.Max.Y {
-		direction = 1
-	}
-	if direction == 0 {
-		return false
-	}
-	b := out.frame.image.Bounds()
-	target := max(b.Min.Y+b.Dy()*4/10, min(out.thumb.Y+direction*max(3, thumbHeight/2), b.Min.Y+b.Dy()*965/1000-thumbHeight/2))
-	if target == out.thumb.Y {
-		return false
-	}
-	out.found, out.stable, out.startupComplete = false, false, false
-	out.startupScroll = image.Pt(out.thumb.X, target)
-	return true
-}
-
-// This initial/reset sweep levels each affordable row before allowing Ancient spending.
-// passiveReady is a combat fact; only startupComplete ends the hero sweep.
-func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroReaders, before *heroObservation, visited map[string]bool, started bool) (heroObservation, error) {
-	out := heroObservation{frame: frame, startup: true}
+func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroReaders, before *heroObservation, sweep startupSweep) (heroObservation, error) {
+	out := heroObservation{frame: frame, startup: true, sweep: sweep}
 	if !bootstrapHeroes(frame.context) || !heroQuantityBarPresent(frame.image) {
 		return out, nil
 	}
@@ -74,143 +24,112 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 	if !out.x1 {
 		return out, nil
 	}
-	var thumbHeight int
-	out.thumb, thumbHeight, out.thumbFound = heroScrollbarThumb(frame.image)
 	b := frame.image.Bounds()
-	out.bottom = out.thumbFound && absDiff(out.thumb.Y+thumbHeight/2, b.Min.Y+b.Dy()*965/1000) <= max(3, b.Dy()/100)
-	for name, done := range visited {
-		if done && name != "Cid,theHelpfulAdventurer" {
-			out.passiveReady = true
-		}
-	}
-	if before != nil {
-		out.button, out.startupName = before.button, before.startupName
-		button, found, err := findStartupHeroAfter(ctx, *before, frame)
-		out.found, out.stable = found, found
-		if err != nil || !found {
-			return out, err
-		}
-		out.button = button
-		level, err := readStartupHeroLevel(ctx, frame.image, out.button, read)
-		out.level, out.owned = level, level > 0
-		out.passiveReady = out.passiveReady || out.owned && out.startupName != "Cid,theHelpfulAdventurer"
-		return out, err
-	}
-	var buttons []image.Point
-	enabled, edges := make(map[int]bool), make(map[int]int)
 	viewport := heroListViewport(frame.image)
+	var height int
+	out.thumb, height, out.thumbFound = heroScrollbarThumb(frame.image)
+	out.bottom = out.thumbFound && heroScrollbarAtBottom(frame.image)
+	type row struct {
+		button    image.Point
+		band      image.Rectangle
+		available bool
+		kind      heroButtonKind
+	}
+	var rows []row
 	for _, available := range []bool{true, false} {
 		for _, band := range findHeroButtonBands(frame.image, available) {
-			button := image.Pt(b.Min.X+b.Dx()*8/100, (band.Min.Y+band.Max.Y-1)/2)
-			buttons = append(buttons, button)
-			enabled[button.Y] = available
-			if band.Min.Y == viewport.Min.Y {
-				edges[button.Y] = -1
-			}
-			if band.Max.Y == viewport.Max.Y {
-				edges[button.Y] = 1
-			}
+			rows = append(rows, row{button: image.Pt(b.Min.X+b.Dx()*8/100, (band.Min.Y+band.Max.Y-1)/2), band: band, available: available})
 		}
 	}
-	sort.Slice(buttons, func(i, j int) bool { return buttons[i].Y < buttons[j].Y })
-	if len(buttons) == 0 {
+	sort.Slice(rows, func(i, j int) bool { return rows[i].button.Y < rows[j].button.Y })
+	if len(rows) == 0 {
 		return out, nil
 	}
-	firstName := ""
-	if !started || !out.thumbFound {
-		b := frame.image.Bounds()
-		if absDiff(buttons[0].Y, b.Min.Y+b.Dy()*455/1000) > b.Dy()/40 {
-			if !started && out.thumbFound {
+	if !sweep.top {
+		atTop := out.thumbFound && out.thumb.Y-height/2 <= b.Min.Y+b.Dy()*420/1000+max(3, b.Dy()/100)
+		if !out.thumbFound {
+			atTop = absDiff(rows[0].button.Y, b.Min.Y+b.Dy()*455/1000) <= b.Dy()/40
+		}
+		if !atTop {
+			if out.thumbFound {
 				out.startupScroll = image.Pt(out.thumb.X, b.Min.Y+b.Dy()*4/10)
 			}
 			return out, nil
 		}
-		name, err := readStartupHeroName(ctx, frame.image, buttons[0])
-		if err != nil {
-			if !started && out.thumbFound {
-				out.startupScroll = image.Pt(out.thumb.X, b.Min.Y+b.Dy()*4/10)
-				return out, nil
-			}
-			return out, err
-		}
-		if name != "Cid,theHelpfulAdventurer" {
-			if !started && out.thumbFound {
-				out.startupScroll = image.Pt(out.thumb.X, b.Min.Y+b.Dy()*4/10)
-			}
-			return out, nil
-		}
-		firstName = name
-		out.startupTop = true
+		out.sweep.top = true
 	}
-	// Inspect ownership on this frame before selecting a purchase. Cid can only
-	// be the first visible row; any lower owned row establishes passive damage.
-	kinds := make(map[int]heroButtonKind, len(buttons))
-	kindErrors := make(map[int]error, len(buttons))
+	// Hiring expands a card. Follow its nearest button on the next shared frame;
+	// input is bounded even if the click did not register.
+	if before != nil {
+		nearest := rows[0].button.Y
+		for _, r := range rows {
+			if absDiff(r.button.Y, before.button.Y) < absDiff(nearest, before.button.Y) {
+				nearest = r.button.Y
+			}
+		}
+		if absDiff(nearest, before.button.Y) <= b.Dy()/12 {
+			out.sweep.y = nearest
+		}
+	}
 	affordable, ownershipKnown := false, true
-	for i, button := range buttons {
-		kinds[button.Y], kindErrors[button.Y] = startupHeroButtonKind(frame.image, button)
-		affordable = affordable || enabled[button.Y]
-		ownershipKnown = ownershipKnown && kindErrors[button.Y] == nil
-		out.passiveReady = out.passiveReady || i > 0 && kinds[button.Y] == heroButtonLevelUp
-	}
-	for _, button := range buttons {
-		// Overlap scrolling exposes an already handled card at the top. Keep the sweep monotonic.
-		if started && edges[button.Y] < 0 {
-			continue
-		}
-		name := firstName
+	for i := range rows {
 		var err error
-		if button != buttons[0] || name == "" {
-			name, err = readStartupHeroName(ctx, frame.image, button)
-		}
+		rows[i].kind, err = readHeroButtonKind(frame.image, rows[i].button)
 		if err != nil {
-			if started && button.Y-b.Dy()*7/100 < heroListViewport(frame.image).Min.Y {
-				continue
-			}
-			if startupHeroNavigate(&out, button, thumbHeight, edges[button.Y]) {
-				return out, nil
-			}
 			return out, err
 		}
-		if name == "" {
-			return out, fmt.Errorf("startup hero name missing at %v", button)
-		}
-		kind, err := kinds[button.Y], kindErrors[button.Y]
-		if err != nil {
-			if visited[name] && button.Y-b.Dy()*7/100 < viewport.Min.Y {
-				continue
-			}
-			if startupHeroNavigate(&out, button, thumbHeight, edges[button.Y]) {
-				return out, nil
-			}
-			return out, err
-		}
-		owned := kind == heroButtonLevelUp
-		out.passiveReady = out.passiveReady || owned && name != "Cid,theHelpfulAdventurer"
-		if visited[name] && !owned {
-			return out, fmt.Errorf("confirmed startup hero %s lost its level", name)
-		}
-		if owned && (visited[name] || !enabled[button.Y]) {
+		// A clipped row is only a navigation anchor.
+		completeCaption := rows[i].band.Min.Y > viewport.Min.Y && rows[i].band.Max.Y < viewport.Max.Y
+		ownershipKnown = ownershipKnown && (rows[i].kind != heroButtonUnknown || !completeCaption)
+		affordable = affordable || rows[i].available
+		// At the top Cid is the first card; every subsequent owned row has DPS.
+		out.passiveReady = out.passiveReady || rows[i].kind == heroButtonLevelUp && (i > 0 || out.thumbFound && out.thumb.Y-height/2 > b.Min.Y+b.Dy()*435/1000)
+	}
+	for _, r := range rows {
+		y := r.button.Y
+		if r.band.Min.Y == viewport.Min.Y {
 			continue
 		}
-		if enabled[button.Y] {
-			level := 0
-			if owned {
-				level, err = readStartupOwnedHeroLevel(ctx, frame.image, button, read)
-				if err != nil {
-					if startupHeroNavigate(&out, button, thumbHeight, edges[button.Y]) {
-						return out, nil
-					}
-					return out, err
-				}
+		if y < out.sweep.y-b.Dy()/20 || out.sweep.attempts >= 2 && absDiff(y, out.sweep.y) <= b.Dy()/20 {
+			continue
+		}
+		if r.kind == heroButtonUnknown {
+			if r.band.Max.Y == viewport.Max.Y {
+				break
 			}
-			out.button, out.found, out.owned, out.level, out.startupName = button, true, owned, level, name
+			return out, fmt.Errorf("startup hero button at %v: caption is obscured", r.button)
+		}
+		owned := r.kind == heroButtonLevelUp
+		if owned {
+			complete, visible, err := readHeroUpgradeState(frame.image, r.button)
+			if err != nil {
+				return out, err
+			}
+			if complete {
+				continue
+			}
+			if !visible {
+				if y+b.Dy()*85/1000 >= viewport.Max.Y {
+					break
+				}
+				// A covering tooltip is not a reason to repeatedly level this row.
+				continue
+			}
+			if !r.available {
+				continue
+			}
+		}
+		if r.available {
+			if absDiff(y, out.sweep.y) > b.Dy()/20 {
+				out.sweep.attempts = 0
+			}
+			out.sweep.y = y
+			out.button, out.found, out.owned = r.button, true, owned
 			return out, nil
 		}
-		// A dark button is not enough: unreadable/obscured prices cannot finish startup.
-		price, err := read.price(ctx, frame.image, button)
+		price, err := read.price(ctx, frame.image, r.button)
 		if err != nil {
-			return out, fmt.Errorf("startup locked hero price: %w", err)
+			return out, fmt.Errorf("startup next hero price: %w", err)
 		}
 		gold, err := read.gold(ctx, frame.image)
 		if err != nil {
@@ -220,158 +139,21 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 		out.startupNeedsGold = price > gold && !out.passiveReady && !affordable && ownershipKnown
 		return out, nil
 	}
-	if out.thumbFound && !out.bottom {
-		// Half a thumb advances half a viewport, preserving overlap between visits.
-		out.startupScroll = image.Pt(out.thumb.X, min(out.thumb.Y+max(3, thumbHeight/2), b.Min.Y+b.Dy()*965/1000-thumbHeight/2))
+	if out.bottom {
+		out.startupComplete = out.passiveReady
+		return out, nil
+	}
+	if out.thumbFound {
+		out.startupScroll = image.Pt(out.thumb.X, min(out.thumb.Y+max(3, height/2), b.Min.Y+b.Dy()*965/1000-height/2))
 	}
 	return out, nil
 }
 
-// A hire changes the button height and may expand the card. Confirm the same
-// OCR-identified hero at its current button, independently of that layout change.
-func findStartupHeroAfter(ctx context.Context, before heroObservation, current gameFrame) (image.Point, bool, error) {
-	if !before.startup || !before.found || before.startupName == "" || before.frame.image == nil ||
-		current.image == nil || before.frame.image.Bounds() != current.image.Bounds() {
-		return image.Point{}, false, nil
-	}
-	buttons := append(findHeroButtons(current.image, true), findHeroButtons(current.image, false)...)
-	sort.Slice(buttons, func(i, j int) bool {
-		return absDiff(buttons[i].Y, before.button.Y) < absDiff(buttons[j].Y, before.button.Y)
-	})
-	for _, button := range buttons {
-		name, err := readStartupHeroName(ctx, current.image, button)
-		if err != nil {
-			return image.Point{}, false, err
-		}
-		if name == before.startupName {
-			return button, true, nil
-		}
-	}
-	return image.Point{}, false, nil
-}
-
-func readStartupHeroLevel(ctx context.Context, screen image.Image, button image.Point, read heroReaders) (int, error) {
-	kind, err := startupHeroButtonKind(screen, button)
-	if err != nil {
-		return 0, err
-	}
-	if kind == heroButtonHire {
-		return 0, nil
-	}
-	return readStartupOwnedHeroLevel(ctx, screen, button, read)
-}
-
-func startupHeroButtonKind(screen image.Image, button image.Point) (heroButtonKind, error) {
-	kind, err := readHeroButtonKind(screen, button)
-	if err != nil {
-		return heroButtonUnknown, fmt.Errorf("startup hero button at %v: %w", button, err)
-	}
-	if kind == heroButtonUnknown {
-		return kind, fmt.Errorf("startup hero button at %v crop %v: caption is missing or obscured", button, heroButtonCaptionRegion(screen, button))
-	}
-	return kind, nil
-}
-
-func readStartupOwnedHeroLevel(ctx context.Context, screen image.Image, button image.Point, read heroReaders) (int, error) {
-	level, err := read.level(ctx, screen, button)
-	if err != nil {
-		return 0, fmt.Errorf("startup owned hero level at %v: %w", button, err)
-	}
-	if level <= 0 {
-		return 0, fmt.Errorf("startup owned hero level at %v: invalid level %d", button, level)
-	}
-	return level, nil
-}
-
-func startupHeroNameRegion(screen image.Image, button image.Point) image.Rectangle {
-	b := screen.Bounds()
-	search := image.Rect(b.Min.X+b.Dx()*17/100, button.Y-b.Dy()/10, b.Min.X+b.Dx()*365/1000, button.Y-b.Dy()/100).Intersect(heroListViewport(screen))
-	purple := 0
-	for y := search.Min.Y; y < search.Max.Y; y++ {
-		for x := search.Min.X; x < search.Max.X; x++ {
-			r, g, blue := rgb(screen.At(x, y))
-			if blue > 100 && blue > r+30 && blue > g+50 {
-				purple++
-			}
-		}
-	}
-	isPurple := purple > max(20, search.Dy())
-	start, last, bestStart, bestEnd := -1, -1, -1, -1
-	for y := search.Min.Y; y <= search.Max.Y+2; y++ {
-		ink := 0
-		if y < search.Max.Y {
-			for x := search.Min.X; x < search.Max.X; x++ {
-				r, g, blue := rgb(screen.At(x, y))
-				if isPurple && blue > 100 && blue > r+30 && blue > g+50 || !isPurple && min(r, g, blue) > 180 && max(r, g, blue)-min(r, g, blue) < 55 {
-					ink++
-				}
-			}
-		}
-		if ink >= max(2, b.Dx()/500) {
-			if start < 0 {
-				start = y
-			}
-			last = y
-			continue
-		}
-		if start >= 0 && y-last > 2 {
-			center := button.Y - b.Dy()/20
-			if last-start >= b.Dy()/100 && (bestStart < 0 || absDiff((start+last)/2, center) < absDiff((bestStart+bestEnd)/2, center)) {
-				bestStart, bestEnd = start, last
-			}
-			start = -1
-		}
-	}
-	if bestStart >= 0 {
-		search.Min.Y = max(search.Min.Y, bestStart-3)
-		search.Max.Y = min(search.Max.Y, bestEnd+4)
-	}
-	return search
-}
-
-func readStartupHeroName(ctx context.Context, screen image.Image, button image.Point) (string, error) {
-	region := startupHeroNameRegion(screen, button)
-	mask := image.NewGray(image.Rect(0, 0, region.Dx(), region.Dy()))
-	purple := 0
-	for y := 0; y < region.Dy(); y++ {
-		for x := 0; x < region.Dx(); x++ {
-			r, g, b := rgb(screen.At(region.Min.X+x, region.Min.Y+y))
-			v := uint8(255)
-			if b > 100 && b > r+30 && b > g+50 {
-				v = 0
-				purple++
-			}
-			mask.SetGray(x, y, color.Gray{Y: v})
-		}
-	}
-	var raw string
-	var err error
-	if purple > max(20, region.Dy()) {
-		// Gilded names use purple letters; their white outline alone loses glyphs.
-		raw, err = readTextImage(ctx, mask, 7, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-	} else {
-		raw, err = readGameText(ctx, screen, region, max(1, 2048/screen.Bounds().Dx()), 7, 180, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz, ")
-	}
-	if err != nil {
-		return "", err
-	}
-	if startupHeroNamesErr != nil {
-		return "", startupHeroNamesErr
-	}
-	if name, ok := startupHeroNames[startupHeroNameKey(raw)]; ok {
-		return name, nil
-	}
-	return "", fmt.Errorf("startup hero name at %v crop %v: unrecognized %q", button, region, strings.TrimSpace(raw))
-}
-
-// The positively identified name stays fixed even when the reset list grows.
-// Unlike the ordinary list guard, this does not infer validity from a missing thumb.
 func startupHeroStable(before heroObservation, current gameFrame) bool {
-	a, z := before.frame.image, current.image
-	if !before.startup || before.startupName == "" || !before.found || a == nil || z == nil || a.Bounds() != z.Bounds() || !current.context.heroes || !heroQuantityBarPresent(z) || !heroRowYellow(z, before.button.Y) {
-		return false
-	}
-	return heroTextStable(a, z, startupHeroNameRegion(a, before.button))
+	return before.startup && before.found && bootstrapHeroes(current.context) &&
+		heroQuantityBarPresent(current.image) &&
+		(heroListStable(before.frame.image, current.image) || !before.thumbFound && heroRowNameMatches(before.frame.image, current.image, before.button, before.button)) &&
+		heroRowYellow(current.image, before.button.Y)
 }
 
 func heroTextStable(a, z image.Image, region image.Rectangle) bool {

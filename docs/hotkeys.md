@@ -14,7 +14,7 @@ Reference for Clicker Heroes 1 on desktop, checked on 2026-09-30 against officia
 | Hold `Q` + click | Hero level button | Buy the affordable MAX quantity, capped at 10,000 levels per click. |
 | Tap `T` | Heroes tab | Cycle the persistent purchase quantity, including `x1`. |
 
-A held modifier temporarily overrides the persistent quantity and leaves it unchanged after release. The bot keeps `x1` selected so prices remain numeric, uses `T` only to reach `x1` when needed, and holds `Q` only around a hero purchase. It does not capture a frame to verify MAX or restore MAX afterward. Purchase success is still confirmed from the increased hero level.
+A held modifier temporarily overrides the persistent quantity and leaves it unchanged after release. The bot keeps `x1` selected so prices remain numeric, uses `T` only to reach `x1` when needed, and holds `Q` around ordinary latest-hero purchases. Startup skill setup uses at most two `Ctrl` + click inputs on an incomplete row and skips rows with all upgrades purchased. It does not capture a frame to verify MAX or restore MAX afterward. Ordinary purchase success is confirmed from the increased hero level; startup inputs advance after a short settling delay without numerical confirmation.
 
 Sources: [official client tooltips](https://cdn.clickerheroes.com/gamebuild/builds/6144_new2/Build/6144.data.unityweb), [developer patch notes, including 1.0e11 modifier behavior and MAX cap](https://store.steampowered.com/oldnews/?appgroupname=Clicker+Heroes&appids=363970&enddate=1577865600&feed=steam_community_announcements).
 

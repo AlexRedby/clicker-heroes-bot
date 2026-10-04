@@ -19,6 +19,7 @@ func TestStartupSeedClicksNeedObservedGoldShortfall(t *testing.T) {
 			p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
 			p.frame, p.layout = f, f.layout
 			p.beginStartup()
+			p.startup = startupHeroes
 			out := observation{kind: heroAnalysis, frame: f, startup: startupHeroes, hero: heroObservation{frame: f, startup: true, startupNeedsGold: true}}
 			p.state[heroAnalysis] = out
 			switch name {
@@ -79,7 +80,7 @@ func TestStartupVisiblePassiveAndGoldShortfall(t *testing.T) {
 		gold:  func(context.Context, image.Image) (float64, error) { return 0, nil },
 		price: func(context.Context, image.Image, image.Point) (float64, error) { return 50, nil },
 	}
-	affordable, err := readStartupHeroObservation(context.Background(), frame(source), read, nil, nil, true)
+	affordable, err := readStartupHeroObservation(context.Background(), frame(source), read, nil, startupSweep{top: true})
 	if err != nil || !affordable.found || affordable.startupNeedsGold || affordable.passiveReady {
 		t.Fatalf("affordable HIRE: %+v %v", affordable, err)
 	}
@@ -90,8 +91,8 @@ func TestStartupVisiblePassiveAndGoldShortfall(t *testing.T) {
 	lower := startupTranslatedCard(t, "testdata/hero-startup-bottom-hire.png", 709, 865, false)
 	r := image.Rect(89, 757, 1126, 987)
 	draw.Draw(combined, r, lower, r.Min, draw.Src)
-	passive, err := readStartupHeroObservation(context.Background(), frame(combined), read, nil, nil, true)
-	if err != nil || !passive.found || passive.startupName != "Cid,theHelpfulAdventurer" || !passive.passiveReady || passive.startupNeedsGold || levels != 0 {
+	passive, err := readStartupHeroObservation(context.Background(), frame(combined), read, nil, startupSweep{top: true})
+	if err != nil || !passive.found || absDiff(passive.button.Y, 655) > 4 || !passive.passiveReady || passive.startupNeedsGold || levels != 0 {
 		t.Fatalf("passive below Cid: %+v %v numerical OCR=%d", passive, err, levels)
 	}
 	// Change only the blue button body; keep the native HIRE artwork and names.
@@ -105,24 +106,24 @@ func TestStartupVisiblePassiveAndGoldShortfall(t *testing.T) {
 			}
 		}
 	}
-	short, err := readStartupHeroObservation(context.Background(), frame(dark), read, nil, nil, true)
+	short, err := readStartupHeroObservation(context.Background(), frame(dark), read, nil, startupSweep{top: true})
 	if err != nil || !short.startupNeedsGold || short.found || short.passiveReady || short.startupComplete {
 		t.Fatalf("gold shortfall: %+v %v", short, err)
 	}
 	obscured := image.NewRGBA(dark.Bounds())
 	draw.Draw(obscured, obscured.Bounds(), dark, dark.Bounds().Min, draw.Src)
 	draw.Draw(obscured, image.Rect(179, 825, 294, 875), image.NewUniform(color.RGBA{45, 60, 70, 255}), image.Point{}, draw.Src)
-	uncertain, err := readStartupHeroObservation(context.Background(), frame(obscured), read, nil, nil, true)
+	uncertain, err := readStartupHeroObservation(context.Background(), frame(obscured), read, nil, startupSweep{top: true})
 	if err != nil || uncertain.startupNeedsGold {
 		t.Fatalf("unknown lower ownership seeded: %+v %v", uncertain, err)
 	}
 	read.gold = func(context.Context, image.Image) (float64, error) { return 100, nil }
-	enough, err := readStartupHeroObservation(context.Background(), frame(dark), read, nil, nil, true)
+	enough, err := readStartupHeroObservation(context.Background(), frame(dark), read, nil, startupSweep{top: true})
 	if err != nil || enough.startupNeedsGold {
 		t.Fatalf("enough money despite disabled button: %+v %v", enough, err)
 	}
 	read.gold = func(context.Context, image.Image) (float64, error) { return 0, errors.New("unknown gold") }
-	unknown, err := readStartupHeroObservation(context.Background(), frame(dark), read, nil, nil, true)
+	unknown, err := readStartupHeroObservation(context.Background(), frame(dark), read, nil, startupSweep{top: true})
 	if err == nil || unknown.startupNeedsGold {
 		t.Fatalf("unknown gold seeded: %+v %v", unknown, err)
 	}
