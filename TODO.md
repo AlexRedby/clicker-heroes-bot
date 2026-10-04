@@ -20,7 +20,7 @@
 
 - Verify bounded startup skill setup in the installed game, including unlocked rows with or without purchased checks, one-slot low-level rows, missing hires, limited gold, two Q/MAX inputs, overlap scrolling and final Buy Available Upgrades. Capture before/after rows if a skill remains locked.
 - Verify two consecutive installed-game cycles: combat wall -> confirmed Ascension -> bounded skill sweep -> newly available upgrades -> enabled progression -> fresh export -> submitted Ancient purchases -> Heroes continuation. Include zero gold, short/expanding lists, no-purchase plans, F8, obscured upgrade strips/unreadable prices and fish over controls. Code/fixture tests are not native acceptance.
-- Verify `-auto-clickers` placement in the installed game: available/owned count before and after C + click, monster and Buy Available Upgrades assignments, a sole clicker, already occupied footer, F8 and scene background changes. Pool recognition passes supplied native 3/3 frames and placement/queue acknowledgement is covered with modeled observations; actual assigned targets still need native evidence. Existing assignments must remain intact and rubies must not be spent.
+- Verify owned Auto Clicker placement in the installed game: available/owned count before and after C + click, monster and Buy Available Upgrades assignments, a sole clicker, already occupied footer, F8 and scene background changes. Pool recognition passes supplied native 3/3 frames and placement/queue acknowledgement is covered with modeled observations; actual assigned targets still need native evidence. Existing assignments must remain intact and rubies must not be spent.
 - Verify initial hero/skill upgrade setup at a later zone, including missing earlier heroes, already-disabled Buy Available Upgrades, and an empty Ancient plan that stays on Heroes. Confirm a placed footer clicker handles newly unlocked upgrades; ordinary clicks remain a periodic fallback.
 - Recognize the native relic-junk blocker and block reset on nonempty or unknown junk with a specific reason. The export preflight is advisory; equipment/salvage UI still needs evidence.
 - Obtain a final Ace Scout Dorothy frame before enabling terminal-roster recognition without a successor.
@@ -62,7 +62,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Earned gild gifts
 
-- Verify the full `-gilds` batch in the running game: gift -> central chest -> Open All -> close the Gilded Heroes roster; include a single reward, missed input and F8 while a modal is open. Screenshot recognition, queue isolation, retries and pause/resume are covered by regression tests.
+- Verify the full earned-gift batch in progression in the running game: gift -> central chest -> Open All -> close the Gilded Heroes roster; include a single reward, missed input and F8 while a modal is open. Screenshot recognition, queue isolation, retries and pause/resume are covered by regression tests.
 
 ## Automatic progression
 

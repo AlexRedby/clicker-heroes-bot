@@ -9,7 +9,6 @@ import (
 	"image"
 	"image/png"
 	"log"
-	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -41,13 +40,8 @@ func main() {
 	y := flag.Int("y", 0, "screen Y coordinate for click or optional monster clicks in run mode")
 	interval := flag.Duration("interval", 100*time.Millisecond, "time between optional monster clicks in run mode")
 	fishInterval := flag.Duration("fish-interval", time.Second, "time between fish scans in run mode")
-	skills := flag.Bool("skills", false, "activate unlocked skills with hotkeys 1-9 in run mode")
-	progression := flag.Bool("progression", false, "manage progression mode and wait for damage improvements after failed bosses")
-	heroLevels := flag.Bool("hero-levels", false, "hire and level heroes, buy their available upgrades in run mode")
-	autoClickers := flag.Bool("auto-clickers", false, "place available owned Auto Clickers on the monster and hero upgrade footer without spending rubies")
-	gilds := flag.Bool("gilds", false, "open earned gild gifts in batches in run mode")
+	progression := flag.Bool("progression", false, "automate heroes, skills, owned Auto Clickers, gild gifts, boss progression, Ascension and Ancients; requires -export-dir")
 	gildInterval := flag.Duration("gild-interval", 5*time.Minute, "time between earned gild gift checks")
-	ascension := flag.Bool("ascension", false, "ascend after a full combat boss loss or fallback stall with meaningful Hero Souls gain")
 	ascensionMinGain := flag.Float64("ascension-min-gain", 0.25, "minimum Ascension reward as a fraction of soul capital (0.25 means 25%)")
 	ascensionStall := flag.Duration("ascension-stall", 3*time.Minute, "fallback stall before Ascension when a full combat failure was not observed")
 	mercenaries := flag.Bool("mercenaries", false, "collect mercenary rewards and send new quests without spending rubies")
@@ -186,6 +180,16 @@ func main() {
 			}
 			export = &saveExportOptions{dir: *exportDir, reserve: *ancientReserve, skillRate: *ancientSkillRate, beyond8k: *ancientBeyond8k, planOutput: *ancientPlanOutput}
 		}
+		options, e := configureRun(pipelineOptions{
+			progression: *progression, mercenaries: *mercenaries, monster: hasX,
+			monsterPoint: image.Pt(*x, *y), clickInterval: *interval, fishInterval: *fishInterval,
+			gildInterval: *gildInterval, ascensionStall: *ascensionStall, ascensionMinGain: *ascensionMinGain,
+			export: export, windowed: *windowed,
+		})
+		if e != nil {
+			err = e
+			break
+		}
 		var plan *ancientPlan
 		if *ancientSave != "" {
 			value, e := calculateAncients(context.Background(), *ancientSave, *ancientReserve, *ancientSkillRate, *ancientBeyond8k)
@@ -199,7 +203,7 @@ func main() {
 			}
 		}
 		capitalPlan := plan
-		if *ascension && *save != "" {
+		if *progression && *save != "" {
 			value, e := calculateAncients(context.Background(), *save, *ancientReserve, *ancientSkillRate, *ancientBeyond8k)
 			if e != nil {
 				err = e
@@ -214,7 +218,7 @@ func main() {
 		}
 		var outsiderBase *ancientcalc.TranscensionPreview
 		if *save != "" {
-			if *ascension {
+			if *progression {
 				outsiderBase = capitalPlan.Transcension
 				if capitalPlan.TranscensionError != "" {
 					fmt.Println("Outsider save preview unavailable:", capitalPlan.TranscensionError)
@@ -229,7 +233,8 @@ func main() {
 			}
 		}
 
-		err = runBot(*x, *y, hasX, *interval, *fishInterval, *duration, *heroLevels, *skills, *progression, *mercenaries, *stats, *gilds, *gildInterval, *ascension, *ascensionStall, *ascensionMinGain, capital, plan, export, outsiderBase, *windowed, *autoClickers)
+		options.ascensionCapital, options.ancientPlan, options.outsiderBase = capital, plan, outsiderBase
+		err = runBot(options, *duration, *stats)
 	default:
 		err = fmt.Errorf("unknown mode %q", *mode)
 	}
@@ -478,18 +483,9 @@ func (tracker *fishClickTracker) recordClick(point image.Point) {
 	tracker.misses = 0
 }
 
-func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.Duration, heroLevels, skills, progression, mercenaries, stats, gilds bool, gildInterval time.Duration, ascension bool, ascensionStall time.Duration, ascensionMinGain, ascensionCapital float64, ancientPlan *ancientPlan, export *saveExportOptions, outsiderBase *ancientcalc.TranscensionPreview, windowed, autoClickers bool) error {
-	if ascension && (!progression || ascensionStall <= 0 || ascensionMinGain <= 0 || math.IsNaN(ascensionMinGain) || math.IsInf(ascensionMinGain, 0)) {
-		return errors.New("-ascension requires -progression, positive -ascension-stall and finite positive -ascension-min-gain")
-	}
-	if gilds && gildInterval <= 0 {
-		return errors.New("-gild-interval must be positive")
-	}
-	if ocrTimeout <= 0 {
-		return errors.New("-ocr-timeout must be positive")
-	}
-	if fishInterval <= 0 || duration < 0 || (monsterClicks && interval <= 0) {
-		return errors.New("-fish-interval must be positive; -duration must be non-negative; -interval must be positive when monster clicks are enabled")
+func runBot(options pipelineOptions, duration time.Duration, stats bool) error {
+	if duration < 0 {
+		return errors.New("-duration must be non-negative")
 	}
 
 	sift, err := newSIFTFishDetector()
@@ -505,7 +501,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	if duration > 0 {
 		ctx, cancel = context.WithTimeout(interrupt, duration)
 	}
-	if heroLevels || progression || mercenaries || ancientPlan != nil || export != nil {
+	if options.heroes || options.progression || options.mercenaries || options.ancientPlan != nil || options.export != nil {
 		if err := checkHeroOCR(ctx); err != nil {
 			cancel()
 			return err
@@ -551,7 +547,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	}
 	controls := pauseControl{paused: true}
 	windowReader := foregroundGameWindow
-	if windowed {
+	if options.windowed {
 		if err := windowedHookPreflight(); err != nil {
 			cancel()
 			return err
@@ -601,8 +597,7 @@ func runBot(x, y int, monsterClicks bool, interval, fishInterval, duration time.
 	pipeline := newGamePipeline(&controls, input, pipelineReaders{
 		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation, ascensionEconomy: readAscensionEconomy, ancients: readAncientObservation, ancientNames: readAncientNames, outsiders: readOutsiderObservation,
 		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: windowReader, autoClickers: readAutoClickerPool,
-	}, pipelineOptions{heroes: heroLevels, skills: skills, progression: progression, mercenaries: mercenaries, monster: monsterClicks, gilds: gilds, gildInterval: gildInterval, ascension: ascension, ascensionStall: ascensionStall, ascensionMinGain: ascensionMinGain, ascensionCapital: ascensionCapital, ancientPlan: ancientPlan, export: export, outsiderBase: outsiderBase,
-		monsterPoint: image.Pt(x, y), fishInterval: fishInterval, clickInterval: interval, windowed: windowed, autoClickers: autoClickers})
+	}, options)
 	err = pipeline.run(ctx)
 	fmt.Printf("stopped after %d actions\n", pipeline.metrics.actions)
 	if stats {

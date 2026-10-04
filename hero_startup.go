@@ -63,6 +63,12 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 	// Hiring expands a card. Follow its nearest button on the next shared frame;
 	// input is bounded even if the click did not register.
 	if before != nil {
+		// A small list scroll can put a different card at the old Y coordinate.
+		// The attempt budget belongs to the visible list position, so restart it
+		// whenever the viewport moved before applying the Y cursor.
+		if !heroListStable(before.frame.image, frame.image) {
+			out.sweep.attempts = 0
+		}
 		nearest := rows[0].button.Y
 		for _, r := range rows {
 			if absDiff(r.button.Y, before.button.Y) < absDiff(nearest, before.button.Y) {

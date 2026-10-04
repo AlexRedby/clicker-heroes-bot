@@ -213,9 +213,6 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 			}
 			p.pending = nil
 			if pending.action.hero.startup {
-				p.sweep.y, p.sweep.attempts = 0, 0
-				out.sweep = p.sweep
-				out.found = false
 				p.nextScan = now
 			}
 		case parkPointer:
@@ -305,6 +302,11 @@ func (p *heroRunner) action(now time.Time) (gameAction, bool) {
 	return a, true
 }
 func (p *heroRunner) sent(a gameAction, now time.Time) {
+	if a.kind == scrollHeroes && a.hero.startup {
+		// The next viewport must be selected with a fresh cursor. Resetting
+		// after analysis can carry a skipped row or completion into the next step.
+		p.sweep.y, p.sweep.attempts = 0, 0
+	}
 	if a.kind == buyHero && a.hero.startup {
 		p.sweep = a.hero.sweep
 		p.sweep.attempts++

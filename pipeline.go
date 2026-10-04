@@ -815,13 +815,27 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			fmt.Printf("Auto Clicker pool unreadable: %v; retrying later\n", out.err)
 			return nil
 		}
-		wasBlocked, wasPending := p.clickers.blocked, p.clickers.pending != nil
+		wasBlocked, pending, hadUpgrades := p.clickers.blocked, p.clickers.pending, p.clickers.upgrades
 		p.clickers.observe(out.frame, out.clickerPool, now)
 		if !wasBlocked && p.clickers.blocked {
 			fmt.Println("Auto Clicker placement not confirmed; leaving assignments unchanged and continuing automation")
 		}
-		if wasPending && p.clickers.pending == nil {
+		if pending != nil && p.clickers.pending == nil {
 			p.nextClickerRead = time.Time{}
+			if pending.target == autoClickerUpgrades && p.startup == startupUpgrades {
+				if !hadUpgrades && p.clickers.upgrades {
+					p.finishStartupUpgradePass()
+				} else {
+					// A footer placement can be a native no-op. Read a fresh footer
+					// before falling back to an ordinary upgrade click.
+					delete(p.queue, buyHeroUpgrades)
+					p.hero.latest = heroObservation{}
+					p.state[heroAnalysis] = observation{}
+					p.barriers[heroAnalysis] = p.frame.id + 1
+					p.heroJobFrame = 0
+					p.hero.nextScan = now
+				}
+			}
 		}
 		p.state[autoClickerAnalysis] = out
 		return nil
@@ -996,7 +1010,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		p.hero.observe(out.hero, p.state[fishAnalysis], now)
 		if p.startup == startupHeroes && out.err == nil {
 			p.startupPassive = p.startupPassive || out.hero.passiveReady
-			if out.hero.startupComplete {
+			if out.hero.startupComplete && p.hero.pending == nil && p.hero.latest.frame.id == out.frame.id {
 				p.startup = startupUpgrades
 				p.hero.interrupt()
 				p.startupDeadline = time.Time{}
@@ -1040,7 +1054,9 @@ func (p *gamePipeline) plan(now time.Time) {
 	if now.Before(p.settleUntil) {
 		return
 	}
-	p.planAutoClickers(now)
+	if p.startup != startupUpgrades || !p.clickers.footerAttempted {
+		p.planAutoClickers(now)
+	}
 	if p.planStartup(now) || p.planExport(now) || p.planAncients(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
 		return
 	}
@@ -1476,8 +1492,6 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		}
 		p.finishStartupUpgradePass()
 		invalidate(heroAnalysis)
-		invalidate(progressionAnalysis)
-		p.nextProgression = time.Time{}
 
 	case buyHero, scrollHeroes, selectQuantity, parkPointer:
 		p.hero.sent(a, now)
@@ -1485,7 +1499,11 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 			fmt.Printf("startup: submitted Q/MAX at (%d, %d), attempt %d/2\n", a.point.X, a.point.Y, p.hero.sweep.attempts)
 		}
 		if a.kind == scrollHeroes {
-			fmt.Printf("dragged hero scrollbar from (%d, %d); waiting for bottom confirmation\n", a.point.X, a.point.Y)
+			confirmation := "bottom confirmation"
+			if a.hero.startup {
+				confirmation = "list movement"
+			}
+			fmt.Printf("dragged hero scrollbar from (%d, %d); waiting for %s\n", a.point.X, a.point.Y, confirmation)
 		}
 		invalidate(heroAnalysis)
 		if a.kind == buyHero {

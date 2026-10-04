@@ -89,3 +89,129 @@ func TestAutoClickerFooterPriorityAndF8(t *testing.T) {
 		t.Fatal("old input executed", acted, err)
 	}
 }
+
+func TestAutoClickerFooterStartupHandoff(t *testing.T) {
+	requireAncientOCR(t)
+	for _, tc := range []struct {
+		name      string
+		confirmed bool
+		resumeF8  bool
+	}{
+		{name: "confirmed", confirmed: true},
+		{name: "confirmed after F8", confirmed: true, resumeF8: true},
+		{name: "occupied footer", confirmed: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			now := time.Now()
+			screen := loadTestImage(t, "testdata/hero-startup-zero.png")
+			c := gameContext{known: true, heroes: true, bounds: screen.Bounds(), window: "game"}
+			available := 1
+			p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return screen, nil }}, pipelineReaders{
+				context: func(image.Image) (gameContext, error) { return c, nil },
+				autoClickers: func(context.Context, gameFrame) (autoClickerPool, error) {
+					return autoClickerPool{known: true, available: available, total: 3}, nil
+				},
+				progression: func(context.Context, image.Image, [9]skillState, bool) (progressionState, error) {
+					return progressionState{Known: true, Enabled: true}, nil
+				},
+			}, pipelineOptions{heroes: true, autoClickers: true, progression: true, export: &saveExportOptions{}, fishInterval: time.Second})
+			p.startup, p.startupCheck, p.startupPassive = startupUpgrades, false, true
+			p.export.requested = false
+			jobs := make([]chan analysisJob, analysisCount)
+			for i := range jobs {
+				jobs[i] = make(chan analysisJob, 1)
+			}
+			if err := p.capture(ctx, now, jobs); err != nil {
+				t.Fatal(err)
+			}
+			poolJob, heroJob := <-jobs[autoClickerAnalysis], <-jobs[heroAnalysis]
+			if poolJob.frame.id != heroJob.frame.id {
+				t.Fatal("pool and footer used different frames")
+			}
+			for _, result := range []observation{p.analyze(ctx, autoClickerAnalysis, poolJob), p.analyze(ctx, heroAnalysis, heroJob)} {
+				if err := p.accept(ctx, result, now); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p.plan(now)
+			a, ok := p.nextAction(now)
+			if !ok || a.kind != placeOwnedClicker || a.clicker.target != autoClickerUpgrades {
+				t.Fatalf("footer clicker not selected: %+v %t", a, ok)
+			}
+			p.clickers.sent(a.clicker, now)
+			p.actionCompleted(actionResult{action: a, acted: true}, now)
+			if tc.resumeF8 {
+				p.controls.toggle()
+				p.controls.toggle()
+				p.reset(p.controls.snapshot())
+			}
+			p.plan(now.Add(250 * time.Millisecond))
+			if _, queued := p.queue[buyHeroUpgrades]; queued {
+				t.Fatal("ordinary upgrade click ran before placement acknowledgement")
+			}
+			ackAt := now.Add(time.Second)
+			if tc.confirmed {
+				available = 0
+			} else {
+				ackAt = now.Add(6 * time.Second)
+			}
+			if err := p.capture(ctx, ackAt, jobs); err != nil {
+				t.Fatal(err)
+			}
+			if !tc.resumeF8 && len(jobs[heroAnalysis]) != 0 {
+				t.Fatal("stale footer unexpectedly scheduled a hero read")
+			}
+			poolJob = <-jobs[autoClickerAnalysis]
+			if err := p.accept(ctx, p.analyze(ctx, autoClickerAnalysis, poolJob), ackAt); err != nil {
+				t.Fatal(err)
+			}
+			p.plan(ackAt)
+			if tc.confirmed {
+				if p.startup != startupProgression || !p.clickers.upgrades || p.export.requested {
+					t.Fatal("confirmed footer clicker did not advance to fresh progression")
+				}
+			} else {
+				if p.startup != startupUpgrades || p.clickers.upgrades || !p.clickers.footerAttempted {
+					t.Fatal("unconfirmed footer clicker skipped ordinary upgrade fallback")
+				}
+				if _, ok := p.nextAction(ackAt); ok {
+					t.Fatal("stale action ran before a fresh footer read")
+				}
+				readAt := ackAt.Add(time.Second)
+				if err := p.capture(ctx, readAt, jobs); err != nil {
+					t.Fatal(err)
+				}
+				heroJob = <-jobs[heroAnalysis]
+				if err := p.accept(ctx, p.analyze(ctx, heroAnalysis, heroJob), readAt); err != nil {
+					t.Fatal(err)
+				}
+				p.plan(readAt)
+				a, ok = p.nextAction(readAt)
+				if !ok || a.kind != buyHeroUpgrades {
+					t.Fatalf("unconfirmed placement did not retry ordinary footer: %+v %t", a, ok)
+				}
+				p.actionCompleted(actionResult{action: a, acted: true}, readAt)
+				ackAt = readAt
+			}
+			if p.startup != startupProgression || p.export.requested {
+				t.Fatal("footer pass did not wait for progression")
+			}
+			modeAt := ackAt.Add(time.Second)
+			if err := p.capture(ctx, modeAt, jobs); err != nil {
+				t.Fatal(err)
+			}
+			modeJob := <-jobs[progressionAnalysis]
+			if modeJob.frame.id != p.frame.id {
+				t.Fatal("progression was not read from a fresh frame")
+			}
+			if err := p.accept(ctx, p.analyze(ctx, progressionAnalysis, modeJob), modeAt); err != nil {
+				t.Fatal(err)
+			}
+			p.plan(modeAt)
+			if p.startup != noStartup || !p.export.requested || p.controls.isPaused() {
+				t.Fatal("startup did not hand off to export")
+			}
+		})
+	}
+}

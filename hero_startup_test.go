@@ -44,6 +44,103 @@ func TestStartupHireNeedsNoNameOrLevelOCR(t *testing.T) {
 		})
 	}
 }
+
+func TestStartupMissedHireFixture(t *testing.T) {
+	f := startupFrame(t, "testdata/hero-startup-missed-hire.png")
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	if err != nil || !out.found || out.owned {
+		t.Fatalf("missed hire fixture: %+v %v", out, err)
+	}
+}
+
+func TestStartupScrollPendingResetsStaleCursor(t *testing.T) {
+	previous := startupFrame(t, "testdata/hero-startup-missed-hire.png")
+	current := startupFrame(t, "testdata/hero-startup-missed-hire.png")
+	p := heroRunner{enabled: true, sweep: startupSweep{top: true, y: 1395}}
+	previous.id = 1
+	out, err := readStartupHeroObservation(context.Background(), previous, noStartupOCR(t), nil, p.sweep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.observe(out, observation{}, previous.at)
+	a, ok := p.action(previous.at)
+	if !ok || a.kind != scrollHeroes {
+		t.Fatalf("expected pending startup scroll: %+v %t", a, ok)
+	}
+	p.sent(a, previous.at)
+	current.image = startupMoveThumb(t, current.image)
+	current.context.bounds = current.image.Bounds()
+	current.id = 2
+	current.at = previous.at.Add(time.Second)
+	out, err = readStartupHeroObservation(context.Background(), current, noStartupOCR(t), p.before(), p.sweep)
+	p.observe(out, observation{}, current.at)
+	next, ok := p.action(current.at)
+	if err != nil || !out.found || out.owned || absDiff(out.button.Y, 843) > 8 || !ok || next.kind != buyHero {
+		t.Fatalf("stale pre-scroll cursor skipped visible HIRE: out=%+v action=%+v ok=%t err=%v", out, next, ok, err)
+	}
+}
+
+func TestStartupMissedHireAfterViewportMoveKeepsHire(t *testing.T) {
+	previous := startupFrame(t, "testdata/hero-startup-missed-hire.png")
+	current := startupFrame(t, "testdata/hero-startup-missed-hire.png")
+	current.image = startupMoveThumb(t, current.image)
+	current.context.bounds = current.image.Bounds()
+	if heroListStable(previous.image, current.image) {
+		t.Fatal("fixture pair must represent a moved viewport")
+	}
+	p := heroRunner{enabled: true}
+	p.startStartup()
+	p.sweep.top = true
+	for i := 1; i <= 2; i++ {
+		previous.id = uint64(i)
+		previous.at = previous.at.Add(time.Second)
+		out, err := readStartupHeroObservation(context.Background(), previous, noStartupOCR(t), p.before(), p.sweep)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p.observe(out, observation{}, previous.at)
+		a, ok := p.action(previous.at)
+		if !ok || a.kind != buyHero {
+			t.Fatalf("attempt %d did not produce buy: %+v", i, a)
+		}
+		p.sent(a, previous.at)
+	}
+	current.id = 3
+	out, err := readStartupHeroObservation(context.Background(), current, noStartupOCR(t), p.before(), p.sweep)
+	if err != nil || !out.found || out.owned {
+		t.Fatalf("moved viewport must inspect HIRE: %+v %v", out, err)
+	}
+}
+
+func startupMoveThumb(t *testing.T, screen image.Image) image.Image {
+	t.Helper()
+	b := screen.Bounds()
+	out := image.NewRGBA(b)
+	draw.Draw(out, b, screen, b.Min, draw.Src)
+	thumb, height, ok := heroScrollbarThumb(screen)
+	if !ok {
+		t.Fatal("fixture has no scrollbar thumb")
+	}
+	width := b.Dx() * 25 / 1000
+	thumbRect := image.Rect(thumb.X-width/2, thumb.Y-height/2, thumb.X+width/2+1, thumb.Y+height/2+1).Intersect(b)
+	clear := image.Rect(thumb.X-width, thumb.Y-height/2-3, thumb.X+width+1, thumb.Y+height/2+3).Intersect(b)
+	track := clear.Add(image.Pt(width*2, 0)).Intersect(b)
+	trackCopy := image.NewRGBA(clear)
+	draw.Draw(trackCopy, trackCopy.Bounds(), screen, track.Min, draw.Src)
+	thumbCopy := image.NewRGBA(thumbRect)
+	draw.Draw(thumbCopy, thumbCopy.Bounds(), screen, thumbRect.Min, draw.Src)
+	draw.Draw(out, clear, trackCopy, trackCopy.Bounds().Min, draw.Src)
+	shifted := thumbRect.Add(image.Pt(0, b.Dy()/40)).Intersect(b)
+	draw.Draw(out, shifted, thumbCopy, thumbCopy.Bounds().Min, draw.Src)
+	_, _, found := heroScrollbarThumb(out)
+	if !found {
+		t.Fatal("moved native scrollbar thumb was not recognized")
+	}
+	if heroListStable(screen, out) {
+		t.Fatal("moved native scrollbar thumb did not change viewport stability")
+	}
+	return out
+}
 func TestStartupCompletedRowSkippedWithoutOCR(t *testing.T) {
 	f := startupFrame(t, "testdata/hero-startup-fisherman-before.png")
 	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})

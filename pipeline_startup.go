@@ -75,6 +75,10 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 			p.nextMonster = now.Add(time.Second)
 		}
 	case startupUpgrades:
+		if p.clickers.pending != nil && p.clickers.pending.target == autoClickerUpgrades {
+			delete(p.queue, buyHeroUpgrades)
+			return true
+		}
 		out := p.state[heroAnalysis]
 		if out.frame.id == 0 || p.hero.pending != nil || !p.hero.due(now) {
 			return true
@@ -111,6 +115,9 @@ func (p *gamePipeline) finishStartupUpgradePass() {
 	p.hero.interrupt()
 	p.state[heroAnalysis] = observation{}
 	p.barriers[heroAnalysis] = p.frame.id + 1
+	p.state[progressionAnalysis] = observation{}
+	p.barriers[progressionAnalysis] = p.frame.id + 1
+	p.nextProgression = time.Time{}
 	p.heroJobFrame = 0
 	p.queue = make(map[actionKind]gameAction)
 }
