@@ -16,6 +16,7 @@ type mercenaryObservation struct {
 	frame                   gameFrame
 	notify                  bool
 	collect, start, running []image.Point
+	dead                    []image.Point
 	thumb                   image.Point
 	thumbFound, top, bottom bool
 	quests                  []mercenaryQuest
@@ -63,6 +64,7 @@ type mercenaryPlanner struct {
 	aborting              bool
 	collectOnly           bool
 	questRow              image.Point
+	deathLogged           bool
 }
 
 func mercenaryQuestRank(q mercenaryQuest) int {
@@ -196,6 +198,7 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 				p.returnHeroes = false
 				p.questRow = image.Point{}
 				p.roster = nil
+				p.deathLogged = false
 				p.nextScan = now.Add(time.Minute)
 			case closeMercenaryQuest:
 				// Only a confirmed closed quest lets us resume safe reward collection.
@@ -222,10 +225,15 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 		p.unreadableUntil = now.Add(5 * time.Second)
 	}
 	p.latest = o
+	if o.readable && len(o.dead) > 0 && !p.deathLogged {
+		fmt.Printf("mercenary death detected at %v; skipping dead cards without revive or bury\n", o.dead)
+		p.deathLogged = true
+	}
 	if p.roster == nil && o.readable && o.frame.context.mercenaries && !o.frame.context.questDialog {
 		roster := o
 		roster.collect = append([]image.Point(nil), o.collect...)
 		roster.start = append([]image.Point(nil), o.start...)
+		roster.dead = append([]image.Point(nil), o.dead...)
 		p.roster = &roster
 	}
 }
@@ -347,6 +355,7 @@ func (p *mercenaryPlanner) sent(a gameAction, now time.Time) {
 		p.active, p.returnHeroes, p.topVisited, p.aborting = true, true, false, false
 		p.bottomVisited = false
 		p.collectOnly = false
+		p.deathLogged = false
 		p.roster = nil
 	case openMercenaryQuest, claimAndOpenMercenaryQuest:
 		p.questRow = a.point

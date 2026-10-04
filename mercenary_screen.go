@@ -184,6 +184,14 @@ func mercenaryRows(screen image.Image) []image.Point {
 	return points
 }
 
+func mercenaryDead(screen image.Image, row image.Point) bool {
+	b := screen.Bounds()
+	// The verified tombstone portrait remains visible even while the timer runs.
+	region := image.Rect(b.Min.X+b.Dx()*40/1000, row.Y-b.Dy()*60/1000,
+		b.Min.X+b.Dx()*120/1000, row.Y+b.Dy()*60/1000)
+	return mercenaryTemplate(screen, region, "mercenaries/tombstone.png", image.Pt(127, 151))
+}
+
 var mercenaryDurationText = regexp.MustCompile(`(?i)^time:\s*([0-9]{1,4})\s+(minute|hour|day)s?$`)
 var mercenaryRewardText = regexp.MustCompile(`(?i)^reward:\s*(.+)$`)
 
@@ -260,6 +268,15 @@ func readMercenaryObservation(ctx context.Context, frame gameFrame) (mercenaryOb
 		if len(rows) == 0 {
 			return out, fmt.Errorf("mercenary roster cards not recognized")
 		}
+		living := rows[:0]
+		for _, point := range rows {
+			if mercenaryDead(screen, point) {
+				out.dead = append(out.dead, point)
+			} else {
+				living = append(living, point)
+			}
+		}
+		rows = living // Dead-card timers never enter OCR or the running/dispatch plan.
 		// Pack buttons into one OCR request; TSV coordinates keep missing lines
 		// from shifting another button's label onto the wrong mercenary.
 		cropHeight := 2 * (h * 27 / 1000)
