@@ -150,7 +150,11 @@ func (p *progressionPlanner) observeFrame(s progressionState, frameID uint64, no
 			p.pending = nil
 			p.wantAction = false
 			p.observe(s, now)
-			fmt.Printf("enabled progression at zone %d\n", s.Zone)
+			if s.Zone > 0 {
+				fmt.Printf("enabled progression at zone %d\n", s.Zone)
+			} else {
+				fmt.Println("enabled progression")
+			}
 		} else if pending.attempts >= 3 {
 			p.pending = nil
 			p.wantAction = false

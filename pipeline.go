@@ -994,12 +994,6 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.skill.reset()
 		}
 	}
-	if p.startup != noStartup {
-		if out.kind == progressionAnalysis {
-			// Startup only confirms the mode; ordinary combat observations start afresh after the handoff.
-			out.progression.Zone = 1
-		}
-	}
 	p.state[out.kind] = out
 	switch out.kind {
 	case fishAnalysis:

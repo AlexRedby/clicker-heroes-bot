@@ -31,7 +31,20 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 		return false
 	}
 	if p.startupDeadline.IsZero() {
-		p.startupDeadline = now.Add(5 * time.Minute)
+		budget := 5 * time.Minute
+		if p.startup == startupUpgrades {
+			budget = 10 * time.Second
+		}
+		p.startupDeadline = now.Add(budget)
+	}
+	if p.startup == startupUpgrades && (p.clickers.upgrades || now.After(p.startupDeadline)) {
+		if p.clickers.upgrades {
+			fmt.Println("startup: existing footer Auto Clicker handles upgrades")
+		} else {
+			fmt.Println("startup: upgrade footer unavailable; continuing with periodic upgrade checks")
+		}
+		p.finishStartupUpgradePass()
+		return true
 	}
 	if now.After(p.startupDeadline) || !p.hero.enabled {
 		reason := "startup did not complete; check Heroes and press F8 to retry"
