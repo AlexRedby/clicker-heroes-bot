@@ -66,11 +66,14 @@ const (
 	confirmAscension
 	cancelAscension
 	waitAscensionReset
+	salvageAscensionJunk
+	waitAscensionJunk
 )
 
 type ascensionObservation struct {
 	frame       gameFrame
 	confirm, no bool
+	junk        bool
 	souls       float64
 	zone        int
 	economy     bool
@@ -79,6 +82,15 @@ type ascensionObservation struct {
 
 func readAscensionObservation(ctx context.Context, frame gameFrame) (ascensionObservation, error) {
 	out := ascensionObservation{frame: frame}
+	if relicJunkDialog(frame.image) {
+		out.junk = true
+		_, out.confirm, _ = relicJunkControl(frame.image, true)
+		_, out.no, _ = relicJunkControl(frame.image, false)
+		if !out.confirm || !out.no {
+			return out, fmt.Errorf("Junk Pile confirmation controls not recognized")
+		}
+		return out, nil // The fixed native prompt authorizes Junk Pile only; no reward OCR.
+	}
 	if frame.context.ascension {
 		_, out.confirm, _ = ascensionControl(frame.image, ascensionYes)
 		_, out.no, _ = ascensionControl(frame.image, ascensionNo)
@@ -181,6 +193,9 @@ type ascensionPlanner struct {
 	lastInputFrame, jobFrame       uint64
 	nextRead, nextAction, deadline time.Time
 	latest                         ascensionObservation
+	junkSalvaged                   bool
+	junkReopened                   bool
+	junkCancelled                  bool
 }
 
 func (p *ascensionPlanner) interrupt() { *p = ascensionPlanner{} }
@@ -226,6 +241,12 @@ func (p *ascensionPlanner) due(now time.Time, stall time.Duration) bool {
 
 func (p *ascensionPlanner) observe(out ascensionObservation, err error, now time.Time) (reset bool) {
 	if !p.active {
+		if out.junk && err == nil && out.no {
+			// F8/restart does not inherit permission to destroy an orphaned Junk Pile.
+			p.active, p.step, p.latest = true, cancelAscension, out
+			p.deadline = now.Add(20 * time.Second)
+			return false
+		}
 		if out.economy {
 			p.latest = out
 			if err != nil {
@@ -240,6 +261,30 @@ func (p *ascensionPlanner) observe(out ascensionObservation, err error, now time
 		return false
 	}
 	p.latest = out
+	if out.junk {
+		if p.step == cancelAscension && p.junkCancelled {
+			p.latest = ascensionObservation{} // A delayed orphan No is not replayed.
+		}
+		if err == nil && out.confirm && out.no && (p.step == openAscension || p.step == confirmAscension) {
+			p.step = salvageAscensionJunk
+			if p.junkSalvaged {
+				p.step = cancelAscension // Never replay salvage, even after reopening Ascension.
+			}
+		}
+		return false // An unchanged prompt after Yes cannot advance or receive another Yes.
+	}
+	if p.step == waitAscensionJunk && err == nil && out.frame.context.known {
+		if !out.frame.context.ascension && out.zone == 1 {
+			*p = ascensionPlanner{}
+			return true
+		}
+		if out.frame.context.ascension {
+			p.step = openAscension // Fall through to independent Hero Souls reward validation.
+		} else if out.frame.context.heroes && !p.junkReopened {
+			p.step, p.junkReopened = openAscension, true
+			return false
+		}
+	}
 	if (p.step == openAscension || p.step == confirmAscension) && out.frame.context.ascension {
 		if err != nil || math.IsInf(out.souls, -1) || out.souls < p.minimumReward {
 			reason := "Hero Souls reward below the minimum useful gain"
@@ -266,6 +311,9 @@ func (p *ascensionPlanner) observe(out ascensionObservation, err error, now time
 }
 
 func (p *ascensionPlanner) sent(step ascensionStep, frameID uint64, now time.Time) {
+	if step == cancelAscension && p.latest.junk {
+		p.junkCancelled = true
+	}
 	p.active = true
 	p.lastInputFrame = frameID
 	p.latest = ascensionObservation{}
@@ -275,22 +323,43 @@ func (p *ascensionPlanner) sent(step ascensionStep, frameID uint64, now time.Tim
 	}
 	if step == confirmAscension {
 		p.step = waitAscensionReset
+	} else if step == salvageAscensionJunk {
+		p.step, p.junkSalvaged = waitAscensionJunk, true
 	} else {
 		p.step = step
 	}
 }
 
-func ascensionActionStable(a gameAction, current gameFrame) bool {
-	if a.frame.image == nil || current.image == nil || a.frame.context != current.context {
-		return false
+// The shared queue uses this for normal confirmation, Junk Pile and orphan No.
+// Waiting states deliberately have no input point.
+func ascensionActionPoint(screen image.Image, step ascensionStep) (image.Point, bool, error) {
+	if step == salvageAscensionJunk {
+		return relicJunkControl(screen, true)
+	}
+	if step == cancelAscension && relicJunkDialog(screen) {
+		return relicJunkControl(screen, false)
 	}
 	control := ascensionSpiral
-	if a.ascension == confirmAscension {
+	if step == confirmAscension || step == cancelAscension {
+		known, err := ascensionDialog(screen)
+		if err != nil || !known {
+			return image.Point{}, false, err
+		}
 		control = ascensionYes
-	} else if a.ascension == cancelAscension {
-		control = ascensionNo
+		if step == cancelAscension {
+			control = ascensionNo
+		}
+	} else if step != openAscension {
+		return image.Point{}, false, nil
 	}
-	point, found, err := ascensionControl(current.image, control)
+	return ascensionControl(screen, control)
+}
+
+func ascensionActionStable(a gameAction, current gameFrame) bool {
+	if a.frame.image == nil || current.image == nil || a.frame.context != current.context || a.frame.generation != current.generation || a.frame.layout != current.layout {
+		return false
+	}
+	point, found, err := ascensionActionPoint(current.image, a.ascension)
 	if err != nil || !found || point != a.point {
 		return false
 	}
