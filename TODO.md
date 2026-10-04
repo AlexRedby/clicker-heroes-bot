@@ -64,7 +64,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Earned gild gifts
 
-- Verify the full earned-gift batch in progression in the running game: gift -> central chest -> Open All -> close the Gilded Heroes roster; include a single reward, missed input and F8 while a modal is open. Screenshot recognition, queue isolation, retries and pause/resume are covered by regression tests.
+- Verify the remaining earned-gift edge cases in the installed game: a single reward, a missed input and F8 while a modal is open. Confirm recovery closes the roster and resumes automation without repeated opening.
 
 ## Automatic progression
 
