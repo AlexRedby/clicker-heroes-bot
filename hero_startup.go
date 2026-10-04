@@ -125,7 +125,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 			if !locked {
 				continue
 			}
-		} else if !heroPriceRegion(frame.image, r.button).In(viewport) {
+		} else if r.band.Max.Y >= viewport.Max.Y-edgeGap || !heroPriceRegion(frame.image, r.button).In(viewport) {
 			// HIRE can remain readable when its price extends below the screen.
 			// Bring that price into view before buying or checking affordability.
 			clipped = true

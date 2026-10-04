@@ -676,6 +676,9 @@ func (p *ancientPlanner) sent(a gameAction, now time.Time) {
 	p.latest = ancientObservation{}
 	p.jobFrame = 0
 	p.nextRead = now.Add(200 * time.Millisecond)
+	if _, scrolling := listScrollAction(a); scrolling {
+		p.nextRead = now.Add(listScrollSettle)
+	}
 	p.nextAction = p.nextRead
 	p.deadline = now.Add(20 * time.Second)
 }

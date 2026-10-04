@@ -215,3 +215,45 @@ func TestAutoClickerFooterStartupHandoff(t *testing.T) {
 		})
 	}
 }
+
+func TestAutoClickerPeriodicPoolRecovery(t *testing.T) {
+	now := time.Now()
+	s := loadTestImage(t, "testdata/hero-startup-zero.png")
+	f := gameFrame{id: 10, at: now, image: s, context: gameContext{known: true, heroes: true, bounds: s.Bounds()}}
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true, autoClickers: true})
+	p.frame, p.startupCheck = f, false
+	p.clickers.blocked = true
+	p.clickers.footerAttempted = true
+	p.clickers.rememberPool(f, autoClickerPool{known: true, available: 0, total: 3})
+	p.nextClickerRecovery = now.Add(5 * time.Minute)
+	f.id++
+	f.at = now.Add(time.Minute)
+	p.frame = f
+	pool := autoClickerPool{known: true, available: 0, total: 3}
+	if err := p.accept(context.Background(), observation{kind: autoClickerAnalysis, frame: f, clickerPool: pool}, f.at); err != nil {
+		t.Fatal(err)
+	}
+	if !p.clickers.blocked || p.nextClickerRead != f.at.Add(5*time.Minute) {
+		t.Fatal("recovery ran early or exhausted pool was polled rapidly")
+	}
+	f.id++
+	f.at = now.Add(6 * time.Minute)
+	p.frame = f
+	pool.available = 2
+	if err := p.accept(context.Background(), observation{kind: autoClickerAnalysis, frame: f, clickerPool: pool}, f.at); err != nil {
+		t.Fatal(err)
+	}
+	if p.clickers.blocked || p.clickers.footerAttempted || p.clickerFooterUntil != f.at.Add(10*time.Second) {
+		t.Fatal("fresh free pool did not start bounded recovery")
+	}
+	p.plan(f.at)
+	a, ok := p.nextAction(f.at)
+	if !ok || a.kind != placeOwnedClicker || a.clicker.target != autoClickerMonster {
+		t.Fatal("free clicker restoration was not queued", a, ok)
+	}
+	p.frame.context.saveMenu = true
+	p.enqueue(a, f.at)
+	if _, ok := p.nextAction(f.at); ok {
+		t.Fatal("restoration reached covering menu")
+	}
+}

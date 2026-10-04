@@ -206,8 +206,8 @@ func TestAutoClickerNoReplayAndInputGuards(t *testing.T) {
 	f.at = now.Add(6 * time.Second)
 	p.observe(f, pool, f.at)
 	p.interrupt()
-	if !p.blocked {
-		t.Fatal("unconfirmed placement did not block replay")
+	if p.pending != nil || !p.blocked {
+		t.Fatalf("unconfirmed placement was not resolved and blocked: %+v", p)
 	}
 	if _, ok := p.command(f, pool, autoClickerMonster, point); ok {
 		t.Fatal("unconfirmed input replayed after F8")

@@ -75,7 +75,10 @@ type autoClickerPlanner struct {
 	deadline        time.Time
 	upgrades        bool
 	footerAttempted bool
+	footerPasses    uint8
 	blocked         bool
+	lastPool        autoClickerPool
+	lastPoolFrame   gameFrame
 }
 
 func (p *autoClickerPlanner) command(frame gameFrame, pool autoClickerPool, target autoClickerTarget, point image.Point) (autoClickerCommand, bool) {
@@ -83,11 +86,11 @@ func (p *autoClickerPlanner) command(frame gameFrame, pool autoClickerPool, targ
 	if p.pending != nil || p.blocked || !pool.known || pool.available <= 0 || !autoClickerTargetValid(a) {
 		return a, false
 	}
-	if target == autoClickerUpgrades && (p.footerAttempted || pool.total == 1) {
+	if target == autoClickerUpgrades && (p.footerAttempted || p.footerPasses > 0 || pool.total == 1) {
 		return a, false
 	}
 	// Keep one free for upgrades when more than one clicker is owned.
-	if target == autoClickerMonster && pool.total > 1 && !p.footerAttempted && pool.available == 1 {
+	if target == autoClickerMonster && pool.total > 1 && !p.footerAttempted && p.footerPasses == 0 && pool.available == 1 {
 		return a, false
 	}
 	return a, true
@@ -103,6 +106,7 @@ func (p *autoClickerPlanner) sent(a autoClickerCommand, now time.Time) {
 }
 
 func (p *autoClickerPlanner) observe(frame gameFrame, pool autoClickerPool, now time.Time) {
+	p.rememberPool(frame, pool)
 	if p.pending == nil || p.blocked || frame.id <= p.pending.frame.id || frame.at.Before(p.afterAt) {
 		return
 	}
@@ -125,16 +129,54 @@ func (p *autoClickerPlanner) observe(frame gameFrame, pool autoClickerPool, now 
 	}
 }
 
+func (p *autoClickerPlanner) rememberPool(frame gameFrame, pool autoClickerPool) {
+	if !pool.known || frame.image == nil || frame.id <= p.lastPoolFrame.id {
+		return
+	}
+	p.lastPool, p.lastPoolFrame = pool, frame
+}
+
+// recover clears placement failures after a periodic fresh OCR pass. The pool
+// must be recognized in a newer valid Heroes frame. A submitted placement
+// always wins over recovery, so an F8 interruption cannot replay or discard
+// input.
+func (p *autoClickerPlanner) recover(frame gameFrame, pool autoClickerPool) bool {
+	if p.pending != nil || !pool.known || frame.image == nil || frame.id <= p.lastPoolFrame.id ||
+		!bootstrapHeroes(frame.context) {
+		return false
+	}
+	p.rememberPool(frame, pool)
+	changed := p.blocked || p.footerAttempted || p.footerPasses != 0
+	p.blocked = false
+	p.footerAttempted = false
+	p.footerPasses = 0
+	return changed
+}
+
+// noteFooterUnavailable bounds the startup footer probe. It deliberately does
+// not invent a footer target when recognition is absent; after one pass the
+// final free clicker may be used on the monster.
+func (p *autoClickerPlanner) noteFooterUnavailable() {
+	if p.footerPasses == 0 {
+		p.footerPasses = 1
+	}
+}
+
 func (p *autoClickerPlanner) unconfirmed() {
-	if p.pending.target == autoClickerUpgrades {
-		// An occupied footer is a native no-op. Never retry it; plain clicks remain available.
+	if p.pending == nil {
+		return
+	}
+	target := p.pending.target
+	p.pending = nil
+	if target == autoClickerUpgrades {
+		// An occupied footer is a native no-op. Retry only during a later recovery cycle.
 		p.footerAttempted = true
 		p.pending = nil
 		fmt.Println("Auto Clicker footer placement unconfirmed; retaining ordinary upgrade clicks")
 		return
 	}
 	p.blocked = true
-	fmt.Println("Auto Clicker monster placement unconfirmed; further placements disabled")
+	fmt.Println("Auto Clicker monster placement unconfirmed; retrying at the next periodic check")
 }
 
 func (p *autoClickerPlanner) interrupt() {
@@ -206,7 +248,7 @@ func placeAutoClicker(ctx context.Context, input heroInput, a autoClickerCommand
 		return err
 	}
 	// Like the native V transaction, let the client sample the held key before clicking.
-	timer := time.NewTimer(100 * time.Millisecond)
+	timer := time.NewTimer(200 * time.Millisecond)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():

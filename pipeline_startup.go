@@ -99,6 +99,12 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 		if out.found {
 			p.enqueue(gameAction{kind: buyHeroUpgrades, frame: out.frame, point: out.point}, now)
 		} else if out.upgradesKnown {
+			if p.options.autoClickers && !p.clickers.upgrades && !p.clickers.footerAttempted && p.clickers.footerPasses == 0 && out.point != (image.Point{}) {
+				pool := p.state[autoClickerAnalysis].clickerPool
+				if pool.known && pool.available > 0 && pool.total > 1 {
+					return true
+				}
+			}
 			p.finishStartupUpgradePass()
 		} else if out.hero.thumbFound && !out.hero.bottom {
 			p.enqueue(gameAction{kind: scrollHeroes, frame: out.frame, point: out.hero.thumb, target: image.Pt(out.hero.thumb.X, out.frame.context.bounds.Max.Y-1), hero: out.hero}, now)
@@ -122,6 +128,10 @@ func (p *gamePipeline) startupNeedsSeedClicks() bool {
 
 // The footer pass buys upgrades unlocked by the bounded level sweep.
 func (p *gamePipeline) finishStartupUpgradePass() {
+	if !p.clickers.upgrades {
+		p.clickers.noteFooterUnavailable()
+	}
+	p.clickerFooterUntil = time.Time{}
 	p.startup = startupProgression
 	fmt.Println("startup: upgrades handled; waiting for progression")
 	p.startupDeadline = time.Time{}

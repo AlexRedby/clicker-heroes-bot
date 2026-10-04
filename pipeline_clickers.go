@@ -14,8 +14,12 @@ func (p *gamePipeline) planAutoClickers(now time.Time) {
 	if out.frame.id == 0 || !out.clickerPool.known || out.clickerPool.available == 0 || !autoClickerPoolStable(out.frame.image, p.frame.image) {
 		return
 	}
+	if !p.clickerFooterUntil.IsZero() && !now.Before(p.clickerFooterUntil) {
+		p.clickers.noteFooterUnavailable()
+		p.clickerFooterUntil = time.Time{}
+	}
 	hero := p.state[heroAnalysis]
-	if p.options.heroes && hero.found && (hero.upgrades || hero.startup == startupUpgrades) && heroUpgradeButtonStable(hero.frame.image, p.frame.image, hero.point) {
+	if p.options.heroes && (hero.found || hero.upgradesKnown && hero.point != (image.Point{})) && (hero.upgrades || hero.startup == startupUpgrades) && heroUpgradeButtonStable(hero.frame.image, p.frame.image, hero.point) {
 		if cmd, ok := p.clickers.command(p.frame, out.clickerPool, autoClickerUpgrades, hero.point); ok {
 			p.enqueue(gameAction{kind: placeOwnedClicker, frame: p.frame, point: cmd.point, clicker: cmd}, now)
 			return

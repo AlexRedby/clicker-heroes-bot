@@ -120,6 +120,15 @@ func startupMoveThumb(t *testing.T, screen image.Image) image.Image {
 
 func startupMoveThumbBy(t *testing.T, screen image.Image, delta int) image.Image {
 	t.Helper()
+	out := startupShiftThumbBy(t, screen, delta)
+	if heroListStable(screen, out) {
+		t.Fatal("moved native scrollbar thumb did not change viewport stability")
+	}
+	return out
+}
+
+func startupShiftThumbBy(t *testing.T, screen image.Image, delta int) image.Image {
+	t.Helper()
 	b := screen.Bounds()
 	out := image.NewRGBA(b)
 	draw.Draw(out, b, screen, b.Min, draw.Src)
@@ -141,9 +150,6 @@ func startupMoveThumbBy(t *testing.T, screen image.Image, delta int) image.Image
 	_, _, found := heroScrollbarThumb(out)
 	if !found {
 		t.Fatal("moved native scrollbar thumb was not recognized")
-	}
-	if heroListStable(screen, out) {
-		t.Fatal("moved native scrollbar thumb did not change viewport stability")
 	}
 	return out
 }
@@ -438,5 +444,13 @@ func TestStartupClippedHireNoMotionAndPause(t *testing.T) {
 	a, ok := p.action(f.at)
 	if err != nil || !ok || a.kind != scrollHeroes || out.startupComplete {
 		t.Fatalf("resume did not retry navigation: %+v %t %v", a, ok, err)
+	}
+}
+
+func TestStartupClippedHireBandScrollsWithoutOCR(t *testing.T) {
+	f := startupFrame(t, "testdata/hero-startup-clipped-price-band.png")
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	if err != nil || out.found || out.startupComplete || out.startupNeedsGold || out.startupScroll.Y <= out.thumb.Y {
+		t.Fatalf("clipped HIRE band must scroll before OCR: %+v %v", out, err)
 	}
 }

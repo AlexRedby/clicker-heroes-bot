@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"image"
+	"strconv"
 	"strings"
 )
 
@@ -79,7 +80,51 @@ func readHeroUpgradeFooter(ctx context.Context, screen image.Image) (image.Point
 	}
 	b := screen.Bounds()
 	region := image.Rect(b.Min.X+b.Dx()*268/1000, b.Min.Y+b.Dy()*4/10, b.Min.X+b.Dx()*425/1000, b.Min.Y+b.Dy()*98/100)
-	raw, err := readGameText(ctx, screen, region, max(1, 2048/b.Dx()), 11, 180, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ")
-	known := strings.Contains(strings.Join(strings.Fields(raw), ""), "BuyAvailableUpgrades")
-	return image.Point{}, known, false, err
+	scale := max(1, 2048/b.Dx())
+	raw, err := readGameText(ctx, screen, region, scale, 11, 180, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ", "tsv")
+	if err != nil {
+		return image.Point{}, false, false, err
+	}
+	point, known := heroFooterTextPoint(raw, region, scale, b.Min.X+b.Dx()*34/100)
+	return point, known, false, nil
+}
+
+// Disabled footer text provides its position without assuming a fixed list height.
+func heroFooterTextPoint(raw string, region image.Rectangle, scale, x int) (image.Point, bool) {
+	type line struct {
+		text        string
+		top, bottom int
+	}
+	lines := map[string]line{}
+	for _, row := range strings.Split(raw, "\n") {
+		fields := strings.Split(row, "\t")
+		if len(fields) != 12 || fields[0] != "5" || strings.TrimSpace(fields[11]) == "" {
+			continue
+		}
+		y, ye := strconv.Atoi(fields[7])
+		h, he := strconv.Atoi(fields[9])
+		if ye != nil || he != nil || h <= 0 || y < gameTextPadding || y+h > gameTextPadding+region.Dy()*scale {
+			continue
+		}
+		key := strings.Join(fields[1:5], "/")
+		value, exists := lines[key]
+		if !exists {
+			value.top = y
+		}
+		value.top, value.bottom = min(value.top, y), max(value.bottom, y+h)
+		value.text += strings.TrimSpace(fields[11])
+		lines[key] = value
+	}
+	point, found := image.Point{}, false
+	for _, value := range lines {
+		if value.text != "BuyAvailableUpgrades" {
+			continue
+		}
+		if found {
+			return image.Point{}, false
+		}
+		point = image.Pt(x, region.Min.Y+((value.top+value.bottom)/2-gameTextPadding)/scale)
+		found = true
+	}
+	return point, found
 }

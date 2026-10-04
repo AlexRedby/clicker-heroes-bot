@@ -160,6 +160,8 @@ type gamePipeline struct {
 	clickers                                            autoClickerPlanner
 	clickerJobFrame                                     uint64
 	nextClickerRead                                     time.Time
+	nextClickerRecovery                                 time.Time
+	clickerFooterUntil                                  time.Time
 	input                                               heroInput
 	controls                                            *pauseControl
 	frame                                               gameFrame
@@ -730,7 +732,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		}
 		if p.options.heroes && c.heroes && p.hero.due(now) && p.heroJobFrame == 0 && (p.hero.latest.frame.id == 0 || p.hero.pending != nil) {
 			p.heroJobFrame = p.frame.id
-			upgrades := p.hero.pending == nil && !p.clickers.upgrades && !now.Before(p.nextUpgrades)
+			upgrades := p.hero.pending == nil && (!p.clickers.upgrades || !p.clickerFooterUntil.IsZero()) && !now.Before(p.nextUpgrades)
 			if upgrades {
 				p.nextUpgrades = now.Add(30 * time.Second)
 			}
@@ -844,6 +846,19 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			fmt.Printf("Auto Clicker pool unreadable: %v; retrying later\n", out.err)
 			return nil
 		}
+		if !now.Before(p.nextClickerRecovery) && out.clickerPool.known {
+			p.clickers.recover(out.frame, out.clickerPool)
+			p.nextClickerRecovery = now.Add(5 * time.Minute)
+			if out.clickerPool.available > 0 && out.clickerPool.total > 1 && p.startup == noStartup && !p.startupCheck {
+				p.clickerFooterUntil = now.Add(10 * time.Second)
+				p.nextUpgrades = time.Time{}
+				if p.hero.pending == nil {
+					p.hero.latest = heroObservation{}
+					p.hero.nextScan = now
+					delete(p.queue, buyHero)
+				}
+			}
+		}
 		wasBlocked, pending, hadUpgrades := p.clickers.blocked, p.clickers.pending, p.clickers.upgrades
 		p.clickers.observe(out.frame, out.clickerPool, now)
 		if !wasBlocked && p.clickers.blocked {
@@ -867,6 +882,9 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			}
 		}
 		p.state[autoClickerAnalysis] = out
+		if out.clickerPool.known && (out.clickerPool.available == 0 || p.clickers.blocked) {
+			p.nextClickerRead = now.Add(5 * time.Minute)
+		}
 		return nil
 	}
 	if out.kind != fishAnalysis && !(out.kind == mercenaryAnalysis && p.frame.context.mercenaryDialog || out.kind == ascensionAnalysis && p.frame.context.relicJunk) && (p.export.requested && p.startup == noStartup && !p.startupCheck || p.frame.context.saveMenu) {
@@ -908,6 +926,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.skill.reset()
 			p.clickers = autoClickerPlanner{footerAttempted: !p.options.heroes}
 			p.nextClickerRead = time.Time{}
+			p.nextClickerRecovery, p.clickerFooterUntil = time.Time{}, time.Time{}
 			p.hero.failures, p.hero.enabled = 0, p.options.heroes
 			// accept() already owns the pause-control mutex.
 			if p.options.export != nil {
@@ -1278,12 +1297,17 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 				continue
 			}
 			if kind == scrollHeroes {
-				thumb, _, found := heroScrollbarThumb(p.frame.image)
+				thumb, height, found := heroScrollbarThumb(p.frame.image)
 				if !found || absDiff(thumb.Y, action.point.Y) > max(3, p.frame.context.bounds.Dy()/100) {
 					delete(p.queue, kind)
 					p.hero.interrupt()
 					continue
 				}
+				if scroll, _ := listScrollAction(action); scroll.mode == listScrollPage {
+					delta := action.target.Y - action.point.Y
+					action.target.Y = min(thumb.Y+delta, p.frame.context.bounds.Min.Y+p.frame.context.bounds.Dy()*965/1000-height/2)
+				}
+				action.point = thumb
 			}
 		}
 		delete(p.queue, kind)
@@ -1306,6 +1330,9 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 		if a.kind == collectFish && (!p.fishContext(p.frame.context) || a.frame.context != p.frame.context) {
 			return errInputContext
 		}
+		if scroll, ok := listScrollAction(a); ok {
+			return scrollList(ctx, input, scroll)
+		}
 		switch a.kind {
 		case handleExport:
 			if a.export.step == exportRestoreGame {
@@ -1321,15 +1348,6 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			return input.click(a.point)
 		case handleAncient:
 			switch a.ancient.step {
-			case scrollAncients:
-				if a.ancient.fine {
-					if err := input.click(a.point); err != nil {
-						return err
-					}
-				} else if err := input.scroll(a.point, a.ancient.direction); err != nil {
-					return err
-				}
-				return input.move(parkPoint(a.frame.context.bounds))
 			case openAncientQuantity:
 				return clickAncientCustom(ctx, input, a.point)
 			case fillAncientQuantity:
@@ -1344,9 +1362,6 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 				return input.move(parkPoint(a.frame.context.bounds))
 			}
 		case handleMercenary:
-			if a.mercenary.step == scrollMercenariesTop || a.mercenary.step == scrollMercenariesBottom {
-				return input.drag(a.point, a.target)
-			}
 			if err := input.click(a.point); err != nil {
 				return err
 			}
@@ -1375,8 +1390,6 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			return holdGameKey(ctx, input, "a")
 		case selectQuantity:
 			return input.keyTap("t")
-		case scrollHeroes:
-			return input.drag(a.point, a.target)
 		case parkPointer:
 			return input.move(a.point)
 		case buyHeroUpgrades:
@@ -1562,6 +1575,9 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 	}
 	if a.kind == buyHero || a.kind == buyHeroUpgrades || a.kind == scrollHeroes || a.kind == parkPointer || a.kind == handleMercenary {
 		p.settleUntil = now.Add(200 * time.Millisecond)
+	}
+	if _, scrolling := listScrollAction(a); scrolling {
+		p.settleUntil = now.Add(listScrollSettle)
 	}
 	p.nextCapture = time.Time{}
 }

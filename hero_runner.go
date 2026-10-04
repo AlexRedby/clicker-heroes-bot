@@ -40,22 +40,24 @@ type heroDiagnostic struct {
 }
 
 type heroRunner struct {
-	sweep         startupSweep
-	enabled       bool
-	failures      int
-	nextScan      time.Time
-	latest        heroObservation
-	pending       *heroAttempt
-	quantityTaps  int
-	parked        bool
-	lastReadError string
-	onDiagnostic  func(heroDiagnostic) bool
+	sweep          startupSweep
+	enabled        bool
+	failures       int
+	scrollFailures int
+	nextScan       time.Time
+	latest         heroObservation
+	pending        *heroAttempt
+	quantityTaps   int
+	parked         bool
+	lastReadError  string
+	onDiagnostic   func(heroDiagnostic) bool
 }
 
 // A reset starts a new bounded sweep. F8 preserves its viewport cursor.
 func (p *heroRunner) startStartup() {
 	p.interrupt()
 	p.sweep = startupSweep{}
+	p.scrollFailures = 0
 	p.lastReadError = ""
 }
 
@@ -201,20 +203,27 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 			}
 			p.pending = nil
 		case scrollHeroes:
-			movedStartup := pending.action.hero.startup && out.thumbFound && !heroListStable(pending.action.frame.image, out.frame.image)
-			if !out.bottom && !movedStartup {
-				if pending.attempts >= 3 {
-					p.pending = nil
-					p.latest = heroObservation{}
-					p.nextScan = now.Add(30 * time.Second)
-					fmt.Println("hero list bottom not confirmed; retrying in 30s")
+			moved := out.thumbFound && absDiff(out.thumb.Y, pending.action.point.Y) >= max(2, out.frame.context.bounds.Dy()/1000)
+			if !out.bottom && !moved {
+				// Give a busy game time to apply input, independently of scan cadence.
+				if pending.attempts < 3 || now.Before(pending.afterAt.Add(time.Second)) {
+					p.nextScan = now.Add(150 * time.Millisecond)
+					return
 				}
+				p.scrollFailures++
+				wait := 250 * time.Millisecond
+				if p.scrollFailures >= 3 {
+					wait = 2 * time.Second
+				}
+				p.pending = nil
+				p.latest = heroObservation{}
+				p.nextScan = now.Add(wait)
+				fmt.Printf("hero scroll made no progress; reacquiring scrollbar in %s (attempt %d)\n", wait, p.scrollFailures)
 				return
 			}
+			p.scrollFailures = 0
 			p.pending = nil
-			if pending.action.hero.startup {
-				p.nextScan = now
-			}
+			p.nextScan = now
 		case parkPointer:
 			p.pending = nil
 		}
@@ -314,6 +323,10 @@ func (p *heroRunner) sent(a gameAction, now time.Time) {
 	p.latest = heroObservation{}
 	p.pending = &heroAttempt{action: a, afterAt: now.Add(200 * time.Millisecond)}
 	p.nextScan = now.Add(200 * time.Millisecond)
+	if a.kind == scrollHeroes {
+		p.pending.afterAt = now.Add(listScrollSettle)
+		p.nextScan = p.pending.afterAt
+	}
 	if a.kind == selectQuantity {
 		p.quantityTaps++
 		p.pending.afterAt = now.Add(100 * time.Millisecond)

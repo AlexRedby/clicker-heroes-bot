@@ -211,8 +211,10 @@ func (p *mercenaryPlanner) observe(o mercenaryObservation, now time.Time) {
 		} else {
 			switch a.mercenary.step {
 			case scrollMercenariesTop:
+				p.nextScan = now
 				p.topVisited = true
 			case scrollMercenariesBottom:
+				p.nextScan = now
 				p.bottomVisited = true
 			case returnToHeroes:
 				p.active = false
@@ -441,6 +443,9 @@ func (p *mercenaryPlanner) sent(a gameAction, now time.Time) {
 	p.latest = mercenaryObservation{}
 	p.pending = &mercenaryAttempt{action: a, until: now.Add(5 * time.Second), recovery: prompt}
 	p.nextScan = now.Add(200 * time.Millisecond)
+	if _, scrolling := listScrollAction(a); scrolling {
+		p.nextScan = now.Add(listScrollSettle)
+	}
 	switch a.mercenary.step {
 	case openMercenaries:
 		p.active, p.returnHeroes, p.topVisited, p.aborting = true, true, false, false
