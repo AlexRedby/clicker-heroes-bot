@@ -1326,11 +1326,7 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			}
 			return input.move(parkPoint(a.frame.context.bounds))
 		case buyHero:
-			key := "q"
-			if a.hero.startup {
-				key = "ctrl"
-			}
-			if err := clickHeroModified(ctx, input, a.point, key); err != nil {
+			if err := clickHeroMax(ctx, input, a.point); err != nil {
 				return err
 			}
 			return input.move(parkPoint(a.frame.context.bounds))
@@ -1486,7 +1482,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 	case buyHero, scrollHeroes, selectQuantity, parkPointer:
 		p.hero.sent(a, now)
 		if a.kind == buyHero && a.hero.startup {
-			fmt.Printf("startup: submitted Ctrl+100 at (%d, %d), attempt %d/2\n", a.point.X, a.point.Y, p.hero.sweep.attempts)
+			fmt.Printf("startup: submitted Q/MAX at (%d, %d), attempt %d/2\n", a.point.X, a.point.Y, p.hero.sweep.attempts)
 		}
 		if a.kind == scrollHeroes {
 			fmt.Printf("dragged hero scrollbar from (%d, %d); waiting for bottom confirmation\n", a.point.X, a.point.Y)

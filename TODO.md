@@ -8,7 +8,7 @@
 | --- | --- |
 | Viewport edges | Complete HIRE/LVL UP captions and upgrade strips at the top, middle and bottom are recognized. Clipped rows are brought into view; overlap advances the bounded sweep. |
 | Card variants | Plain/gilded cards, blue/dark captions, purchased green checks, a single locked slot and partial/covered strips. Startup must not read names or levels; green icon artwork must not count as a check. |
-| Purchases | Initial available upgrades are bought before levels. Fully purchased rows receive no input; incomplete rows get at most two Ctrl+100 inputs per viewport, including missed clicks and expanded cards. Ordinary latest-hero Q confirmation still works. |
+| Purchases | Initial available upgrades are bought before levels. Fully purchased rows receive no input; incomplete rows get at most two Q/MAX inputs per viewport, including missed clicks and expanded cards. Ordinary latest-hero Q confirmation still works. |
 | Gold and successor | Zero gold, affordable and unaffordable successors, short and growing lists. Starter clicks stop for an affordable purchase, an owned passive hero, pending input or unknown ownership/gold. Startup reads only a locked successor price/gold when needed; numeric level OCR belongs to ordinary latest-hero play. |
 | Obstructions | Fish over the caption/level/scrollbar, purchase tooltip and covering modal. Fish recovery stays independent; hero input waits for a covering modal. |
 | Navigation and pause | Partial/overlapping rows, missed drag/no motion, F8 during scrolling/purchasing. Preserve the viewport cursor and attempt count; advance after two inputs instead of looping on one hero. |
@@ -18,7 +18,7 @@
 
 ## Startup and unattended Ascension validation
 
-- Verify bounded startup skill setup in the installed game, including already purchased rows, one-slot low-level rows, missing hires, limited gold, two Ctrl+100 inputs, overlap scrolling and final Buy Available Upgrades. Capture before/after rows if a skill remains locked.
+- Verify bounded startup skill setup in the installed game, including already purchased rows, one-slot low-level rows, missing hires, limited gold, two Q/MAX inputs, overlap scrolling and final Buy Available Upgrades. Capture before/after rows if a skill remains locked.
 - Verify two consecutive installed-game cycles: combat wall -> confirmed Ascension -> available upgrades -> bounded skill sweep -> newly available upgrades -> enabled progression -> fresh export -> submitted Ancient purchases -> Heroes continuation. Include zero gold, short/expanding lists, no-purchase plans, F8, obscured upgrade strips/unreadable prices and fish over controls. Code/fixture tests are not native acceptance.
 - Verify `-auto-clickers` placement in the installed game: available/owned count before and after C + click, monster and Buy Available Upgrades assignments, a sole clicker, already occupied footer, F8 and scene background changes. Pool recognition passes supplied native 3/3 frames and placement/queue acknowledgement is covered with modeled observations; actual assigned targets still need native evidence. Existing assignments must remain intact and rubies must not be spent.
 - Verify initial hero/skill upgrade setup at a later zone, including missing earlier heroes, already-disabled Buy Available Upgrades, and an empty Ancient plan that stays on Heroes. Confirm a placed footer clicker handles newly unlocked upgrades; ordinary clicks remain a periodic fallback.

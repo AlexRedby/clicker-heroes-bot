@@ -39,7 +39,7 @@ func TestStartupOpenCVFailedFrameUsesSharedQueue(t *testing.T) {
 		t.Fatalf("queue: %+v %t", a, ok)
 	}
 	acted, err := p.execute(context.Background(), a)
-	if err != nil || !acted || captures != 0 || len(keys) != 2 || keys[0] != "ctrl:down" || keys[1] != "ctrl:up" {
+	if err != nil || !acted || captures != 0 || len(keys) != 2 || keys[0] != "q:down" || keys[1] != "q:up" {
 		t.Fatalf("startup input: %t %v keys=%v captures=%d", acted, err, keys, captures)
 	}
 }
@@ -71,5 +71,43 @@ func TestHeroHireReferenceIgnoresNativeBackground(t *testing.T) {
 			scores, _ := heroButtonScores(s, image.Pt(102, 563))
 			t.Fatalf("native dark HIRE changed with neutral background %v: %v %v scores=%v", background, kind, err, scores)
 		}
+	}
+}
+
+func TestStartupClippedCaptionUsesSharedQueue(t *testing.T) {
+	screen := loadTestImage(t, "testdata/hero-startup-clipped-caption.png")
+	c, err := recognizedGame(screen)
+	if err != nil || !bootstrapHeroes(c) {
+		t.Fatalf("context: %+v %v", c, err)
+	}
+	now := time.Now()
+	captures, drags := 0, 0
+	p := newGamePipeline(&pauseControl{}, heroInput{
+		capture: func() (image.Image, error) { captures++; return screen, nil },
+		drag: func(from, to image.Point) error {
+			drags++
+			if to.Y <= from.Y {
+				t.Fatalf("clipped bottom row must scroll down: %v -> %v", from, to)
+			}
+			return nil
+		},
+	}, pipelineReaders{heroes: noStartupOCR(t)}, pipelineOptions{heroes: true})
+	p.layout, p.startup, p.startupCheck = 1, startupHeroes, false
+	p.hero.sweep = startupSweep{top: true, y: 1417}
+	p.frame = gameFrame{id: 1, layout: 1, at: now, image: screen, context: c}
+	out := p.analyze(context.Background(), heroAnalysis, analysisJob{frame: p.frame, startup: startupHeroes, sweep: p.hero.sweep})
+	if out.err != nil {
+		t.Fatal(out.err)
+	}
+	if err := p.accept(context.Background(), out, now); err != nil {
+		t.Fatal(err)
+	}
+	p.plan(now)
+	a, ok := p.nextAction(now)
+	if !ok || a.kind != scrollHeroes {
+		t.Fatalf("clipped caption did not queue scroll: %+v %t", a, ok)
+	}
+	if acted, err := p.execute(context.Background(), a); !acted || err != nil || captures != 0 || drags != 1 {
+		t.Fatalf("scroll: acted=%t error=%v captures=%d drags=%d", acted, err, captures, drags)
 	}
 }

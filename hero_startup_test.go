@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
+	"strings"
 	"testing"
 	"time"
 )
@@ -152,5 +154,52 @@ func TestStartupShortListWithoutScrollbarCanBuy(t *testing.T) {
 	}
 	if !startupHeroStable(out, f) {
 		t.Fatal("short list purchase requires a nonexistent scrollbar")
+	}
+}
+
+func TestStartupClippedBottomCaptionScrolls(t *testing.T) {
+	for _, inset := range []int{0, 1, 3} {
+		t.Run(fmt.Sprint(inset), func(t *testing.T) {
+			f := startupFrame(t, "testdata/hero-startup-clipped-caption.png")
+			if inset > 0 {
+				s := image.NewRGBA(f.image.Bounds())
+				draw.Draw(s, s.Bounds(), f.image, s.Bounds().Min, draw.Src)
+				b := s.Bounds()
+				// The button's blue band can end before the physical viewport edge.
+				draw.Draw(s, image.Rect(b.Dx()*55/1000, b.Max.Y-inset, b.Dx()*140/1000, b.Max.Y), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
+				f.image = s
+			}
+			out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true, y: 1417})
+			if err != nil || out.found || !out.thumbFound || out.startupScroll.Y <= out.thumb.Y || out.startupComplete {
+				t.Fatalf("clipped caption must scroll: %+v %v", out, err)
+			}
+		})
+	}
+}
+
+func TestStartupFullyVisibleObscuredCaptionStillBlocks(t *testing.T) {
+	s := startupTranslatedCard(t, "testdata/hero-startup-name-empty.png", 1066, 900, false)
+	b := s.Bounds()
+	covered := image.NewRGBA(b)
+	draw.Draw(covered, b, s, b.Min, draw.Src)
+	draw.Draw(covered, heroButtonCaptionRegion(s, image.Pt(204, 900)), image.NewUniform(color.RGBA{70, 170, 235, 255}), image.Point{}, draw.Src)
+	f := gameFrame{image: covered, context: gameContext{known: true, heroes: true, bounds: b}}
+	_, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	if err == nil || !strings.Contains(err.Error(), "caption is obscured") {
+		t.Fatalf("fully visible obstruction should not be treated as an edge: %v", err)
+	}
+}
+
+func TestStartupClippedTopCaptionIsNavigationOnly(t *testing.T) {
+	s := startupTranslatedCard(t, "testdata/hero-startup-name-empty.png", 1066, 555, false)
+	b := s.Bounds()
+	covered := image.NewRGBA(b)
+	draw.Draw(covered, b, s, b.Min, draw.Src)
+	viewport := heroListViewport(s)
+	draw.Draw(covered, image.Rect(b.Dx()*55/1000, viewport.Min.Y, b.Dx()*140/1000, viewport.Min.Y+3), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
+	f := gameFrame{image: covered, context: gameContext{known: true, heroes: true, bounds: b}}
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	if err != nil || out.found {
+		t.Fatalf("clipped top row must not be purchased or block navigation: %+v %v", out, err)
 	}
 }

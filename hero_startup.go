@@ -8,8 +8,7 @@ import (
 )
 
 // A sweep owns only a viewport cursor, not a roster or OCR-derived identity.
-// Two 100-level inputs cover the early heroes' skill/upgrade requirements.
-// Later hero milestones belong to ordinary latest-hero progression.
+// At most two MAX inputs per row keep missing clicks from blocking the sweep.
 type startupSweep struct {
 	top         bool
 	y, attempts int
@@ -26,6 +25,9 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 	}
 	b := frame.image.Bounds()
 	viewport := heroListViewport(frame.image)
+	// The color-band detector bridges small gaps; its last colored pixel can
+	// stop just short of the viewport even when the button is clipped.
+	edgeGap := max(3, b.Dy()/150)
 	var height int
 	out.thumb, height, out.thumbFound = heroScrollbarThumb(frame.image)
 	out.bottom = out.thumbFound && heroScrollbarAtBottom(frame.image)
@@ -79,7 +81,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 			return out, err
 		}
 		// A clipped row is only a navigation anchor.
-		completeCaption := rows[i].band.Min.Y > viewport.Min.Y && rows[i].band.Max.Y < viewport.Max.Y
+		completeCaption := rows[i].band.Min.Y > viewport.Min.Y+edgeGap && rows[i].band.Max.Y < viewport.Max.Y-edgeGap
 		ownershipKnown = ownershipKnown && (rows[i].kind != heroButtonUnknown || !completeCaption)
 		affordable = affordable || rows[i].available
 		// At the top Cid is the first card; every subsequent owned row has DPS.
@@ -87,14 +89,14 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 	}
 	for _, r := range rows {
 		y := r.button.Y
-		if r.band.Min.Y == viewport.Min.Y {
+		if r.band.Min.Y <= viewport.Min.Y+edgeGap {
 			continue
 		}
 		if y < out.sweep.y-b.Dy()/20 || out.sweep.attempts >= 2 && absDiff(y, out.sweep.y) <= b.Dy()/20 {
 			continue
 		}
 		if r.kind == heroButtonUnknown {
-			if r.band.Max.Y == viewport.Max.Y {
+			if r.band.Max.Y >= viewport.Max.Y-edgeGap {
 				break
 			}
 			return out, fmt.Errorf("startup hero button at %v: caption is obscured", r.button)
