@@ -1,0 +1,1635 @@
+[
+  {
+    "logHeroSouls": 10,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "00:36:13",
+        "bestHero": "KingMidas",
+        "heroLevel": 11096,
+        "zone": 4904,
+        "zoneDisplay": "4,904 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 10,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "00:36:31",
+        "bestHero": "KingMidas",
+        "heroLevel": 11184,
+        "zone": 4949,
+        "zoneDisplay": "4,949 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 10,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "00:37:23",
+        "bestHero": "KingMidas",
+        "heroLevel": 11443,
+        "zone": 5064,
+        "zoneDisplay": "5,064 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 50,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "01:58:26",
+        "bestHero": "Skogur",
+        "heroLevel": 2319,
+        "zone": 15939,
+        "zoneDisplay": "15,939 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 50,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "01:58:40",
+        "bestHero": "Skogur",
+        "heroLevel": 2387,
+        "zone": 15969,
+        "zoneDisplay": "15,969 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 50,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "01:59:18",
+        "bestHero": "Skogur",
+        "heroLevel": 2583,
+        "zone": 16054,
+        "zoneDisplay": "16,054 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 100,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "03:03:48",
+        "bestHero": "Skogur",
+        "heroLevel": 22987,
+        "zone": 24704,
+        "zoneDisplay": "24,704 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 100,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "03:03:57",
+        "bestHero": "Skogur",
+        "heroLevel": 23035,
+        "zone": 24724,
+        "zoneDisplay": "24,724 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 100,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "03:04:17",
+        "bestHero": "Skogur",
+        "heroLevel": 23148,
+        "zone": 24774,
+        "zoneDisplay": "24,774 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 200,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "04:43:00",
+        "bestHero": "Moeru",
+        "heroLevel": 21554,
+        "zone": 38019,
+        "zoneDisplay": "38,019 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 200,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "04:43:07",
+        "bestHero": "Moeru",
+        "heroLevel": 21591,
+        "zone": 38034,
+        "zoneDisplay": "38,034 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 200,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 0,
+    "timelapses": [
+      {
+        "duration": "04:43:27",
+        "bestHero": "Moeru",
+        "heroLevel": 21705,
+        "zone": 38079,
+        "zoneDisplay": "38,079 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 400,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 100,
+    "timelapses": [
+      {
+        "duration": "8h",
+        "bestHero": "Tsuchi",
+        "heroLevel": 3896,
+        "zone": 21839,
+        "zoneDisplay": "21,839 (+21,799)"
+      },
+      {
+        "duration": "04:24:01",
+        "bestHero": "Zilar",
+        "heroLevel": 3464,
+        "zone": 57269,
+        "zoneDisplay": "57,269 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 400,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 100,
+    "timelapses": [
+      {
+        "duration": "8h",
+        "bestHero": "Tsuchi",
+        "heroLevel": 3902,
+        "zone": 21854,
+        "zoneDisplay": "21,854 (+21,814)"
+      },
+      {
+        "duration": "04:23:58",
+        "bestHero": "Zilar",
+        "heroLevel": 3490,
+        "zone": 57279,
+        "zoneDisplay": "57,279 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 400,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 100,
+    "timelapses": [
+      {
+        "duration": "8h",
+        "bestHero": "Tsuchi",
+        "heroLevel": 3923,
+        "zone": 21859,
+        "zoneDisplay": "21,859 (+21,819)"
+      },
+      {
+        "duration": "04:24:09",
+        "bestHero": "Zilar",
+        "heroLevel": 3573,
+        "zone": 57309,
+        "zoneDisplay": "57,309 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 800,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 200,
+    "timelapses": [
+      {
+        "duration": "8h",
+        "bestHero": "Skogur",
+        "heroLevel": 7299,
+        "zone": 36040,
+        "zoneDisplay": "36,040 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Moeru",
+        "heroLevel": 48120,
+        "zone": 59049,
+        "zoneDisplay": "59,049 (+23,009)"
+      },
+      {
+        "duration": "03:13:19",
+        "bestHero": "Zilar",
+        "heroLevel": 81155,
+        "zone": 84994,
+        "zoneDisplay": "84,994 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 800,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 200,
+    "timelapses": [
+      {
+        "duration": "8h",
+        "bestHero": "Skogur",
+        "heroLevel": 7305,
+        "zone": 36040,
+        "zoneDisplay": "36,040 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Moeru",
+        "heroLevel": 48126,
+        "zone": 59059,
+        "zoneDisplay": "59,059 (+23,019)"
+      },
+      {
+        "duration": "03:13:17",
+        "bestHero": "Zilar",
+        "heroLevel": 81171,
+        "zone": 84994,
+        "zoneDisplay": "84,994 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 800,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 200,
+    "timelapses": [
+      {
+        "duration": "8h",
+        "bestHero": "Skogur",
+        "heroLevel": 7326,
+        "zone": 36040,
+        "zoneDisplay": "36,040 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Moeru",
+        "heroLevel": 48146,
+        "zone": 59064,
+        "zoneDisplay": "59,064 (+23,024)"
+      },
+      {
+        "duration": "03:13:25",
+        "bestHero": "Zilar",
+        "heroLevel": 81243,
+        "zone": 85019,
+        "zoneDisplay": "85,019 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 1600,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 300,
+    "timelapses": [
+      {
+        "duration": "8h",
+        "bestHero": "Moeru",
+        "heroLevel": 14106,
+        "zone": 36040,
+        "zoneDisplay": "36,040 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Zilar",
+        "heroLevel": 20894,
+        "zone": 72040,
+        "zoneDisplay": "72,040 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Zilar",
+        "heroLevel": 95259,
+        "zone": 99994,
+        "zoneDisplay": "99,994 (+27,954)"
+      },
+      {
+        "duration": "03:09:42",
+        "bestHero": "Madzi",
+        "heroLevel": 69442,
+        "zone": 125454,
+        "zoneDisplay": "125,454 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 1600,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 300,
+    "timelapses": [
+      {
+        "duration": "8h",
+        "bestHero": "Moeru",
+        "heroLevel": 14112,
+        "zone": 36040,
+        "zoneDisplay": "36,040 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Zilar",
+        "heroLevel": 20900,
+        "zone": 72040,
+        "zoneDisplay": "72,040 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Zilar",
+        "heroLevel": 95265,
+        "zone": 99994,
+        "zoneDisplay": "99,994 (+27,954)"
+      },
+      {
+        "duration": "03:09:44",
+        "bestHero": "Madzi",
+        "heroLevel": 69458,
+        "zone": 125459,
+        "zoneDisplay": "125,459 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 1600,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 300,
+    "timelapses": [
+      {
+        "duration": "8h",
+        "bestHero": "Moeru",
+        "heroLevel": 14132,
+        "zone": 36040,
+        "zoneDisplay": "36,040 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Zilar",
+        "heroLevel": 20921,
+        "zone": 72040,
+        "zoneDisplay": "72,040 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Zilar",
+        "heroLevel": 95286,
+        "zone": 100004,
+        "zoneDisplay": "100,004 (+27,964)"
+      },
+      {
+        "duration": "03:09:49",
+        "bestHero": "Madzi",
+        "heroLevel": 69520,
+        "zone": 125474,
+        "zoneDisplay": "125,474 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 3200,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 300,
+    "timelapses": [
+      {
+        "duration": "24h",
+        "bestHero": "Zilar",
+        "heroLevel": 27719,
+        "zone": 108040,
+        "zoneDisplay": "108,040 (+108,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Madzi",
+        "heroLevel": 115172,
+        "zone": 144040,
+        "zoneDisplay": "144,040 (+36,000)"
+      },
+      {
+        "duration": "05:14:16",
+        "bestHero": "Xavira0",
+        "heroLevel": 72437,
+        "zone": 186214,
+        "zoneDisplay": "186,214 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 3200,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 300,
+    "timelapses": [
+      {
+        "duration": "24h",
+        "bestHero": "Zilar",
+        "heroLevel": 27725,
+        "zone": 108040,
+        "zoneDisplay": "108,040 (+108,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Madzi",
+        "heroLevel": 115178,
+        "zone": 144040,
+        "zoneDisplay": "144,040 (+36,000)"
+      },
+      {
+        "duration": "05:14:19",
+        "bestHero": "Xavira0",
+        "heroLevel": 72453,
+        "zone": 186219,
+        "zoneDisplay": "186,219 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 3200,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 300,
+    "timelapses": [
+      {
+        "duration": "24h",
+        "bestHero": "Zilar",
+        "heroLevel": 27745,
+        "zone": 108040,
+        "zoneDisplay": "108,040 (+108,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Madzi",
+        "heroLevel": 115199,
+        "zone": 144040,
+        "zoneDisplay": "144,040 (+36,000)"
+      },
+      {
+        "duration": "05:14:25",
+        "bestHero": "Xavira0",
+        "heroLevel": 72504,
+        "zone": 186229,
+        "zoneDisplay": "186,229 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 6400,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 600,
+    "timelapses": [
+      {
+        "duration": "48h",
+        "bestHero": "Madzi",
+        "heroLevel": 54945,
+        "zone": 188729,
+        "zoneDisplay": "188,729 (+188,689)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Xavira2",
+        "heroLevel": 241012,
+        "zone": 224729,
+        "zoneDisplay": "224,729 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Xavira4",
+        "heroLevel": 315377,
+        "zone": 260729,
+        "zoneDisplay": "260,729 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Xavira5",
+        "heroLevel": 389742,
+        "zone": 281949,
+        "zoneDisplay": "281,949 (+21,220)"
+      },
+      {
+        "duration": "06:44:12",
+        "bestHero": "Cadu1",
+        "heroLevel": 154222,
+        "zone": 336179,
+        "zoneDisplay": "336,179 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 6400,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 600,
+    "timelapses": [
+      {
+        "duration": "48h",
+        "bestHero": "Madzi",
+        "heroLevel": 54951,
+        "zone": 188734,
+        "zoneDisplay": "188,734 (+188,694)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Xavira2",
+        "heroLevel": 241028,
+        "zone": 224734,
+        "zoneDisplay": "224,734 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Xavira4",
+        "heroLevel": 315393,
+        "zone": 260734,
+        "zoneDisplay": "260,734 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Xavira5",
+        "heroLevel": 389758,
+        "zone": 281954,
+        "zoneDisplay": "281,954 (+21,220)"
+      },
+      {
+        "duration": "06:44:10",
+        "bestHero": "Cadu1",
+        "heroLevel": 154228,
+        "zone": 336184,
+        "zoneDisplay": "336,184 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 6400,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 600,
+    "timelapses": [
+      {
+        "duration": "48h",
+        "bestHero": "Madzi",
+        "heroLevel": 54971,
+        "zone": 188739,
+        "zoneDisplay": "188,739 (+188,699)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Xavira2",
+        "heroLevel": 241059,
+        "zone": 224739,
+        "zoneDisplay": "224,739 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Xavira4",
+        "heroLevel": 315424,
+        "zone": 260739,
+        "zoneDisplay": "260,739 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Xavira5",
+        "heroLevel": 389789,
+        "zone": 281959,
+        "zoneDisplay": "281,959 (+21,220)"
+      },
+      {
+        "duration": "06:44:15",
+        "bestHero": "Cadu1",
+        "heroLevel": 154279,
+        "zone": 336199,
+        "zoneDisplay": "336,199 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 12800,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 1200,
+    "timelapses": [
+      {
+        "duration": "48h",
+        "bestHero": "Xavira1",
+        "heroLevel": 177461,
+        "zone": 216040,
+        "zoneDisplay": "216,040 (+216,000)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Ceus2",
+        "heroLevel": 232766,
+        "zone": 417724,
+        "zoneDisplay": "417,724 (+201,684)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Cadu4",
+        "heroLevel": 649384,
+        "zone": 515024,
+        "zoneDisplay": "515,024 (+97,300)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Maw1",
+        "heroLevel": 169728,
+        "zone": 588904,
+        "zoneDisplay": "588,904 (+73,880)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Maw2",
+        "heroLevel": 322341,
+        "zone": 621114,
+        "zoneDisplay": "621,114 (+32,210)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Maw3",
+        "heroLevel": 388877,
+        "zone": 641954,
+        "zoneDisplay": "641,954 (+20,840)"
+      },
+      {
+        "duration": "09:02:44",
+        "bestHero": "Maw4",
+        "heroLevel": 582335,
+        "zone": 714774,
+        "zoneDisplay": "714,774 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 12800,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 1200,
+    "timelapses": [
+      {
+        "duration": "48h",
+        "bestHero": "Xavira1",
+        "heroLevel": 177467,
+        "zone": 216040,
+        "zoneDisplay": "216,040 (+216,000)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Ceus2",
+        "heroLevel": 232772,
+        "zone": 417724,
+        "zoneDisplay": "417,724 (+201,684)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Cadu4",
+        "heroLevel": 649390,
+        "zone": 515024,
+        "zoneDisplay": "515,024 (+97,300)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Maw1",
+        "heroLevel": 169734,
+        "zone": 588904,
+        "zoneDisplay": "588,904 (+73,880)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Maw2",
+        "heroLevel": 322347,
+        "zone": 621114,
+        "zoneDisplay": "621,114 (+32,210)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Maw3",
+        "heroLevel": 388883,
+        "zone": 641954,
+        "zoneDisplay": "641,954 (+20,840)"
+      },
+      {
+        "duration": "09:02:39",
+        "bestHero": "Maw4",
+        "heroLevel": 582321,
+        "zone": 714769,
+        "zoneDisplay": "714,769 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 12800,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 1200,
+    "timelapses": [
+      {
+        "duration": "48h",
+        "bestHero": "Xavira1",
+        "heroLevel": 177488,
+        "zone": 216040,
+        "zoneDisplay": "216,040 (+216,000)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Ceus2",
+        "heroLevel": 232793,
+        "zone": 417734,
+        "zoneDisplay": "417,734 (+201,694)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Cadu4",
+        "heroLevel": 649431,
+        "zone": 515034,
+        "zoneDisplay": "515,034 (+97,300)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Maw1",
+        "heroLevel": 169775,
+        "zone": 588914,
+        "zoneDisplay": "588,914 (+73,880)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Maw2",
+        "heroLevel": 322388,
+        "zone": 621124,
+        "zoneDisplay": "621,124 (+32,210)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Maw3",
+        "heroLevel": 388924,
+        "zone": 641959,
+        "zoneDisplay": "641,959 (+20,835)"
+      },
+      {
+        "duration": "09:02:48",
+        "bestHero": "Maw4",
+        "heroLevel": 582393,
+        "zone": 714789,
+        "zoneDisplay": "714,789 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 25600,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 1400,
+    "timelapses": [
+      {
+        "duration": "168h",
+        "bestHero": "Cadu3",
+        "heroLevel": 439511,
+        "zone": 631144,
+        "zoneDisplay": "631,144 (+631,104)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Yachiyl1",
+        "heroLevel": 161160,
+        "zone": 847144,
+        "zoneDisplay": "847,144 (+216,000)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Yachiyl3",
+        "heroLevel": 607349,
+        "zone": 1043109,
+        "zoneDisplay": "1,043,109 (+195,965)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Yachiyl5",
+        "heroLevel": 1012152,
+        "zone": 1132424,
+        "zoneDisplay": "1,132,424 (+89,315)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Yachiyl6",
+        "heroLevel": 1196650,
+        "zone": 1168424,
+        "zoneDisplay": "1,168,424 (+36,000)"
+      },
+      {
+        "duration": "20:48:52",
+        "bestHero": "Sophia0",
+        "heroLevel": 58098,
+        "zone": 1335979,
+        "zoneDisplay": "1,335,979 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 25600,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 1400,
+    "timelapses": [
+      {
+        "duration": "168h",
+        "bestHero": "Cadu3",
+        "heroLevel": 439517,
+        "zone": 631144,
+        "zoneDisplay": "631,144 (+631,104)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Yachiyl1",
+        "heroLevel": 161166,
+        "zone": 847144,
+        "zoneDisplay": "847,144 (+216,000)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Yachiyl3",
+        "heroLevel": 607355,
+        "zone": 1043114,
+        "zoneDisplay": "1,043,114 (+195,970)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Yachiyl5",
+        "heroLevel": 1012169,
+        "zone": 1132424,
+        "zoneDisplay": "1,132,424 (+89,310)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Yachiyl6",
+        "heroLevel": 1196656,
+        "zone": 1168424,
+        "zoneDisplay": "1,168,424 (+36,000)"
+      },
+      {
+        "duration": "20:48:59",
+        "bestHero": "Sophia0",
+        "heroLevel": 58110,
+        "zone": 1335994,
+        "zoneDisplay": "1,335,994 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 25600,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 1400,
+    "timelapses": [
+      {
+        "duration": "168h",
+        "bestHero": "Cadu3",
+        "heroLevel": 439537,
+        "zone": 631149,
+        "zoneDisplay": "631,149 (+631,109)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Yachiyl1",
+        "heroLevel": 161196,
+        "zone": 847149,
+        "zoneDisplay": "847,149 (+216,000)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Yachiyl3",
+        "heroLevel": 607386,
+        "zone": 1043119,
+        "zoneDisplay": "1,043,119 (+195,970)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Yachiyl5",
+        "heroLevel": 1012200,
+        "zone": 1132434,
+        "zoneDisplay": "1,132,434 (+89,315)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Yachiyl6",
+        "heroLevel": 1196697,
+        "zone": 1168434,
+        "zoneDisplay": "1,168,434 (+36,000)"
+      },
+      {
+        "duration": "20:48:59",
+        "bestHero": "Sophia0",
+        "heroLevel": 58124,
+        "zone": 1336004,
+        "zoneDisplay": "1,336,004 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 51200,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 2300,
+    "timelapses": [
+      {
+        "duration": "168h",
+        "bestHero": "Yachiyl1",
+        "heroLevel": 163848,
+        "zone": 756040,
+        "zoneDisplay": "756,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia0",
+        "heroLevel": 95141,
+        "zone": 1512040,
+        "zoneDisplay": "1,512,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Rose1",
+        "heroLevel": 701761,
+        "zone": 1978739,
+        "zoneDisplay": "1,978,739 (+466,699)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Blanche1",
+        "heroLevel": 803980,
+        "zone": 2194739,
+        "zoneDisplay": "2,194,739 (+216,000)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Blanche1",
+        "heroLevel": 955795,
+        "zone": 2296294,
+        "zoneDisplay": "2,296,294 (+101,555)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Rose2",
+        "heroLevel": 1252972,
+        "zone": 2332294,
+        "zoneDisplay": "2,332,294 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Rose2",
+        "heroLevel": 1278275,
+        "zone": 2368294,
+        "zoneDisplay": "2,368,294 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Rose2",
+        "heroLevel": 1303577,
+        "zone": 2391684,
+        "zoneDisplay": "2,391,684 (+23,390)"
+      },
+      {
+        "duration": "34:11:20",
+        "bestHero": "Sophia2",
+        "heroLevel": 1438187,
+        "zone": 2666904,
+        "zoneDisplay": "2,666,904 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 51200,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 2300,
+    "timelapses": [
+      {
+        "duration": "168h",
+        "bestHero": "Yachiyl1",
+        "heroLevel": 163854,
+        "zone": 756040,
+        "zoneDisplay": "756,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia0",
+        "heroLevel": 95143,
+        "zone": 1512040,
+        "zoneDisplay": "1,512,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Rose1",
+        "heroLevel": 701763,
+        "zone": 1978744,
+        "zoneDisplay": "1,978,744 (+466,704)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Blanche1",
+        "heroLevel": 803985,
+        "zone": 2194744,
+        "zoneDisplay": "2,194,744 (+216,000)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Blanche1",
+        "heroLevel": 955800,
+        "zone": 2296309,
+        "zoneDisplay": "2,296,309 (+101,565)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Rose2",
+        "heroLevel": 1252985,
+        "zone": 2332309,
+        "zoneDisplay": "2,332,309 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Rose2",
+        "heroLevel": 1278287,
+        "zone": 2368309,
+        "zoneDisplay": "2,368,309 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Rose2",
+        "heroLevel": 1303590,
+        "zone": 2391689,
+        "zoneDisplay": "2,391,689 (+23,380)"
+      },
+      {
+        "duration": "34:11:18",
+        "bestHero": "Sophia2",
+        "heroLevel": 1438189,
+        "zone": 2666904,
+        "zoneDisplay": "2,666,904 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 51200,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 2300,
+    "timelapses": [
+      {
+        "duration": "168h",
+        "bestHero": "Yachiyl1",
+        "heroLevel": 163875,
+        "zone": 756040,
+        "zoneDisplay": "756,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia0",
+        "heroLevel": 95150,
+        "zone": 1512040,
+        "zoneDisplay": "1,512,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Rose1",
+        "heroLevel": 701770,
+        "zone": 1978744,
+        "zoneDisplay": "1,978,744 (+466,704)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Blanche1",
+        "heroLevel": 803992,
+        "zone": 2194744,
+        "zoneDisplay": "2,194,744 (+216,000)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Blanche1",
+        "heroLevel": 955807,
+        "zone": 2296314,
+        "zoneDisplay": "2,296,314 (+101,570)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Rose2",
+        "heroLevel": 1252995,
+        "zone": 2332314,
+        "zoneDisplay": "2,332,314 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Rose2",
+        "heroLevel": 1278298,
+        "zone": 2368314,
+        "zoneDisplay": "2,368,314 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Rose2",
+        "heroLevel": 1303600,
+        "zone": 2391704,
+        "zoneDisplay": "2,391,704 (+23,390)"
+      },
+      {
+        "duration": "34:11:14",
+        "bestHero": "Sophia2",
+        "heroLevel": 1438199,
+        "zone": 2666909,
+        "zoneDisplay": "2,666,909 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 102400,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 0,
+    "rubyCost": 3800,
+    "timelapses": [
+      {
+        "duration": "168h",
+        "bestHero": "Dorothy0",
+        "heroLevel": 132173,
+        "zone": 756040,
+        "zoneDisplay": "756,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Blanche1",
+        "heroLevel": 833910,
+        "zone": 1512040,
+        "zoneDisplay": "1,512,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Blanche2",
+        "heroLevel": 1365264,
+        "zone": 2268040,
+        "zoneDisplay": "2,268,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia3",
+        "heroLevel": 2047150,
+        "zone": 3024040,
+        "zoneDisplay": "3,024,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia4",
+        "heroLevel": 2578503,
+        "zone": 3780040,
+        "zoneDisplay": "3,780,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia5",
+        "heroLevel": 3109856,
+        "zone": 4335629,
+        "zoneDisplay": "4,335,629 (+555,589)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Blanche5",
+        "heroLevel": 3349818,
+        "zone": 4551629,
+        "zoneDisplay": "4,551,629 (+216,000)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3331415,
+        "zone": 4659629,
+        "zoneDisplay": "4,659,629 (+108,000)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3407322,
+        "zone": 4741079,
+        "zoneDisplay": "4,741,079 (+81,450)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3464569,
+        "zone": 4777079,
+        "zoneDisplay": "4,777,079 (+36,000)"
+      },
+      {
+        "duration": "64:30:25",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3854846,
+        "zone": 5296359,
+        "zoneDisplay": "5,296,359 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 102400,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 1,
+    "rubyCost": 3800,
+    "timelapses": [
+      {
+        "duration": "168h",
+        "bestHero": "Dorothy0",
+        "heroLevel": 132175,
+        "zone": 756040,
+        "zoneDisplay": "756,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Blanche1",
+        "heroLevel": 833912,
+        "zone": 1512040,
+        "zoneDisplay": "1,512,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Blanche2",
+        "heroLevel": 1365266,
+        "zone": 2268040,
+        "zoneDisplay": "2,268,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia3",
+        "heroLevel": 2047152,
+        "zone": 3024040,
+        "zoneDisplay": "3,024,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia4",
+        "heroLevel": 2578505,
+        "zone": 3780040,
+        "zoneDisplay": "3,780,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia5",
+        "heroLevel": 3109858,
+        "zone": 4335629,
+        "zoneDisplay": "4,335,629 (+555,589)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Blanche5",
+        "heroLevel": 3349820,
+        "zone": 4551629,
+        "zoneDisplay": "4,551,629 (+216,000)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3331417,
+        "zone": 4659629,
+        "zoneDisplay": "4,659,629 (+108,000)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3407324,
+        "zone": 4741079,
+        "zoneDisplay": "4,741,079 (+81,450)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3464571,
+        "zone": 4777079,
+        "zoneDisplay": "4,777,079 (+36,000)"
+      },
+      {
+        "duration": "64:30:34",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3854862,
+        "zone": 5296379,
+        "zoneDisplay": "5,296,379 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 102400,
+    "xyliqilLevel": 0,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 3800,
+    "timelapses": [
+      {
+        "duration": "168h",
+        "bestHero": "Dorothy0",
+        "heroLevel": 132182,
+        "zone": 756040,
+        "zoneDisplay": "756,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Blanche1",
+        "heroLevel": 833919,
+        "zone": 1512040,
+        "zoneDisplay": "1,512,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Blanche2",
+        "heroLevel": 1365273,
+        "zone": 2268040,
+        "zoneDisplay": "2,268,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia3",
+        "heroLevel": 2047159,
+        "zone": 3024040,
+        "zoneDisplay": "3,024,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia4",
+        "heroLevel": 2578512,
+        "zone": 3780040,
+        "zoneDisplay": "3,780,040 (+756,000)"
+      },
+      {
+        "duration": "168h",
+        "bestHero": "Sophia5",
+        "heroLevel": 3109865,
+        "zone": 4335634,
+        "zoneDisplay": "4,335,634 (+555,594)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Blanche5",
+        "heroLevel": 3349830,
+        "zone": 4551634,
+        "zoneDisplay": "4,551,634 (+216,000)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3331427,
+        "zone": 4659634,
+        "zoneDisplay": "4,659,634 (+108,000)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3407335,
+        "zone": 4741099,
+        "zoneDisplay": "4,741,099 (+81,465)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3464592,
+        "zone": 4777099,
+        "zoneDisplay": "4,777,099 (+36,000)"
+      },
+      {
+        "duration": "64:30:27",
+        "bestHero": "Dorothy5",
+        "heroLevel": 3854872,
+        "zone": 5296384,
+        "zoneDisplay": "5,296,384 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 1000,
+    "xyliqilLevel": 100,
+    "chorLevel": 0,
+    "autoClickers": 4,
+    "rubyCost": 200,
+    "timelapses": [
+      {
+        "duration": "8h",
+        "bestHero": "Skogur",
+        "heroLevel": 18061,
+        "zone": 36040,
+        "zoneDisplay": "36,040 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Moeru",
+        "heroLevel": 58897,
+        "zone": 66519,
+        "zoneDisplay": "66,519 (+30,479)"
+      },
+      {
+        "duration": "03:42:25",
+        "bestHero": "Zilar",
+        "heroLevel": 114888,
+        "zone": 96369,
+        "zoneDisplay": "96,369 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 1000,
+    "xyliqilLevel": 1000,
+    "chorLevel": 50,
+    "autoClickers": 4,
+    "rubyCost": 200,
+    "timelapses": [
+      {
+        "duration": "8h",
+        "bestHero": "Skogur",
+        "heroLevel": 23511,
+        "zone": 36040,
+        "zoneDisplay": "36,040 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Moeru",
+        "heroLevel": 64347,
+        "zone": 70704,
+        "zoneDisplay": "70,704 (+34,664)"
+      },
+      {
+        "duration": "03:10:40",
+        "bestHero": "Zilar",
+        "heroLevel": 120728,
+        "zone": 96294,
+        "zoneDisplay": "96,294 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 1000,
+    "xyliqilLevel": 10000,
+    "chorLevel": 100,
+    "autoClickers": 10,
+    "rubyCost": 300,
+    "timelapses": [
+      {
+        "duration": "24h",
+        "bestHero": "Moeru",
+        "heroLevel": 43471,
+        "zone": 93559,
+        "zoneDisplay": "93,559 (+93,519)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Madzi",
+        "heroLevel": 32962,
+        "zone": 128239,
+        "zoneDisplay": "128,239 (+34,680)"
+      },
+      {
+        "duration": "02:06:12",
+        "bestHero": "Madzi",
+        "heroLevel": 139572,
+        "zone": 145174,
+        "zoneDisplay": "145,174 (max zone)"
+      }
+    ]
+  },
+  {
+    "logHeroSouls": 1000,
+    "xyliqilLevel": 100000,
+    "chorLevel": 150,
+    "autoClickers": 1,
+    "rubyCost": 1200,
+    "timelapses": [
+      {
+        "duration": "48h",
+        "bestHero": "Xavira1",
+        "heroLevel": 174492,
+        "zone": 216040,
+        "zoneDisplay": "216,040 (+216,000)"
+      },
+      {
+        "duration": "48h",
+        "bestHero": "Ceus2",
+        "heroLevel": 229812,
+        "zone": 432040,
+        "zoneDisplay": "432,040 (+216,000)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Cadu4",
+        "heroLevel": 676002,
+        "zone": 540040,
+        "zoneDisplay": "540,040 (+108,000)"
+      },
+      {
+        "duration": "24h",
+        "bestHero": "Maw1",
+        "heroLevel": 218449,
+        "zone": 632189,
+        "zoneDisplay": "632,189 (+92,149)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Maw3",
+        "heroLevel": 408801,
+        "zone": 668189,
+        "zoneDisplay": "668,189 (+36,000)"
+      },
+      {
+        "duration": "8h",
+        "bestHero": "Maw4",
+        "heroLevel": 483165,
+        "zone": 703704,
+        "zoneDisplay": "703,704 (+35,515)"
+      },
+      {
+        "duration": "01:45:51",
+        "bestHero": "Maw4",
+        "heroLevel": 585861,
+        "zone": 717909,
+        "zoneDisplay": "717,909 (max zone)"
+      }
+    ]
+  }
+]
