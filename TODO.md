@@ -1,5 +1,18 @@
 # TODO
 
+## Opt-in Timelapse preparation and implementation
+
+Owners: Timelapse strategy and automation (purchase controller and forecast), Ancient calculator correctness (Hybrid allocation), Gild redistribution (hero/gild preparation), Ascension restart and hero bootstrap (Auto Clicker policy and setup handoff). The main chat owns integration and shared pipeline/CLI changes. Existing ordinary progression remains the default.
+
+- Assess readiness from a fresh local export: current/highest zone, rubies, owned Auto Clickers, hero levels/gilds/upgrades, idle and active Ancients, and Outsiders. The user reports two monsters per normal zone already; measure the remaining return-time bottleneck rather than adding more clicking. Distinguish implemented behavior from advisory previews and installed-game acceptance.
+- Implement and compare a native Go Timelapse forecast with the maintained community calculator, checking its formulas against the installed version. Evaluate actual zones/time saved per ruby; the guide's roughly 50k-zone recommendation is an efficiency guideline, not a fabricated unlock gate. Do not depend on a JavaScript sidecar or a remote calculator API.
+- Extend the Active-only Ancient calculator with an explicit Hybrid policy for Timelapse readiness. Model Siyalatas, Libertas and Nogardnit with the relevant Outsider effects and retained-Hero-Soul benefit; review the reference formulas instead of guessing allocation ratios. Keep existing Active results unchanged when Timelapse is disabled. Summoning an absent Ancient is a separate verified UI dependency.
+- Complete hero/gild preparation: choose and level a suitable Timelapse hero, calculate and apply Hero-Soul-priced gild transfers only when useful, and obtain the actual native transfer controls. Earned gild gift opening does not redistribute existing gilds. The current gild preview supports a limited roster range and does not execute transfers.
+- Add a bounded preparation/handoff using the existing shared capture and input queue: startup/Ancient completion -> hero and gild preparation -> preserve at least one unassigned Auto Clicker for Nogardnit -> Timelapse -> fresh outcome/export -> resume ordinary active play. Coordinate periodic clicker recovery so it does not immediately consume the reserved clicker. Verify the actual Timelapse idle calculation before introducing any idle countdown.
+- Keep paid execution opt-in with `-timelapse` and an explicit finite ruby allowance; zero allowance must never spend. Define a protected balance, a per-Ascension purchase cap and a persisted spending ledger. Newly earned rubies and restarting the program must not replenish the authorized allowance. Reserve the debit before confirming; an interrupted or uncertain purchase must not be replayed automatically. Account for other ruby spenders and profile identity.
+- Collect installed-game evidence: Ruby Shop entry and Timelapse offers with durations/prices, selection/confirmation/cancel screens, resulting summary, Gilds roster and transfer controls, and owned/free Auto Clicker states. Browse/reference existing Downloads before requesting missing states. Do not require a paid purchase merely to obtain a screenshot; a controlled paid acceptance run needs an explicit small ruby allowance.
+- Gate paid enablement on forecast/reference comparisons, useful/poor-value readiness cases, insufficient rubies/reserve/cap, changed price, restart/pending debit/F8, modal/fish coexistence, and one bounded installed-game purchase with before/after export. Unsupported or uneconomic Timelapse should leave ordinary play running. Record a precise missing-data list if native evidence is unavailable.
+
 ## Hero recognition native acceptance
 
 - Run the following cases in the installed game with the integrated boundary reader and production action queue. Capture before/after evidence for any failed transition; fixture tests do not establish native input acceptance.
@@ -29,7 +42,7 @@
 
 ## Remaining feature roadmap
 
-Goal: complete the unattended active-play loop using the existing shared capture, bounded analyzers and serialized input queue. Independent feature work is planned in its own chat; the unattended Ascension milestone is now approved for implementation. Keep working strategies simple: the latest hero, saving for the next hero, native hotkeys/input where available, and no ruby spending outside the authorized Mercenary revival policy.
+Goal: complete the unattended active-play loop using the existing shared capture, bounded analyzers and serialized input queue. Independent feature work is planned in its own chat; the unattended Ascension milestone is now approved for implementation. Keep working strategies simple: the latest hero, saving for the next hero, native hotkeys/input where available, and no ruby spending outside the authorized Mercenary revival policy or an explicitly enabled and budgeted Timelapse policy.
 
 ### Remaining independent gates
 
