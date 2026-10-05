@@ -1,5 +1,11 @@
 # TODO
 
+## Cid and footer clicker native acceptance
+
+- Verify the dim-artwork reader and conditional second skill sweep after Ascension: with initially limited gold, hire a passive hero, revisit Cid, level him and buy skill 1 through Buy Available Upgrades. Capture the full startup log and before/after frames; fixture tests do not establish native input acceptance or sufficient gold during the second pass.
+- Verify that a freshly recognized free Auto Clicker reaches Buy Available Upgrades despite an unconfirmed monster placement or delayed pool recognition. Include F8 and an unreadable pool; the optional footer pass must remain bounded and ordinary automation must continue.
+- If all three clickers again end up on the monster, retain the analyzed `artifacts/auto-clicker-unconfirmed-*.png` and expected/read pool log. Distinguish bot input from manual assignments; the previous screenshot was taken 29 minutes after startup and does not prove one input assigned all three.
+
 ## Opt-in Timelapse preparation and implementation
 
 Owners: Timelapse strategy and automation (purchase controller and forecast), Ancient calculator correctness (Hybrid allocation), Gild redistribution (hero/gild preparation), Ascension restart and hero bootstrap (Auto Clicker policy and setup handoff). The main chat owns integration and shared pipeline/CLI changes. Existing ordinary progression remains the default.
