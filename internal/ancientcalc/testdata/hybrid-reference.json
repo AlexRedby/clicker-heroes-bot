@@ -1,0 +1,1382 @@
+{
+  "source": "tomcur/ClickerHeroesCalculator 1c35f5598f210c689a618a7e46a14769f7bf9a39 model.js and calc.js; decimal.js10.4.3 precision100; synthetic saves; offline reference generation only",
+  "goals": [
+    {
+      "name": "Solomon",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "100"
+    },
+    {
+      "name": "Libertas",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "92.6"
+    },
+    {
+      "name": "Siyalatas",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "100"
+    },
+    {
+      "name": "Mammon",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "92.6"
+    },
+    {
+      "name": "Mimzee",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "92.6"
+    },
+    {
+      "name": "Pluto",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "92.6"
+    },
+    {
+      "name": "Dogcog",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "5.86488952517155133185204017780105582945817111932859122227583625887261716824466279515377949046083118"
+    },
+    {
+      "name": "Fortuna",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.06642887194290328444101317255544887037448294979747677222524189541333408455347557721716971743158128"
+    },
+    {
+      "name": "Atman",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "6.643856189774724695740638858978780351729662786049161224109512791631869553217250431700279486718740311"
+    },
+    {
+      "name": "Dora",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "9.96069281708973815015528009563004188241616049309139735457983174825989653086871307567700396105483138"
+    },
+    {
+      "name": "Bhaal",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "50"
+    },
+    {
+      "name": "Morgulis",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "10000"
+    },
+    {
+      "name": "Chronos",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Bubos",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "5.99800046914936795381659655994104997512521727181058987321213811047812397793483595364472957558800367"
+    },
+    {
+      "name": "Fragsworth",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "50"
+    },
+    {
+      "name": "Vaagur",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Kumawakamaru",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "6.643856189774724695740638858978780351729662786049161224109512791631869553217250431700279486718740311"
+    },
+    {
+      "name": "Chawedo",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Hecatoncheir",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Berserker",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Sniperino",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Kleptos",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Energon",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Argaiv",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "100"
+    },
+    {
+      "name": "Juggernaut",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "22.86525259636631732013511619356239000350743003551232868844541900887796658353528505082130427290724578"
+    },
+    {
+      "name": "Nogardnit",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "0",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "37.43594403422125919608163970972033145818455633289829234648899409195525324369406737684860938449026924"
+    },
+    {
+      "name": "Solomon",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "69.31448431551463928822518515190713766800936500564289614910879705463747348938137620955995201214428217"
+    },
+    {
+      "name": "Libertas",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "92.6"
+    },
+    {
+      "name": "Siyalatas",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "100"
+    },
+    {
+      "name": "Mammon",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "185.2"
+    },
+    {
+      "name": "Mimzee",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "185.2"
+    },
+    {
+      "name": "Pluto",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "185.2"
+    },
+    {
+      "name": "Dogcog",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.83620010668403579183464833122810998906489350144915716499505020587182862912647456633685479243864593"
+    },
+    {
+      "name": "Fortuna",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "9.059227016052746049015555521747706503591545836083210627822196922706840747716347884584026782546285"
+    },
+    {
+      "name": "Atman",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "9.89363947820774896937064829618229396354032698594218075892494110445811880306625352930301320928814387"
+    },
+    {
+      "name": "Dora",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "11.95487725556070080534865690906521586876937437964585172068502813557238998127552477247507275282352794"
+    },
+    {
+      "name": "Bhaal",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "200"
+    },
+    {
+      "name": "Morgulis",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "40000"
+    },
+    {
+      "name": "Chronos",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "9.42516013056217019398243981119688227338920802497841497591690704723882848536616665857004701749459148"
+    },
+    {
+      "name": "Bubos",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.938812574717214820184846500023944365736617648019304584750042137059626119449981157341146891177976"
+    },
+    {
+      "name": "Fragsworth",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "200"
+    },
+    {
+      "name": "Vaagur",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "5.6128506374824709921876631431769111489739572859970110782531669950251635645328457227377987190142887"
+    },
+    {
+      "name": "Kumawakamaru",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "7.74846906173812292705661319243531080297131652943951127527879711265247234391243366033466902934619926"
+    },
+    {
+      "name": "Chawedo",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "5.6128506374824709921876631431769111489739572859970110782531669950251635645328457227377987190142887"
+    },
+    {
+      "name": "Hecatoncheir",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "5.6128506374824709921876631431769111489739572859970110782531669950251635645328457227377987190142887"
+    },
+    {
+      "name": "Berserker",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "5.6128506374824709921876631431769111489739572859970110782531669950251635645328457227377987190142887"
+    },
+    {
+      "name": "Sniperino",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "5.6128506374824709921876631431769111489739572859970110782531669950251635645328457227377987190142887"
+    },
+    {
+      "name": "Kleptos",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "5.6128506374824709921876631431769111489739572859970110782531669950251635645328457227377987190142887"
+    },
+    {
+      "name": "Energon",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "5.6128506374824709921876631431769111489739572859970110782531669950251635645328457227377987190142887"
+    },
+    {
+      "name": "Argaiv",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "200"
+    },
+    {
+      "name": "Juggernaut",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "69.31448431551463928822518515190713766800936500564289614910879705463747348938137620955995201214428217"
+    },
+    {
+      "name": "Nogardnit",
+      "base": "100",
+      "ratio": "2",
+      "alpha": "1",
+      "rate": "0.5",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "65.17976433302699031921030501221965308129656618066514360456341088294210911639336848144098704050804613"
+    },
+    {
+      "name": "Solomon",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "39.81071705534972507702523050877520434876770372973804468652841480602248538694580390740183116073773603"
+    },
+    {
+      "name": "Libertas",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "90.5"
+    },
+    {
+      "name": "Siyalatas",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "100"
+    },
+    {
+      "name": "Mammon",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "90.5"
+    },
+    {
+      "name": "Mimzee",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "90.5"
+    },
+    {
+      "name": "Pluto",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "90.5"
+    },
+    {
+      "name": "Dogcog",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "5.86488952517155133185204017780105582945817111932859122227583625887261716824466279515377949046083118"
+    },
+    {
+      "name": "Fortuna",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "7.06642887194290328444101317255544887037448294979747677222524189541333408455347557721716971743158128"
+    },
+    {
+      "name": "Atman",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "7.93064666286198385310104692821273792275051060543393787925517531757282806564807809470720826723428615"
+    },
+    {
+      "name": "Dora",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "9.96069281708973815015528009563004188241616049309139735457983174825989653086871307567700396105483138"
+    },
+    {
+      "name": "Bhaal",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "50"
+    },
+    {
+      "name": "Morgulis",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "10000"
+    },
+    {
+      "name": "Chronos",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Bubos",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "5.99800046914936795381659655994104997512521727181058987321213811047812397793483595364472957558800367"
+    },
+    {
+      "name": "Fragsworth",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "50"
+    },
+    {
+      "name": "Vaagur",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Kumawakamaru",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "5.77715848022563846707400503900825664336459414731894533255958316565326088303062188915159372736838451"
+    },
+    {
+      "name": "Chawedo",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Hecatoncheir",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Berserker",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Sniperino",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Kleptos",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Energon",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "7.51900538402232059308505147718689671118158265548771302708503702113199602494950619065392286825444009"
+    },
+    {
+      "name": "Argaiv",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "100"
+    },
+    {
+      "name": "Juggernaut",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "22.86525259636631732013511619356239000350743003551232868844541900887796658353528505082130427290724578"
+    },
+    {
+      "name": "Nogardnit",
+      "base": "100",
+      "ratio": "0.5",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": true,
+      "old": "1",
+      "expected": "36.75520618652253122395646790255129707498930057951802100298028873753904943534731799687818868517965575"
+    },
+    {
+      "name": "Solomon",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "1e+24"
+    },
+    {
+      "name": "Libertas",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "9.26e+29"
+    },
+    {
+      "name": "Siyalatas",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "1e+30"
+    },
+    {
+      "name": "Mammon",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "9.26e+29"
+    },
+    {
+      "name": "Mimzee",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "9.26e+29"
+    },
+    {
+      "name": "Pluto",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "9.26e+29"
+    },
+    {
+      "name": "Dogcog",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "189.2243456504733972415727356972263464091490848618150408497618036687223592220715955013067089261557229"
+    },
+    {
+      "name": "Fortuna",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "192.4245288579635808478893252746467675822631527844137013429081379233029291635803502362149447271442443"
+    },
+    {
+      "name": "Atman",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "190.5164341969178304129916973188640821286874542477411197867939445526974657226234203675008426420190728"
+    },
+    {
+      "name": "Dora",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "195.4477375683180822719085997191836849899304920110708332119205941386036756760375194735679948142525119"
+    },
+    {
+      "name": "Bhaal",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "5e+28"
+    },
+    {
+      "name": "Morgulis",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "1e+60"
+    },
+    {
+      "name": "Chronos",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "184.818057544563838262470393487882940696466397279903232181651285395635086970105647168825707660153509"
+    },
+    {
+      "name": "Bubos",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "186.5206717598825495808271266071952038510515739803063911942250455463358165766392704041469104546125103"
+    },
+    {
+      "name": "Fragsworth",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "5e+28"
+    },
+    {
+      "name": "Vaagur",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "184.818057544563838262470393487882940696466397279903232181651285395635086970105647168825707660153509"
+    },
+    {
+      "name": "Kumawakamaru",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "189.1366146055274843767947005584335472230555078898053949600455505755030029368575545953045231630632762"
+    },
+    {
+      "name": "Chawedo",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "184.818057544563838262470393487882940696466397279903232181651285395635086970105647168825707660153509"
+    },
+    {
+      "name": "Hecatoncheir",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "184.818057544563838262470393487882940696466397279903232181651285395635086970105647168825707660153509"
+    },
+    {
+      "name": "Berserker",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "184.818057544563838262470393487882940696466397279903232181651285395635086970105647168825707660153509"
+    },
+    {
+      "name": "Sniperino",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "184.818057544563838262470393487882940696466397279903232181651285395635086970105647168825707660153509"
+    },
+    {
+      "name": "Kleptos",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "184.818057544563838262470393487882940696466397279903232181651285395635086970105647168825707660153509"
+    },
+    {
+      "name": "Energon",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "184.818057544563838262470393487882940696466397279903232181651285395635086970105647168825707660153509"
+    },
+    {
+      "name": "Argaiv",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "1e+30"
+    },
+    {
+      "name": "Juggernaut",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "9.102821015130401321897105273527314924688437139794225729108620913484619267933454964507445956517936476e+22"
+    },
+    {
+      "name": "Nogardnit",
+      "base": "1e30",
+      "ratio": "0.05",
+      "alpha": "1",
+      "rate": "1",
+      "beyond8k": false,
+      "old": "1",
+      "expected": "9.403483987031239314590295194602606012050130603695388472263712570426543890067466403063336888323463927e+23"
+    }
+  ],
+  "cases": [
+    {
+      "name": "default",
+      "save": "eyJoZXJvU291bHMiOiIxMDAwMDAxIiwiaGVyb1NvdWxzU2FjcmlmaWNlZCI6IjAiLCJoaWdoZXN0RmluaXNoZWRab25lUGVyc2lzdCI6IjIwMDAwIiwiYW5jaWVudFNvdWxzVG90YWwiOiIwIiwibnVtV29ybGRSZXNldHMiOiI3IiwidHJhbnNjZW5kZW50IjpmYWxzZSwiYW5jaWVudHMiOnsiYW5jaWVudHMiOnsiNCI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiNSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiOCI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiOSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiMTAiOnsibGV2ZWwiOiIxIiwic3BlbnRIZXJvU291bHMiOiIxIn0sIjE1Ijp7ImxldmVsIjoiMSIsInNwZW50SGVyb1NvdWxzIjoiMSJ9LCIxOSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiMjgiOnsibGV2ZWwiOiIxIiwic3BlbnRIZXJvU291bHMiOiIxIn0sIjI5Ijp7ImxldmVsIjoiMSIsInNwZW50SGVyb1NvdWxzIjoiMSJ9LCIzMiI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifX19LCJvdXRzaWRlcnMiOnsib3V0c2lkZXJzIjp7IjEiOnsibGV2ZWwiOiIxMCJ9LCIyIjp7ImxldmVsIjoiMCJ9fX19",
+      "ratio": "0.5",
+      "reserve": "100",
+      "skillRate": 1,
+      "beyond8k": false,
+      "spent": "773625",
+      "remaining": "226376",
+      "rows": [
+        {
+          "id": 4,
+          "name": "Libertas",
+          "current": "1",
+          "target": "440",
+          "cost": "97019"
+        },
+        {
+          "id": 5,
+          "name": "Siyalatas",
+          "current": "1",
+          "target": "475",
+          "cost": "113049"
+        },
+        {
+          "id": 8,
+          "name": "Mammon",
+          "current": "1",
+          "target": "440",
+          "cost": "97019"
+        },
+        {
+          "id": 9,
+          "name": "Mimzee",
+          "current": "1",
+          "target": "440",
+          "cost": "97019"
+        },
+        {
+          "id": 10,
+          "name": "Pluto",
+          "current": "1",
+          "target": "440",
+          "cost": "97019"
+        },
+        {
+          "id": 15,
+          "name": "Bhaal",
+          "current": "1",
+          "target": "238",
+          "cost": "28440"
+        },
+        {
+          "id": 19,
+          "name": "Fragsworth",
+          "current": "1",
+          "target": "238",
+          "cost": "28440"
+        },
+        {
+          "id": 28,
+          "name": "Argaiv",
+          "current": "1",
+          "target": "475",
+          "cost": "113049"
+        },
+        {
+          "id": 29,
+          "name": "Juggernaut",
+          "current": "1",
+          "target": "80",
+          "cost": "23255"
+        },
+        {
+          "id": 32,
+          "name": "Nogardnit",
+          "current": "1",
+          "target": "131",
+          "cost": "79316"
+        }
+      ]
+    },
+    {
+      "name": "active-heavy",
+      "save": "eyJoZXJvU291bHMiOiIxMDAwMDAxIiwiaGVyb1NvdWxzU2FjcmlmaWNlZCI6IjAiLCJoaWdoZXN0RmluaXNoZWRab25lUGVyc2lzdCI6IjIwMDAwIiwiYW5jaWVudFNvdWxzVG90YWwiOiIwIiwibnVtV29ybGRSZXNldHMiOiI3IiwidHJhbnNjZW5kZW50IjpmYWxzZSwiYW5jaWVudHMiOnsiYW5jaWVudHMiOnsiNCI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiNSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiOCI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiOSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiMTAiOnsibGV2ZWwiOiIxIiwic3BlbnRIZXJvU291bHMiOiIxIn0sIjE1Ijp7ImxldmVsIjoiMSIsInNwZW50SGVyb1NvdWxzIjoiMSJ9LCIxOSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiMjgiOnsibGV2ZWwiOiIxIiwic3BlbnRIZXJvU291bHMiOiIxIn0sIjI5Ijp7ImxldmVsIjoiMSIsInNwZW50SGVyb1NvdWxzIjoiMSJ9LCIzMiI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifX19LCJvdXRzaWRlcnMiOnsib3V0c2lkZXJzIjp7IjEiOnsibGV2ZWwiOiIxMCJ9LCIyIjp7ImxldmVsIjoiMyJ9fX19",
+      "ratio": "2",
+      "reserve": "100",
+      "skillRate": 1,
+      "beyond8k": false,
+      "spent": "761045",
+      "remaining": "238956",
+      "rows": [
+        {
+          "id": 4,
+          "name": "Libertas",
+          "current": "1",
+          "target": "225",
+          "cost": "21798"
+        },
+        {
+          "id": 5,
+          "name": "Siyalatas",
+          "current": "1",
+          "target": "242",
+          "cost": "25209"
+        },
+        {
+          "id": 8,
+          "name": "Mammon",
+          "current": "1",
+          "target": "449",
+          "cost": "86616"
+        },
+        {
+          "id": 9,
+          "name": "Mimzee",
+          "current": "1",
+          "target": "449",
+          "cost": "86616"
+        },
+        {
+          "id": 10,
+          "name": "Pluto",
+          "current": "1",
+          "target": "449",
+          "cost": "86616"
+        },
+        {
+          "id": 15,
+          "name": "Bhaal",
+          "current": "1",
+          "target": "484",
+          "cost": "100630"
+        },
+        {
+          "id": 19,
+          "name": "Fragsworth",
+          "current": "1",
+          "target": "484",
+          "cost": "100630"
+        },
+        {
+          "id": 28,
+          "name": "Argaiv",
+          "current": "1",
+          "target": "484",
+          "cost": "100630"
+        },
+        {
+          "id": 29,
+          "name": "Juggernaut",
+          "current": "1",
+          "target": "141",
+          "cost": "81680"
+        },
+        {
+          "id": 32,
+          "name": "Nogardnit",
+          "current": "1",
+          "target": "133",
+          "cost": "70620"
+        }
+      ]
+    },
+    {
+      "name": "beyond-8k",
+      "save": "eyJoZXJvU291bHMiOiIxMDAwMDAxIiwiaGVyb1NvdWxzU2FjcmlmaWNlZCI6IjAiLCJoaWdoZXN0RmluaXNoZWRab25lUGVyc2lzdCI6IjIwMDAwIiwiYW5jaWVudFNvdWxzVG90YWwiOiIwIiwibnVtV29ybGRSZXNldHMiOiI3IiwidHJhbnNjZW5kZW50IjpmYWxzZSwiYW5jaWVudHMiOnsiYW5jaWVudHMiOnsiNCI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiNSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiOCI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiOSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiMTAiOnsibGV2ZWwiOiIxIiwic3BlbnRIZXJvU291bHMiOiIxIn0sIjE1Ijp7ImxldmVsIjoiMSIsInNwZW50SGVyb1NvdWxzIjoiMSJ9LCIxOSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiMjgiOnsibGV2ZWwiOiIxIiwic3BlbnRIZXJvU291bHMiOiIxIn0sIjI5Ijp7ImxldmVsIjoiMSIsInNwZW50SGVyb1NvdWxzIjoiMSJ9LCIzMiI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifX19LCJvdXRzaWRlcnMiOnsib3V0c2lkZXJzIjp7IjEiOnsibGV2ZWwiOiIxMCJ9LCIyIjp7ImxldmVsIjoiMCJ9fX19",
+      "ratio": "0.5",
+      "reserve": "100",
+      "skillRate": 1,
+      "beyond8k": true,
+      "spent": "768351",
+      "remaining": "231650",
+      "rows": [
+        {
+          "id": 4,
+          "name": "Libertas",
+          "current": "1",
+          "target": "435",
+          "cost": "94829"
+        },
+        {
+          "id": 5,
+          "name": "Siyalatas",
+          "current": "1",
+          "target": "480",
+          "cost": "115439"
+        },
+        {
+          "id": 8,
+          "name": "Mammon",
+          "current": "1",
+          "target": "435",
+          "cost": "94829"
+        },
+        {
+          "id": 9,
+          "name": "Mimzee",
+          "current": "1",
+          "target": "435",
+          "cost": "94829"
+        },
+        {
+          "id": 10,
+          "name": "Pluto",
+          "current": "1",
+          "target": "435",
+          "cost": "94829"
+        },
+        {
+          "id": 15,
+          "name": "Bhaal",
+          "current": "1",
+          "target": "240",
+          "cost": "28919"
+        },
+        {
+          "id": 19,
+          "name": "Fragsworth",
+          "current": "1",
+          "target": "240",
+          "cost": "28919"
+        },
+        {
+          "id": 28,
+          "name": "Argaiv",
+          "current": "1",
+          "target": "480",
+          "cost": "115439"
+        },
+        {
+          "id": 29,
+          "name": "Juggernaut",
+          "current": "1",
+          "target": "81",
+          "cost": "23984"
+        },
+        {
+          "id": 32,
+          "name": "Nogardnit",
+          "current": "1",
+          "target": "129",
+          "cost": "76335"
+        }
+      ]
+    },
+    {
+      "name": "owned-morgulis",
+      "save": "eyJoZXJvU291bHMiOiIxMDAwMDAxIiwiaGVyb1NvdWxzU2FjcmlmaWNlZCI6IjAiLCJoaWdoZXN0RmluaXNoZWRab25lUGVyc2lzdCI6IjIwMDAwIiwiYW5jaWVudFNvdWxzVG90YWwiOiIwIiwibnVtV29ybGRSZXNldHMiOiI3IiwidHJhbnNjZW5kZW50IjpmYWxzZSwiYW5jaWVudHMiOnsiYW5jaWVudHMiOnsiNCI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiNSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiOCI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiOSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiMTAiOnsibGV2ZWwiOiIxIiwic3BlbnRIZXJvU291bHMiOiIxIn0sIjE1Ijp7ImxldmVsIjoiMSIsInNwZW50SGVyb1NvdWxzIjoiMSJ9LCIxNiI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiMTkiOnsibGV2ZWwiOiIxIiwic3BlbnRIZXJvU291bHMiOiIxIn0sIjI4Ijp7ImxldmVsIjoiMSIsInNwZW50SGVyb1NvdWxzIjoiMSJ9LCIyOSI6eyJsZXZlbCI6IjEiLCJzcGVudEhlcm9Tb3VscyI6IjEifSwiMzIiOnsibGV2ZWwiOiIxIiwic3BlbnRIZXJvU291bHMiOiIxIn19fSwib3V0c2lkZXJzIjp7Im91dHNpZGVycyI6eyIxIjp7ImxldmVsIjoiMTAifSwiMiI6eyJsZXZlbCI6IjAifX19fQ==",
+      "ratio": "0.5",
+      "reserve": "100",
+      "skillRate": 1,
+      "beyond8k": false,
+      "spent": "999249",
+      "remaining": "752",
+      "rows": [
+        {
+          "id": 4,
+          "name": "Libertas",
+          "current": "1",
+          "target": "440",
+          "cost": "97019"
+        },
+        {
+          "id": 5,
+          "name": "Siyalatas",
+          "current": "1",
+          "target": "475",
+          "cost": "113049"
+        },
+        {
+          "id": 8,
+          "name": "Mammon",
+          "current": "1",
+          "target": "440",
+          "cost": "97019"
+        },
+        {
+          "id": 9,
+          "name": "Mimzee",
+          "current": "1",
+          "target": "440",
+          "cost": "97019"
+        },
+        {
+          "id": 10,
+          "name": "Pluto",
+          "current": "1",
+          "target": "440",
+          "cost": "97019"
+        },
+        {
+          "id": 15,
+          "name": "Bhaal",
+          "current": "1",
+          "target": "238",
+          "cost": "28440"
+        },
+        {
+          "id": 16,
+          "name": "Morgulis",
+          "current": "1",
+          "target": "225625",
+          "cost": "225624"
+        },
+        {
+          "id": 19,
+          "name": "Fragsworth",
+          "current": "1",
+          "target": "238",
+          "cost": "28440"
+        },
+        {
+          "id": 28,
+          "name": "Argaiv",
+          "current": "1",
+          "target": "475",
+          "cost": "113049"
+        },
+        {
+          "id": 29,
+          "name": "Juggernaut",
+          "current": "1",
+          "target": "80",
+          "cost": "23255"
+        },
+        {
+          "id": 32,
+          "name": "Nogardnit",
+          "current": "1",
+          "target": "131",
+          "cost": "79316"
+        }
+      ]
+    }
+  ]
+}

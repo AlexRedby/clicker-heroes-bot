@@ -292,6 +292,10 @@ func Calculate(ctx context.Context, exported []byte, reserve string, skillRate f
 }
 
 func planAncients(ctx context.Context, save ancientSave, reserve string, skillRate float64, beyond8k bool) (Plan, error) {
+	return planAncientsBuild(ctx, save, reserve, skillRate, beyond8k, ActiveBuild, nil)
+}
+
+func planAncientsBuild(ctx context.Context, save ancientSave, reserve string, skillRate float64, beyond8k bool, mode BuildMode, ratio *big.Float) (Plan, error) {
 	if err := ctx.Err(); err != nil {
 		return Plan{}, err
 	}
@@ -314,7 +318,7 @@ func planAncients(ctx context.Context, save ancientSave, reserve string, skillRa
 		}
 		return aRound(aAdd(cost, loss), true), nil
 	}
-	p, err := planAncientsWithPrice(ctx, save, reserve, skillRate, beyond8k, price)
+	p, err := planAncientsBuildWithPrice(ctx, save, reserve, skillRate, beyond8k, mode, ratio, price)
 	if err != nil {
 		return p, err
 	}
@@ -447,6 +451,10 @@ func addProfitableMorgulis(ctx context.Context, save ancientSave, p Plan, price 
 // Keep allocation separate from pricing so frozen legacy allocations and actual
 // client budgets can be checked with independent price policies.
 func planAncientsWithPrice(ctx context.Context, save ancientSave, reserve string, skillRate float64, beyond8k bool, price func(string, *big.Float, *big.Float, *big.Float) (*big.Float, error)) (Plan, error) {
+	return planAncientsBuildWithPrice(ctx, save, reserve, skillRate, beyond8k, ActiveBuild, nil, price)
+}
+
+func planAncientsBuildWithPrice(ctx context.Context, save ancientSave, reserve string, skillRate float64, beyond8k bool, mode BuildMode, ratio *big.Float, price func(string, *big.Float, *big.Float, *big.Float) (*big.Float, error)) (Plan, error) {
 	p := Plan{Rows: []Purchase{}, Owned: []Level{}}
 	if err := ctx.Err(); err != nil {
 		return p, err
@@ -496,7 +504,13 @@ func planAncientsWithPrice(ctx context.Context, save ancientSave, reserve string
 		if reserved.Cmp(aConst("100")) > 0 {
 			return p, errors.New("reserve percentage must be from 0 to 100")
 		}
-		reserved = aDiv(aMul(reserved, souls), aConst("100"))
+		if mode == HybridBuild && reserved.Cmp(aConst("100")) == 0 {
+			// Multiplying and dividing an enormous balance can round a full
+			// reserve above the wallet. A 100% reserve is the wallet itself.
+			reserved = aNew().Set(souls)
+		} else {
+			reserved = aDiv(aMul(reserved, souls), aConst("100"))
+		}
 	}
 	if reserved.Cmp(souls) > 0 {
 		return p, errors.New("reserve exceeds available Hero Souls")
@@ -555,8 +569,12 @@ func planAncientsWithPrice(ctx context.Context, save ancientSave, reserve string
 			discountLevel = level
 		}
 	}
-	if levels[19] == nil || levels[19].Sign() == 0 {
-		return p, errors.New("Fragsworth must be owned")
+	baseID, baseName := 19, "Fragsworth"
+	if mode == HybridBuild {
+		baseID, baseName = 5, "Siyalatas"
+	}
+	if levels[baseID] == nil || levels[baseID].Sign() == 0 {
+		return p, fmt.Errorf("%s must be owned", baseName)
 	}
 	// Bound the discount's exponent before calling the arbitrary-precision library.
 	chor, _ := discountLevel.Float64()
@@ -585,7 +603,7 @@ func planAncientsWithPrice(ctx context.Context, save ancientSave, reserve string
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		base := aAdd(levels[19], addLevels)
+		base := aAdd(levels[baseID], addLevels)
 		total := aConst("0")
 		targets, costs = map[int]*big.Float{}, map[int]*big.Float{}
 		if base.Sign() <= 0 {
@@ -599,7 +617,12 @@ func planAncientsWithPrice(ctx context.Context, save ancientSave, reserve string
 			if old == nil || (old.Sign() == 0 && def.ID != -1) {
 				continue
 			}
-			goal := ancientGoal(def.Name, base, old, alpha, rate, beyond8k)
+			var goal *big.Float
+			if mode == HybridBuild {
+				goal = hybridAncientGoal(def.Name, base, old, alpha, rate, ratio, beyond8k)
+			} else {
+				goal = ancientGoal(def.Name, base, old, alpha, rate, beyond8k)
+			}
 			if goal == nil {
 				continue
 			}
@@ -627,10 +650,10 @@ func planAncientsWithPrice(ctx context.Context, save ancientSave, reserve string
 		}
 		return total, nil
 	}
-	left := aNew().Neg(levels[19])
+	left := aNew().Neg(levels[baseID])
 	right := aConst("0")
 	if available.Sign() > 0 {
-		right = aRound(aNew().Sqrt(aAdd(aMul(aDiv(available, multiplier), aConst("2")), aSquare(levels[19]))), true)
+		right = aRound(aNew().Sqrt(aAdd(aMul(aDiv(available, multiplier), aConst("2")), aSquare(levels[baseID]))), true)
 	}
 	initialDiff := aSub(right, left)
 	var spent *big.Float
