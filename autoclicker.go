@@ -167,9 +167,18 @@ func (p *autoClickerPlanner) unconfirmed(frame gameFrame, pool autoClickerPool) 
 		return
 	}
 	target := p.pending.target
-	fmt.Printf("Auto Clicker placement unconfirmed: target=%d, frame=%d, before=%d/%d, expected=%d/%d, read known=%t %d/%d\n", target, frame.id,
-		p.pending.pool.available, p.pending.pool.total, p.pending.pool.available-1, p.pending.pool.total, pool.known, pool.available, pool.total)
-	if frame.image != nil {
+	name, read := "monster", "unknown"
+	if target == autoClickerUpgrades {
+		name = "upgrade footer"
+	}
+	if pool.known {
+		read = fmt.Sprintf("%d/%d", pool.available, pool.total)
+	}
+	fmt.Printf("Auto Clicker placement unconfirmed: target=%s, frame=%d, before=%d/%d, expected=%d/%d, read=%s\n", name, frame.id,
+		p.pending.pool.available, p.pending.pool.total, p.pending.pool.available-1, p.pending.pool.total, read)
+	before := p.pending.frame.context
+	if frame.image != nil && bootstrapHeroes(frame.context) && frame.context.window == before.window &&
+		frame.context.bounds == before.bounds && frame.context.geometry == before.geometry {
 		path := fmt.Sprintf("artifacts/auto-clicker-unconfirmed-%s.png", frame.at.Format("20060102-150405.000"))
 		if err := saveImage(path, frame.image); err != nil {
 			fmt.Printf("failed to save Auto Clicker failure frame: %v\n", err)

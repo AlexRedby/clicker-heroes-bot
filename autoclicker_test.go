@@ -296,3 +296,29 @@ func TestAutoClickerMonsterFailureDoesNotBlockFooterRecovery(t *testing.T) {
 		t.Fatal("unknown pool allowed footer placement")
 	}
 }
+
+func TestAutoClickerFailureDoesNotSaveOtherContext(t *testing.T) {
+	s := loadTestImage(t, "testdata/hero-startup-zero.png")
+	t.Chdir(t.TempDir())
+	for _, known := range []bool{false, true} {
+		now := time.Now()
+		f := gameFrame{id: 1, at: now, image: s, context: gameContext{known: true, heroes: true, bounds: s.Bounds(), window: "game"}}
+		p := autoClickerPlanner{}
+		pool := autoClickerPool{known: true, available: 3, total: 3}
+		a, ok := p.command(f, pool, autoClickerMonster, image.Pt(s.Bounds().Dx()*3/4, s.Bounds().Dy()/2))
+		if !ok {
+			t.Fatal("no initial command")
+		}
+		p.sent(a, now)
+		f.id++
+		f.at = now.Add(6 * time.Second)
+		f.context.known, f.context.window = known, "another app"
+		p.observe(f, autoClickerPool{}, f.at)
+		if p.pending != nil || !p.blocked {
+			t.Fatal("context loss did not resolve submitted input")
+		}
+	}
+	if files, err := os.ReadDir("artifacts"); !os.IsNotExist(err) && (err != nil || len(files) != 0) {
+		t.Fatal("saved a frame from another context", err)
+	}
+}
