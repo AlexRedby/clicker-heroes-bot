@@ -347,3 +347,55 @@ func TestStartupBulkWaitsForFooterPool(t *testing.T) {
 		})
 	}
 }
+
+func TestAutoClickerFooterPendingAfterMonsterFailure(t *testing.T) {
+	requireAncientOCR(t)
+	s := loadTestImage(t, "testdata/hero-startup-zero.png")
+	point, found, err := readHeroUpgradeButton(context.Background(), s)
+	if err != nil || !found {
+		t.Fatal(err, found)
+	}
+	now := time.Now()
+	c := gameContext{known: true, heroes: true, bounds: s.Bounds()}
+	f := gameFrame{id: 3, at: now, image: s, context: c}
+	pool := autoClickerPool{known: true, available: 1, total: 3}
+	p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return s, nil }}, pipelineReaders{
+		context:      func(image.Image) (gameContext, error) { return c, nil },
+		autoClickers: func(context.Context, gameFrame) (autoClickerPool, error) { return pool, nil },
+	}, pipelineOptions{heroes: true, autoClickers: true})
+	p.frame, p.startup, p.startupCheck = f, startupUpgrades, false
+	p.clickers.blocked = true
+	p.state[autoClickerAnalysis] = observation{frame: f, clickerPool: pool}
+	p.state[heroAnalysis] = observation{frame: f, startup: startupUpgrades, found: true, upgradesKnown: true, point: point}
+	p.plan(now)
+	a, ok := p.nextAction(now)
+	if !ok || a.kind != placeOwnedClicker || a.clicker.target != autoClickerUpgrades {
+		t.Fatal("monster failure blocked footer queue", a.kind, ok)
+	}
+	p.clickers.sent(a.clicker, now)
+	p.actionCompleted(actionResult{action: a, acted: true}, now)
+	jobs := make([]chan analysisJob, analysisCount)
+	for i := range jobs {
+		jobs[i] = make(chan analysisJob, 1)
+	}
+	readAt := now.Add(time.Second)
+	if err := p.capture(context.Background(), readAt, jobs); err != nil {
+		t.Fatal(err)
+	}
+	job := <-jobs[autoClickerAnalysis]
+	if err := p.accept(context.Background(), p.analyze(context.Background(), autoClickerAnalysis, job), readAt); err != nil {
+		t.Fatal(err)
+	}
+	if p.clickers.pending == nil || p.nextClickerRead != readAt.Add(300*time.Millisecond) {
+		t.Fatal("monster backoff delayed pending footer acknowledgement")
+	}
+	p.frame.id++
+	p.frame.at = readAt.Add(time.Second)
+	pool.available = 0
+	if err := p.accept(context.Background(), observation{kind: autoClickerAnalysis, frame: p.frame, clickerPool: pool}, p.frame.at); err != nil {
+		t.Fatal(err)
+	}
+	if p.clickers.pending != nil || !p.clickers.upgrades || !p.clickers.blocked || p.startup != startupProgression {
+		t.Fatal("footer acknowledgement lost monster failure ownership")
+	}
+}

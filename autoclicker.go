@@ -76,14 +76,14 @@ type autoClickerPlanner struct {
 	upgrades        bool
 	footerAttempted bool
 	footerPasses    uint8
-	blocked         bool
+	blocked         bool // An uncertain monster placement blocks only monster replay.
 	lastPool        autoClickerPool
 	lastPoolFrame   gameFrame
 }
 
 func (p *autoClickerPlanner) command(frame gameFrame, pool autoClickerPool, target autoClickerTarget, point image.Point) (autoClickerCommand, bool) {
 	a := autoClickerCommand{frame: frame, pool: pool, target: target, point: point}
-	if p.pending != nil || p.blocked || !pool.known || pool.available <= 0 || !autoClickerTargetValid(a) {
+	if p.pending != nil || p.blocked && target == autoClickerMonster || !pool.known || pool.available <= 0 || !autoClickerTargetValid(a) {
 		return a, false
 	}
 	if target == autoClickerUpgrades && (p.footerAttempted || p.footerPasses > 0 || pool.total == 1) {
@@ -97,7 +97,7 @@ func (p *autoClickerPlanner) command(frame gameFrame, pool autoClickerPool, targ
 }
 
 func (p *autoClickerPlanner) sent(a autoClickerCommand, now time.Time) {
-	if p.pending != nil || p.blocked {
+	if p.pending != nil || p.blocked && a.target == autoClickerMonster {
 		return
 	}
 	p.pending = &a
@@ -107,14 +107,14 @@ func (p *autoClickerPlanner) sent(a autoClickerCommand, now time.Time) {
 
 func (p *autoClickerPlanner) observe(frame gameFrame, pool autoClickerPool, now time.Time) {
 	p.rememberPool(frame, pool)
-	if p.pending == nil || p.blocked || frame.id <= p.pending.frame.id || frame.at.Before(p.afterAt) {
+	if p.pending == nil || frame.id <= p.pending.frame.id || frame.at.Before(p.afterAt) {
 		return
 	}
 	before := p.pending
 	if !bootstrapHeroes(frame.context) || frame.context.bounds != before.frame.context.bounds ||
 		frame.context.window != before.frame.context.window || frame.context.geometry != before.frame.context.geometry {
 		if now.After(p.deadline) {
-			p.unconfirmed()
+			p.unconfirmed(frame, pool)
 		}
 		return
 	}
@@ -125,7 +125,7 @@ func (p *autoClickerPlanner) observe(frame gameFrame, pool autoClickerPool, now 
 		return
 	}
 	if now.After(p.deadline) || pool.known && (pool.total != before.pool.total || pool.available != before.pool.available) {
-		p.unconfirmed()
+		p.unconfirmed(frame, pool)
 	}
 }
 
@@ -162,11 +162,21 @@ func (p *autoClickerPlanner) noteFooterUnavailable() {
 	}
 }
 
-func (p *autoClickerPlanner) unconfirmed() {
+func (p *autoClickerPlanner) unconfirmed(frame gameFrame, pool autoClickerPool) {
 	if p.pending == nil {
 		return
 	}
 	target := p.pending.target
+	fmt.Printf("Auto Clicker placement unconfirmed: target=%d, frame=%d, before=%d/%d, expected=%d/%d, read known=%t %d/%d\n", target, frame.id,
+		p.pending.pool.available, p.pending.pool.total, p.pending.pool.available-1, p.pending.pool.total, pool.known, pool.available, pool.total)
+	if frame.image != nil {
+		path := fmt.Sprintf("artifacts/auto-clicker-unconfirmed-%s.png", frame.at.Format("20060102-150405.000"))
+		if err := saveImage(path, frame.image); err != nil {
+			fmt.Printf("failed to save Auto Clicker failure frame: %v\n", err)
+		} else {
+			fmt.Printf("saved Auto Clicker failure frame: %s\n", path)
+		}
+	}
 	p.pending = nil
 	if target == autoClickerUpgrades {
 		// An occupied footer is a native no-op. Retry only during a later recovery cycle.

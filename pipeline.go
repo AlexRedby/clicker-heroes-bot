@@ -645,7 +645,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.clickerJobFrame = p.frame.id
 			replaceJob(jobs[autoClickerAnalysis], analysisJob{frame: p.frame})
 			p.nextClickerRead = now.Add(5 * time.Second)
-			if p.clickers.pending != nil && !p.clickers.blocked {
+			if p.clickers.pending != nil {
 				p.nextClickerRead = now.Add(300 * time.Millisecond)
 			}
 		}
@@ -882,7 +882,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			}
 		}
 		p.state[autoClickerAnalysis] = out
-		if out.clickerPool.known && (out.clickerPool.available == 0 || p.clickers.blocked) {
+		if out.clickerPool.known && (out.clickerPool.available == 0 || p.clickers.blocked && p.clickers.pending == nil) {
 			p.nextClickerRead = now.Add(5 * time.Minute)
 		}
 		return nil
@@ -1180,7 +1180,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			p.hero.nextScan = now
 			continue
 		}
-		if kind == placeOwnedClicker && (p.clickers.pending != nil || p.clickers.blocked || !autoClickerCommandStable(action.clicker, p.frame)) {
+		if kind == placeOwnedClicker && (p.clickers.pending != nil || p.clickers.blocked && action.clicker.target == autoClickerMonster || !autoClickerCommandStable(action.clicker, p.frame)) {
 			delete(p.queue, kind)
 			continue
 		}

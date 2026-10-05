@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -226,5 +227,72 @@ func TestAutoClickerNoReplayAndInputGuards(t *testing.T) {
 	}
 	if err := placeAutoClicker(ctx, input, a); !errors.Is(err, context.Canceled) || !reflect.DeepEqual(trace, []string{"c down", "c up"}) {
 		t.Fatalf("cancel/release: %v %v", trace, err)
+	}
+}
+
+func TestAutoClickerMonsterFailureDoesNotBlockFooterRecovery(t *testing.T) {
+	s := loadTestImage(t, "testdata/hero-startup-zero.png")
+	t.Chdir(t.TempDir())
+	now := time.Now()
+	f := gameFrame{id: 1, generation: 2, layout: 3, at: now, image: s, context: gameContext{known: true, heroes: true, bounds: s.Bounds()}}
+	monster := image.Pt(s.Bounds().Dx()*3/4, s.Bounds().Dy()/2)
+	footer, found, err := readHeroUpgradeButton(context.Background(), s)
+	if err != nil || !found {
+		t.Fatalf("native footer: %v %t %v", footer, found, err)
+	}
+
+	p := autoClickerPlanner{}
+	full := autoClickerPool{known: true, available: 3, total: 3}
+	monsterCommand, ok := p.command(f, full, autoClickerMonster, monster)
+	if !ok {
+		t.Fatal("initial monster placement was not offered")
+	}
+	p.sent(monsterCommand, now)
+	f.id++
+	f.at = now.Add(6 * time.Second)
+	p.observe(f, full, f.at)
+	if p.pending != nil || !p.blocked {
+		t.Fatalf("failed monster placement did not remain blocked: %+v", p)
+	}
+	path := fmt.Sprintf("artifacts/auto-clicker-unconfirmed-%s.png", f.at.Format("20060102-150405.000"))
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("missing analyzed failure frame", err)
+	}
+
+	eligible := autoClickerPool{known: true, available: 1, total: 3}
+	f.id++
+	f.at = now.Add(6500 * time.Millisecond)
+	p.observe(f, eligible, f.at)
+	unknown := autoClickerPool{available: 1, total: 3}
+	if _, ok := p.command(f, unknown, autoClickerUpgrades, footer); ok {
+		t.Fatal("unknown pool allowed footer placement")
+	}
+	if _, ok := p.command(f, eligible, autoClickerMonster, monster); ok {
+		t.Fatal("blocked monster placement was retried before footer recovery")
+	}
+	footerCommand, ok := p.command(f, eligible, autoClickerUpgrades, footer)
+	if !ok {
+		t.Fatal("fresh eligible pool could not submit footer placement after monster failure")
+	}
+	p.sent(footerCommand, f.at)
+	p.interrupt()
+	if p.pending == nil {
+		t.Fatal("F8 discarded pending footer placement")
+	}
+
+	f.id++
+	f.at = now.Add(7 * time.Second)
+	p.observe(f, autoClickerPool{known: true, available: 0, total: 3}, f.at)
+	if p.pending != nil || !p.blocked || !p.upgrades {
+		t.Fatalf("footer acknowledgement changed failure ownership: %+v", p)
+	}
+	if _, ok := p.command(f, eligible, autoClickerMonster, monster); ok {
+		t.Fatal("monster placement became available after footer acknowledgement")
+	}
+	if _, ok := p.command(f, unknown, autoClickerMonster, monster); ok {
+		t.Fatal("unknown pool allowed monster placement")
+	}
+	if _, ok := p.command(f, unknown, autoClickerUpgrades, footer); ok {
+		t.Fatal("unknown pool allowed footer placement")
 	}
 }
