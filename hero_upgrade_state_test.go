@@ -16,6 +16,7 @@ func TestHeroLockedUpgradeNativeFrames(t *testing.T) {
 		button image.Point
 		locked bool
 	}{
+		{"testdata/hero-startup-cid-locked.png", image.Pt(204, 655), true},
 		{"testdata/hero-nongilded-successor.jpg", image.Pt(102, 446), true},
 		{"testdata/hero-nongilded-successor.jpg", image.Pt(102, 342), false},
 		{"testdata/hero-startup-bottom-hire.png", image.Pt(204, 709), false},

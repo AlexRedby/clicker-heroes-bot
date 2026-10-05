@@ -2,12 +2,13 @@ package main
 
 import (
 	"image"
+	"image/color"
 	"image/draw"
 
 	"gocv.io/x/gocv"
 )
 
-// Level-unavailable upgrades use a dark placeholder with a fixed border.
+// Level-unavailable upgrades use a dark tile with a fixed border.
 // Search the whole strip: neither the hero's name nor purchased checks matter.
 func heroHasLockedUpgrade(screen image.Image, button image.Point) (bool, error) {
 	if screen == nil || !button.In(screen.Bounds()) {
@@ -25,11 +26,25 @@ func heroHasLockedUpgrade(screen image.Image, button image.Point) (bool, error) 
 	}
 	crop := image.NewRGBA(image.Rect(0, 0, region.Dx(), region.Dy()))
 	draw.Draw(crop, crop.Bounds(), screen, region.Min, draw.Src)
+	// Some unavailable tiles retain dim artwork. Collapse those dark pixels
+	// in both images so the shared tile state does not depend on its icon.
+	reference := image.NewRGBA(ref.Bounds())
+	draw.Draw(reference, reference.Bounds(), ref, ref.Bounds().Min, draw.Src)
+	for _, s := range []*image.RGBA{crop, reference} {
+		for y := s.Bounds().Min.Y; y < s.Bounds().Max.Y; y++ {
+			for x := s.Bounds().Min.X; x < s.Bounds().Max.X; x++ {
+				r, g, b := rgb(s.At(x, y))
+				if max(r, g, b) < 80 {
+					s.Set(x, y, color.Black)
+				}
+			}
+		}
+	}
 	scene, err := gocv.ImageToMatRGB(crop)
 	if err != nil {
 		return false, err
 	}
 	defer scene.Close()
-	score, err := controlTemplateScore(scene, ref, size)
+	score, err := controlTemplateScore(scene, reference, size)
 	return score >= 0.90, err
 }

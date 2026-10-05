@@ -322,8 +322,13 @@ func TestStartupUnlockedWithoutChecksSkipped(t *testing.T) {
 }
 
 func TestStartupLockedUpgradeRequestsMAXWithoutOCR(t *testing.T) {
-	f := startupFrame(t, "testdata/hero-nongilded-successor.jpg")
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	f := startupFrame(t, "testdata/hero-startup-cid-locked.png")
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{})
+	if err != nil || !out.found || !out.owned || out.button != image.Pt(204, 655) {
+		t.Fatalf("one-slot dark artwork must request levels: %+v %v", out, err)
+	}
+	f = startupFrame(t, "testdata/hero-nongilded-successor.jpg")
+	out, err = readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
 	if err != nil || !out.found || !out.owned || absDiff(out.button.Y, 446) > 3 {
 		t.Fatalf("locked Skogur must request levels: %+v %v", out, err)
 	}
