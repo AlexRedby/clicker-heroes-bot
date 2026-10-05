@@ -868,7 +868,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.nextClickerRead = time.Time{}
 			if pending.target == autoClickerUpgrades && p.startup == startupUpgrades {
 				if !hadUpgrades && p.clickers.upgrades {
-					p.finishStartupUpgradePass()
+					p.finishStartupUpgradePass(now)
 				} else {
 					// A footer placement can be a native no-op. Read a fresh footer
 					// before falling back to an ordinary upgrade click.
@@ -1546,7 +1546,8 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 			fmt.Println("bought available hero upgrades")
 			break
 		}
-		p.finishStartupUpgradePass()
+		p.nextUpgrades = now.Add(30 * time.Second)
+		p.finishStartupUpgradePass(now)
 		invalidate(heroAnalysis)
 
 	case buyHero, scrollHeroes, selectQuantity, parkPointer:

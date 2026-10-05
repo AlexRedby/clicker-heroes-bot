@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"image"
+	"image/color"
+	"image/draw"
 	"testing"
 	"time"
 )
@@ -255,5 +257,93 @@ func TestAutoClickerPeriodicPoolRecovery(t *testing.T) {
 	p.enqueue(a, f.at)
 	if _, ok := p.nextAction(f.at); ok {
 		t.Fatal("restoration reached covering menu")
+	}
+}
+
+func TestStartupBulkWaitsForFooterPool(t *testing.T) {
+	requireAncientOCR(t)
+	screen := loadTestImage(t, "testdata/hero-startup-zero.png")
+	point, found, err := readHeroUpgradeButton(context.Background(), screen)
+	if err != nil || !found {
+		t.Fatal("native footer", found, err)
+	}
+	for _, tc := range []struct {
+		name                              string
+		pool                              autoClickerPool
+		stale, changedMask, hold, timeout bool
+	}{
+		{name: "pending pool then footer", hold: true},
+		{name: "stale empty pool then footer", pool: autoClickerPool{known: true, total: 3}, stale: true, hold: true},
+		{name: "changed empty pool mask then footer", pool: autoClickerPool{known: true, total: 3}, changedMask: true, hold: true},
+		{name: "unreadable pool bounded fallback", hold: true, timeout: true},
+		{name: "fresh empty pool", pool: autoClickerPool{known: true, total: 3}},
+		{name: "sole clicker", pool: autoClickerPool{known: true, available: 1, total: 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			f := gameFrame{id: 3, generation: 1, layout: 1, at: now, image: screen, context: gameContext{known: true, heroes: true, bounds: screen.Bounds()}}
+			p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true, autoClickers: true})
+			p.frame, p.layout, p.generation = f, f.layout, f.generation
+			p.startup, p.startupCheck, p.startupPassive = startupUpgrades, false, true
+			footer := observation{frame: f, startup: startupUpgrades, found: true, upgradesKnown: true, point: point}
+			p.state[heroAnalysis] = footer
+			p.plan(now)
+			a, ok := p.nextAction(now)
+			if !ok || a.kind != buyHeroUpgrades {
+				t.Fatal("bulk purchase before pool completion", a.kind, ok)
+			}
+			deadline := p.startupDeadline
+			poolFrame := f
+			if tc.stale {
+				poolFrame.generation--
+			}
+			if tc.changedMask {
+				s := image.NewRGBA(screen.Bounds())
+				draw.Draw(s, s.Bounds(), screen, s.Bounds().Min, draw.Src)
+				draw.Draw(s, autoClickerCountRegion(s), image.NewUniform(color.Black), image.Point{}, draw.Src)
+				poolFrame.image = s
+			}
+			p.state[autoClickerAnalysis] = observation{frame: poolFrame, clickerPool: tc.pool}
+			p.actionCompleted(actionResult{action: a, acted: true}, now)
+			if !tc.hold {
+				if p.startup != startupProgression {
+					t.Fatal("ineligible fresh pool delayed handoff", p.startup)
+				}
+				return
+			}
+			if p.startup != startupUpgrades || p.clickers.footerPasses != 0 {
+				t.Fatal("bulk purchase released footer reservation", p.startup, p.clickers.footerPasses)
+			}
+			// New footer reads cannot reset the deadline or repeat the ordinary input.
+			for i := 1; i <= 2; i++ {
+				f.id++
+				f.at = now.Add(time.Duration(i) * time.Second)
+				p.frame, footer.frame = f, f
+				p.state[heroAnalysis] = footer
+				p.plan(f.at)
+				if _, ok := p.nextAction(f.at); ok || p.startupDeadline != deadline || p.startup != startupUpgrades {
+					t.Fatal("waiting pool repeated input or changed deadline")
+				}
+			}
+			pool := autoClickerPool{known: true, available: 1, total: 3}
+			if tc.timeout {
+				p.plan(deadline.Add(time.Nanosecond))
+				if p.startup != startupProgression || p.clickers.footerPasses != 1 {
+					t.Fatal("footer fallback exceeded its bounded pass")
+				}
+				monster := image.Pt(screen.Bounds().Dx()*3/4, screen.Bounds().Dy()/2)
+				if _, ok := p.clickers.command(f, pool, autoClickerMonster, monster); !ok {
+					t.Fatal("bounded fallback retained the last spare")
+				}
+				return
+			}
+			p.state[autoClickerAnalysis] = observation{frame: f, clickerPool: pool}
+			p.state[heroAnalysis] = footer
+			p.plan(f.at)
+			a, ok = p.nextAction(f.at)
+			if !ok || a.kind != placeOwnedClicker || a.clicker.target != autoClickerUpgrades || a.point != point {
+				t.Fatal("late known pool did not place footer before handoff", a.kind, a.clicker.target, ok)
+			}
+		})
 	}
 }

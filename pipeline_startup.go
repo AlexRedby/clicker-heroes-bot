@@ -19,6 +19,7 @@ func (p *gamePipeline) beginStartup() {
 	p.startupCheck = false
 	p.startup, p.startupPassive = startupHeroes, false
 	p.startupDeadline = time.Time{}
+	p.nextUpgrades = time.Time{}
 	p.hero.startStartup()
 	p.state = [analysisCount]observation{}
 	p.queue = make(map[actionKind]gameAction)
@@ -43,7 +44,7 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 		} else {
 			fmt.Println("startup: upgrade footer unavailable; continuing with periodic upgrade checks")
 		}
-		p.finishStartupUpgradePass()
+		p.finishStartupUpgradePass(now)
 		return true
 	}
 	if now.After(p.startupDeadline) || !p.hero.enabled {
@@ -96,16 +97,10 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 		if out.frame.id == 0 || p.hero.pending != nil || !p.hero.due(now) {
 			return true
 		}
-		if out.found {
+		if out.found && !now.Before(p.nextUpgrades) {
 			p.enqueue(gameAction{kind: buyHeroUpgrades, frame: out.frame, point: out.point}, now)
 		} else if out.upgradesKnown {
-			if p.options.autoClickers && !p.clickers.upgrades && !p.clickers.footerAttempted && p.clickers.footerPasses == 0 && out.point != (image.Point{}) {
-				pool := p.state[autoClickerAnalysis].clickerPool
-				if pool.known && pool.available > 0 && pool.total > 1 {
-					return true
-				}
-			}
-			p.finishStartupUpgradePass()
+			p.finishStartupUpgradePass(now)
 		} else if out.hero.thumbFound && !out.hero.bottom {
 			p.enqueue(gameAction{kind: scrollHeroes, frame: out.frame, point: out.hero.thumb, target: image.Pt(out.hero.thumb.X, out.frame.context.bounds.Max.Y-1), hero: out.hero}, now)
 		} else {
@@ -127,7 +122,20 @@ func (p *gamePipeline) startupNeedsSeedClicks() bool {
 }
 
 // The footer pass buys upgrades unlocked by the bounded level sweep.
-func (p *gamePipeline) finishStartupUpgradePass() {
+func (p *gamePipeline) finishStartupUpgradePass(now time.Time) {
+	p.hero.interrupt()
+	p.state[heroAnalysis] = observation{}
+	p.barriers[heroAnalysis] = p.frame.id + 1
+	p.heroJobFrame = 0
+	pool := p.state[autoClickerAnalysis]
+	poolCurrent := pool.frame.id != 0 && pool.clickerPool.known && pool.frame.generation == p.frame.generation &&
+		pool.frame.layout == p.frame.layout && pool.frame.context == p.frame.context && autoClickerPoolStable(pool.frame.image, p.frame.image)
+	// A bulk upgrade purchase does not establish footer clicker placement.
+	// Keep the existing bounded pass while its pool result is pending or eligible.
+	if p.options.autoClickers && !p.clickers.upgrades && !p.clickers.footerAttempted && p.clickers.footerPasses == 0 &&
+		now.Before(p.startupDeadline) && (!poolCurrent || pool.clickerPool.available > 0 && pool.clickerPool.total > 1) {
+		return
+	}
 	if !p.clickers.upgrades {
 		p.clickers.noteFooterUnavailable()
 	}
@@ -135,12 +143,8 @@ func (p *gamePipeline) finishStartupUpgradePass() {
 	p.startup = startupProgression
 	fmt.Println("startup: upgrades handled; waiting for progression")
 	p.startupDeadline = time.Time{}
-	p.hero.interrupt()
-	p.state[heroAnalysis] = observation{}
-	p.barriers[heroAnalysis] = p.frame.id + 1
 	p.state[progressionAnalysis] = observation{}
 	p.barriers[progressionAnalysis] = p.frame.id + 1
 	p.nextProgression = time.Time{}
-	p.heroJobFrame = 0
 	p.queue = make(map[actionKind]gameAction)
 }
