@@ -459,3 +459,79 @@ func TestStartupClippedHireBandScrollsWithoutOCR(t *testing.T) {
 		t.Fatalf("clipped HIRE band must scroll before OCR: %+v %v", out, err)
 	}
 }
+
+func TestStartupRevisitsUnaffordableLockedRowOnce(t *testing.T) {
+	// Compose a real owned dark Cid card with the native affordable Treebeast
+	// HIRE. Dimming only Cid's button models the initial lack of funds.
+	low := startupFrame(t, "testdata/hero-startup-gold.png")
+	high := startupFrame(t, "testdata/hero-startup-cid-locked.png")
+	s := image.NewRGBA(low.image.Bounds())
+	draw.Draw(s, s.Bounds(), low.image, s.Bounds().Min, draw.Src)
+	card := image.Rect(80, 558, 1100, 760)
+	draw.Draw(s, card, high.image, card.Min, draw.Src)
+	for y := 560; y < 758; y++ {
+		for x := 140; x < 358; x++ {
+			r, g, b := rgb(s.At(x, y))
+			if b > 150 && b > r+40 && b >= g-10 && g > 90 {
+				s.Set(x, y, color.RGBA{45, 60, 70, 255})
+			}
+		}
+	}
+	low.image = s
+	first, err := readStartupHeroObservation(context.Background(), low, noStartupOCR(t), nil, startupSweep{})
+	if err != nil || !first.found || first.owned || first.button != image.Pt(204, 865) || first.sweep.retry != 1 {
+		t.Fatalf("unaffordable Cid must yield to cheap DPS and request one revisit: %+v %v", first, err)
+	}
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
+	p.frame, p.startup, p.startupCheck = low, startupHeroes, false
+	deadline := low.at.Add(time.Minute)
+	p.startupDeadline = deadline
+	// Completion after the cheap passive hero and the remaining first sweep.
+	complete := heroObservation{frame: low, startup: true, startupComplete: true, passiveReady: true, sweep: first.sweep}
+	out := observation{kind: heroAnalysis, startup: startupHeroes, frame: low, hero: complete}
+	if err := p.accept(context.Background(), out, low.at); err != nil {
+		t.Fatal(err)
+	}
+	if p.startup != startupHeroes || p.hero.sweep.retry != 2 || p.hero.sweep.top || p.startupDeadline != deadline {
+		t.Fatal("first sweep handed off or reset its budget before revisiting")
+	}
+	// A retired first-pass completion cannot skip the fresh second pass.
+	if err := p.accept(context.Background(), out, low.at); err != nil {
+		t.Fatal(err)
+	}
+	if p.startup != startupHeroes {
+		t.Fatal("stale completion skipped revisit")
+	}
+	p.controls.toggle()
+	p.controls.toggle()
+	p.reset(p.controls.snapshot())
+	if p.hero.sweep.retry != 2 {
+		t.Fatal("F8 lost bounded revisit ownership")
+	}
+	high.id, high.generation, high.layout = low.id+1, p.generation, p.layout
+	high.at = low.at.Add(time.Second)
+	p.frame = high
+	second, err := readStartupHeroObservation(context.Background(), high, noStartupOCR(t), nil, p.hero.sweep)
+	if err != nil || !second.found || !second.owned || second.button != image.Pt(204, 655) || second.sweep.retry != 2 {
+		t.Fatalf("rising gold must make earlier Cid selectable in the final pass: %+v %v", second, err)
+	}
+	// Even persistent unaffordability cannot schedule a third pass.
+	stillLow, err := readStartupHeroObservation(context.Background(), low, noStartupOCR(t), nil, startupSweep{retry: 2})
+	if err != nil || stillLow.sweep.retry != 2 {
+		t.Fatal("final pass rearmed a retry", err)
+	}
+	high.id++
+	p.frame = high
+	complete.frame, complete.sweep = high, stillLow.sweep
+	out.frame, out.hero = high, complete
+	if err := p.accept(context.Background(), out, high.at); err != nil {
+		t.Fatal(err)
+	}
+	if p.startup != startupUpgrades {
+		t.Fatal("persistent low funds created an unbounded sweep")
+	}
+	p.beginStartup()
+	if p.hero.sweep.retry != 0 {
+		t.Fatal("Ascension retained the previous revisit")
+	}
+}

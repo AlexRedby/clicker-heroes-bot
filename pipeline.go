@@ -1053,14 +1053,20 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		if p.startup == startupHeroes && out.err == nil {
 			p.startupPassive = p.startupPassive || out.hero.passiveReady
 			if out.hero.startupComplete && p.hero.pending == nil && p.hero.latest.frame.id == out.frame.id {
-				p.startup = startupUpgrades
-				p.hero.interrupt()
-				p.startupDeadline = time.Time{}
+				if p.hero.sweep.retry == 1 {
+					p.hero.startStartup()
+					p.hero.sweep.retry = 2
+					fmt.Println("startup: revisiting earlier unaffordable skill rows")
+				} else {
+					p.startup = startupUpgrades
+					p.hero.interrupt()
+					p.startupDeadline = time.Time{}
+					fmt.Println("startup: skill setup sweep complete; seeking Buy Available Upgrades")
+				}
 				p.state[heroAnalysis] = observation{}
 				p.barriers[heroAnalysis] = p.frame.id + 1
 				p.heroJobFrame = 0
 				p.queue = make(map[actionKind]gameAction)
-				fmt.Println("startup: skill setup sweep complete; seeking Buy Available Upgrades")
 			}
 		}
 	case progressionAnalysis:

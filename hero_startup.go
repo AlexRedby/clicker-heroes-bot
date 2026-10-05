@@ -12,6 +12,7 @@ import (
 type startupSweep struct {
 	top         bool
 	y, attempts int
+	retry       uint8 // 0: initial; 1: unaffordable locked row seen; 2: final pass.
 }
 
 func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroReaders, before *heroObservation, sweep startupSweep) (heroObservation, error) {
@@ -115,14 +116,17 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 				clipped = true
 				break
 			}
-			if !r.available {
-				continue
-			}
 			locked, err := heroHasLockedUpgrade(frame.image, r.button)
 			if err != nil {
 				return out, err
 			}
 			if !locked {
+				continue
+			}
+			if !r.available {
+				if out.sweep.retry == 0 {
+					out.sweep.retry = 1
+				}
 				continue
 			}
 		} else if r.band.Max.Y >= viewport.Max.Y-edgeGap || !heroPriceRegion(frame.image, r.button).In(viewport) {
