@@ -136,6 +136,11 @@ func PlanHeroSetup(ctx context.Context, exported []byte) (HeroSetupPlan, error) 
 			break
 		}
 		for _, upgrade := range def.Upgrades {
+			// Ordinary progression levels the latest hero. Preparation only needs
+			// its unlocked upgrades and any missing active skill.
+			if p.PassiveReady && def.ID == latest && levels[def.ID] < upgrade.Level && upgrade.Kind != "skill" {
+				continue
+			}
 			if err := need(upgrade.ID); err != nil {
 				return HeroSetupPlan{}, err
 			}

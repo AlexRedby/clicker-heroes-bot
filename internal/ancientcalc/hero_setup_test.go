@@ -122,3 +122,20 @@ func TestPlanHeroSetupUnsupportedVersusIncomplete(t *testing.T) {
 		t.Fatalf("cancellation: %v", err)
 	}
 }
+
+func TestPlanHeroSetupLeavesLatestThresholdToProgression(t *testing.T) {
+	f := readySetupFixture(t, 42)
+	setGildHero(f, 42, 5654, 0, false)
+	delete(f.Upgrades, "203")
+	p, err := PlanHeroSetup(nil, f.save(t, false))
+	if err != nil || p.NeedsLevels || len(p.Heroes) != 0 || len(p.MissingUpgrades) != 0 {
+		t.Fatalf("ordinary latest threshold triggered startup: %+v %v", p, err)
+	}
+	f = readySetupFixture(t, 24)
+	setGildHero(f, 24, 75, 0, false)
+	delete(f.Upgrades, "115") // Reload is active-skill preparation even on the latest hero.
+	p, err = PlanHeroSetup(nil, f.save(t, false))
+	if err != nil || !p.NeedsLevels || len(p.Heroes) != 1 || p.Heroes[0].RequiredLevel != 100 {
+		t.Fatalf("latest active skill was skipped: %+v %v", p, err)
+	}
+}
