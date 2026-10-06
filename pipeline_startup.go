@@ -13,12 +13,14 @@ const (
 	startupHeroes
 	startupUpgrades
 	startupProgression
+	startupSave
 )
 
 func (p *gamePipeline) beginStartup() {
 	p.startupCheck = false
 	p.startup, p.startupPassive = startupHeroes, false
 	p.startupDeadline = time.Time{}
+	p.startupExported, p.startupSkillsReady = false, false
 	p.nextUpgrades = time.Time{}
 	p.hero.startStartup()
 	p.state = [analysisCount]observation{}
@@ -31,6 +33,9 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 	if p.startup == noStartup && !p.startupCheck {
 		return false
 	}
+	if p.startup == startupSave {
+		return p.planExport(now)
+	}
 	if p.startupDeadline.IsZero() {
 		budget := 5 * time.Minute
 		if p.startup == startupUpgrades {
@@ -40,9 +45,14 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 	}
 	// A final drag may finish at the deadline. Allow its settled capture and
 	// recognized footer one fixed grace period, never an unbounded retry.
-	if p.startup == startupUpgrades && (p.clickers.upgrades || now.After(p.startupDeadline) && !p.startupFooterGrace(now)) {
+	pool := p.state[autoClickerAnalysis]
+	noFooterClicker := !p.options.autoClickers || pool.frame.id != 0 && pool.clickerPool.known &&
+		(pool.clickerPool.available == 0 || pool.clickerPool.total <= 1) && autoClickerPoolStable(pool.frame.image, p.frame.image)
+	if p.startup == startupUpgrades && (p.clickers.upgrades || p.startupSkillsReady && noFooterClicker || now.After(p.startupDeadline) && !p.startupFooterGrace(now)) {
 		if p.clickers.upgrades {
 			fmt.Println("startup: existing footer Auto Clicker handles upgrades")
+		} else if p.startupSkillsReady && noFooterClicker {
+			fmt.Println("startup: saved upgrades ready; continuing without a footer purchase")
 		} else {
 			fmt.Println("startup: upgrade footer unavailable; continuing with periodic upgrade checks")
 		}
@@ -72,7 +82,7 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 			p.hero.interrupt()
 			p.state = [analysisCount]observation{}
 			p.queue = make(map[actionKind]gameAction)
-			p.export.requested = p.options.export != nil
+			p.export.requested = p.options.export != nil && !p.startupExported
 			fmt.Println("startup: heroes and upgrades ready; continuing automation")
 			return true
 		}
@@ -99,7 +109,7 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 		if out.frame.id == 0 || p.hero.pending != nil || !p.hero.due(now) {
 			return true
 		}
-		if out.found && !now.Before(p.nextUpgrades) {
+		if out.found && !p.startupSkillsReady && !now.Before(p.nextUpgrades) {
 			p.enqueue(gameAction{kind: buyHeroUpgrades, frame: out.frame, point: out.point}, now)
 		} else if out.upgradesKnown {
 			p.finishStartupUpgradePass(now)

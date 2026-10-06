@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"time"
@@ -58,16 +59,19 @@ type exportCommand struct {
 	before exportSnapshot
 }
 type exportJob struct {
-	ctx        context.Context
-	options    saveExportOptions
-	before     exportSnapshot
-	relicsOnly bool
+	ctx          context.Context
+	options      saveExportOptions
+	before       exportSnapshot
+	relicsOnly   bool
+	initialSetup bool
 }
 type exportResult struct {
-	plan     *ancientPlan
-	prestige *ancientcalc.TranscensionPreview
-	relics   *ancientcalc.RelicPreview
-	relicErr error
+	plan                *ancientPlan
+	prestige            *ancientcalc.TranscensionPreview
+	relics              *ancientcalc.RelicPreview
+	relicErr            error
+	heroSetup           *ancientcalc.HeroSetupPlan
+	heroErr, ancientErr error
 }
 
 func (p *gamePipeline) reportRelics(preview *ancientcalc.RelicPreview, err error) {
@@ -81,6 +85,7 @@ func (p *gamePipeline) reportRelics(preview *ancientcalc.RelicPreview, err error
 type saveExporter struct {
 	requested, active, waiting bool
 	relicsOnly                 bool
+	initialSetup               bool
 	step                       exportStep
 	window                     string
 	status                     string
@@ -222,14 +227,29 @@ func readExport(job exportJob) (exportResult, error) {
 			return exportResult{}, fmt.Errorf("waiting for new or changed clickerHeroSave*.txt in %q: %w", job.options.dir, err)
 		}
 		var result exportResult
-		if !job.relicsOnly {
-			value, err := calculateAncientData(job.ctx, data, path, job.options.reserve, job.options.skillRate, job.options.beyond8k)
-			if err != nil {
+		if job.initialSetup {
+			value, err := ancientcalc.PlanHeroSetup(job.ctx, data)
+			if err != nil && !errors.Is(err, ancientcalc.ErrHeroSetupUnsupported) {
 				last = err
 				continue
 			}
-			result.plan = &value
-			result.prestige = value.Transcension
+			result.heroErr = err
+			if err == nil {
+				result.heroSetup = &value
+			}
+		}
+		if !job.relicsOnly {
+			value, err := calculateAncientData(job.ctx, data, path, job.options.reserve, job.options.skillRate, job.options.beyond8k)
+			if err != nil {
+				if !job.initialSetup {
+					last = err
+					continue
+				}
+				result.ancientErr = err
+			} else {
+				result.plan = &value
+				result.prestige = value.Transcension
+			}
 		} else {
 			// An advisory Outsider roster does not require owned Ancients and
 			// cannot block a valid relic-only export when metadata is absent.

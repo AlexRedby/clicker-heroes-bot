@@ -174,6 +174,7 @@ type gamePipeline struct {
 	startupCheck                                        bool
 	startup                                             startupPhase
 	startupPassive                                      bool
+	startupExported, startupSkillsReady                 bool
 	startupDeadline                                     time.Time
 	nextUpgrades                                        time.Time
 	skill                                               skillPlanner
@@ -647,7 +648,17 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			replaceJob(jobs[fishAnalysis], analysisJob{frame: p.frame})
 			p.nextFish = now.Add(p.options.fishInterval)
 		}
-		if p.options.autoClickers && p.readers.autoClickers != nil && bootstrapHeroes(c) && p.clickerJobFrame == 0 && !now.Before(p.nextClickerRead) {
+		if p.startupCheck && bootstrapHeroes(c) {
+			if p.options.export != nil {
+				p.startupCheck, p.startup = false, startupSave
+				p.export.requested, p.export.initialSetup, p.export.relicsOnly = true, true, false
+				p.queue = make(map[actionKind]gameAction)
+				fmt.Println("startup: acquiring fresh save before hero preparation")
+			} else {
+				p.beginStartup()
+			}
+		}
+		if p.options.autoClickers && p.readers.autoClickers != nil && p.startup != startupSave && bootstrapHeroes(c) && p.clickerJobFrame == 0 && !now.Before(p.nextClickerRead) {
 			p.clickerJobFrame = p.frame.id
 			replaceJob(jobs[autoClickerAnalysis], analysisJob{frame: p.frame})
 			p.nextClickerRead = now.Add(5 * time.Second)
@@ -668,13 +679,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			return nil
 		}
 		if p.startupCheck {
-			if bootstrapHeroes(c) {
-				p.beginStartup()
-			} else {
-				return nil
-			}
+			return nil
 		}
-		if p.startup != noStartup {
+		if p.startup != noStartup && p.startup != startupSave {
 			if bootstrapHeroes(c) {
 				if p.startup != startupProgression && p.hero.due(now) && p.heroJobFrame == 0 && (p.hero.latest.frame.id == 0 || p.hero.pending != nil) {
 					p.heroJobFrame = p.frame.id
@@ -691,7 +698,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			if p.export.active && p.export.step == exportReadFile && p.export.jobFrame == 0 && c.window == p.export.window && c.known && !c.saveMenu {
 				jobCtx, cancel := context.WithDeadline(ctx, p.export.deadline)
 				p.export.cancel, p.export.jobFrame = cancel, p.frame.id
-				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before, relicsOnly: p.export.relicsOnly}})
+				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before, relicsOnly: p.export.relicsOnly, initialSetup: p.export.initialSetup}})
 			}
 			return nil
 		}
@@ -823,25 +830,52 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.ascension.nextRead, p.nextFish, p.nextProgression = time.Time{}, time.Time{}, time.Time{}
 			return nil
 		}
-		if out.export.plan == nil {
+		initial := p.export.initialSetup
+		if out.export.plan == nil && !initial {
 			return errors.New("save export returned no Ancient plan")
 		}
-		if err := writeAncientPlan(p.options.export.planOutput, *out.export.plan); err != nil {
-			p.export.interrupt()
-			p.controls.pauseLocked("save export plan output failed: "+err.Error(), false)
-			return nil
+		p.options.ascensionCapital = math.Inf(-1)
+		if out.export.plan != nil {
+			if err := writeAncientPlan(p.options.export.planOutput, *out.export.plan); err != nil {
+				p.export.interrupt()
+				p.controls.pauseLocked("save export plan output failed: "+err.Error(), false)
+				return nil
+			}
+			capital, err := ascensionSoulCapital(out.export.plan)
+			if err != nil {
+				return err
+			}
+			p.options.ascensionCapital = capital
 		}
-		capital, err := ascensionSoulCapital(out.export.plan)
-		if err != nil {
-			return err
-		}
-		p.options.ascensionCapital = capital
 		p.ancient = ancientPlanner{plan: out.export.plan}
 		p.export.interrupt()
 		p.export.requested = false
 		p.queue = make(map[actionKind]gameAction)
 		p.state = [analysisCount]observation{}
-		fmt.Println("save export: fresh plan ready")
+		if initial {
+			p.export.initialSetup = false
+			if out.export.ancientErr != nil {
+				fmt.Printf("startup: Ancient plan unavailable; continuing hero setup: %v\n", out.export.ancientErr)
+			}
+			p.beginStartup()
+			p.startupExported = true
+			if out.export.heroErr != nil {
+				fmt.Printf("startup: save hero data unsupported; using bounded visual setup: %v\n", out.export.heroErr)
+			}
+			if setup := out.export.heroSetup; setup != nil {
+				p.startupPassive = setup.PassiveReady
+				if setup.PassiveReady && !setup.NeedsLevels {
+					p.startup = startupUpgrades
+					p.startupSkillsReady = len(setup.MissingUpgrades) == 0
+					fmt.Println("startup: saved hero levels ready; skipping hero sweep")
+				}
+			}
+		}
+		if initial {
+			fmt.Println("save export: fresh initial save ready")
+		} else {
+			fmt.Println("save export: fresh plan ready")
+		}
 		return nil
 	}
 	if out.kind == fishAnalysis && !p.fishContext(out.frame.context) {
@@ -896,7 +930,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		}
 		return nil
 	}
-	if out.kind != fishAnalysis && !(out.kind == mercenaryAnalysis && p.frame.context.mercenaryDialog || out.kind == ascensionAnalysis && p.frame.context.relicJunk) && (p.export.requested && p.startup == noStartup && !p.startupCheck || p.frame.context.saveMenu) {
+	if out.kind != fishAnalysis && !(out.kind == mercenaryAnalysis && p.frame.context.mercenaryDialog || out.kind == ascensionAnalysis && p.frame.context.relicJunk) && (p.export.requested && (p.startup == noStartup && !p.startupCheck || p.startup == startupSave) || p.frame.context.saveMenu) {
 		p.metrics.dropped++
 		return nil
 	}
@@ -941,6 +975,8 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			if p.options.export != nil {
 				p.ancient = ancientPlanner{}
 				p.export.relicsOnly = false
+				p.export.initialSetup = false
+				p.startupExported, p.startupSkillsReady = false, false
 				p.queue = make(map[actionKind]gameAction)
 				if p.options.heroes && p.options.progression {
 					p.beginStartup()
@@ -1137,7 +1173,7 @@ func (p *gamePipeline) plan(now time.Time) {
 		}
 		return
 	}
-	if p.startup != startupUpgrades || !p.clickers.footerAttempted {
+	if p.startup != startupSave && (p.startup != startupUpgrades || !p.clickers.footerAttempted) {
 		p.planAutoClickers(now)
 	}
 	if p.planStartup(now) || p.planExport(now) || p.planAncients(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
@@ -1191,7 +1227,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if p.startup != noStartup && !(kind == handleMercenary && p.frame.context.mercenaryDialog || kind == handleAscension && p.frame.context.relicJunk) && kind != collectFish && kind != enableProgression && kind != buyHero && kind != buyHeroUpgrades && kind != scrollHeroes && kind != selectQuantity && kind != visitHeroes && kind != placeOwnedClicker && kind != clickMonster {
+		if p.startup != noStartup && !(kind == handleMercenary && p.frame.context.mercenaryDialog || kind == handleAscension && p.frame.context.relicJunk) && kind != handleExport && kind != collectFish && kind != enableProgression && kind != buyHero && kind != buyHeroUpgrades && kind != scrollHeroes && kind != selectQuantity && kind != visitHeroes && kind != placeOwnedClicker && kind != clickMonster {
 			delete(p.queue, kind)
 			continue
 		}
@@ -1213,7 +1249,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if (p.export.requested && p.startup == noStartup && !p.startupCheck || p.frame.context.saveMenu) && kind != handleExport && kind != collectFish && !(kind == handleMercenary && p.frame.context.mercenaryDialog && action.mercenary.step == cancelMercenaryRecovery || kind == handleAscension && p.frame.context.relicJunk && action.ascension == cancelAscension) {
+		if (p.export.requested && (p.startup == noStartup && !p.startupCheck || p.startup == startupSave) || p.frame.context.saveMenu) && kind != handleExport && kind != collectFish && !(kind == handleMercenary && p.frame.context.mercenaryDialog && action.mercenary.step == cancelMercenaryRecovery || kind == handleAscension && p.frame.context.relicJunk && action.ascension == cancelAscension) {
 			delete(p.queue, kind)
 			continue
 		}
