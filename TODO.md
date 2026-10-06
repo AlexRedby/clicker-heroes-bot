@@ -1,11 +1,9 @@
 # TODO
 
-## Automatic relic equipment
+## Automatic relic equipment native acceptance
 
-- Reuse the existing bounded save decoder, Active relic comparison and native inventory/tooltip/drag prototype where suitable. Plan clearly better equipment without weakening active bonuses; preserve ties, tradeoffs and unknown effects. Inspect existing native frames before requesting missing UI states.
-- Trigger a bounded Relics visit from the shared screenshot's animated new-relic alert, with a cooldown to avoid repeated visits for the same notification. Also inspect initial fresh-save relics and perform selection before automatic Ascension can salvage Junk Pile. Reuse owned Save acquisition rather than add independent capture/input loops or new progression flags.
-- Match candidate/equipment cards to their fresh snapshot, drag beneficial candidates into the four equipment slots with existing native smooth dragging, verify the resulting equipment and recompute remaining moves. Return to Heroes and continue automation when no clear improvement exists. Keep fish detection independent on Relics, suppress it only under covering dialogs, and preserve F8/modal/focus ownership.
-- Test new-alert phases/absent-alert negatives, empty/tied/better/tradeoff/unknown inventories, duplicates and changed inventory, missed drag/F8, startup and pre-Ascension ordering, no-replacement continuation and equipped-item preservation through junk salvage. Run native-dependency tests/build on the authorized Docker host with sanitized fixtures only; independent review, integrate and push main. Keep actual installed-game dragging and notification acceptance as remaining gates.
+- During ordinary play, verify that a yellow Relics notification leads to a bounded equipment visit, an accepted native drag for a clear Active improvement and a return to Heroes. Retain the relevant log and before/after frames if a move fails; fixture tests do not prove installed-game drag acceptance.
+- Verify equipment selection before an ordinary automatic Ascension and preservation of equipped items through its Junk Pile salvage. The current reader supports up to six visible junk cards in the first row; larger, obscured or ambiguous inventories defer Ascension without destroying items. Extend the reader when an actual unsupported layout is supplied.
 
 ## Save-guided startup native acceptance
 
@@ -70,7 +68,7 @@ Goal: complete the unattended active-play loop using the existing shared capture
 | --- | --- | --- | --- |
 | R1 | Validate the integrated bounded hero skill restart, place owned Auto Clickers, and recognize the last hero without a successor. | First | Two native cycles, verified bounded startup inputs and ordinary Q confirmation and clicker targets, no regression to latest-hero leveling, missing-input recovery, and terminal-roster evidence. |
 | R2 | Validate conservative Ancient price bounds in the installed game. | First | Compare Juggernaut/Solomon bulk purchases and Chor'gorloth discount/balance rounding to fresh before/after exports; preserve the reserve. |
-| R3 | Relic management: verify native Junk Pile salvage during Ascension and propose equipment selection for the active build. | First | Verified screens or exact missing-input list; explicit equipment and discard policy; unknown items are not silently destroyed. |
+| R3 | Relic management: verify automatic Active equipment selection and native Junk Pile salvage during Ascension. | First | Verified screens or exact missing-input list; explicit equipment and discard policy; unknown items are not silently destroyed. |
 | R4 | Gild redistribution: choose a good target consistent with latest-hero progression, calculate transfer cost from current save/state, and plan UI application. | Next | Keep earned gift opening separate; account for soul costs and reserves; no ruby spending and no repeated transfers to the same target. |
 | R5 | Combat and boss recovery: validate active/ready skill states, Energize/Reload waves, variable cooldowns, failed-boss retry and the Ascension handoff. | First | Concrete remaining gaps and fixture/live scenarios; reuse current skill/progression/Ascension policies rather than replacing them without evidence. |
 | R6 | Native Windows capture, SIFT, OCR and queue measurement with the integrated changes. | First | Collect p50/p95 timing and timeout rate, with real, rotated, small and scrollbar-overlap fish; no win inferred from fewer detections. |
@@ -148,7 +146,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 ### Automatic Ascension
 
 - Verify missed input and manual cancellation with the Ascension dialog open, followed by the integrated zone-1 hero/bulk-upgrade/export handoff. The user observed one successful full-combat-loss reset; that does not establish two consecutive unattended cycles.
-- Verify the integrated Junk Pile salvage -> Ascension transition in the installed game after the supplied native blocker passes fixture and queue tests. Equipment management remains advisory; unknown dialogs must not trigger salvage.
+- Verify the integrated Junk Pile salvage -> Ascension transition in the installed game after the supplied native blocker passes fixture and queue tests. Equipment preflight must complete before junk salvage; unknown dialogs must not trigger salvage.
 
 ### Hero Souls spending
 
