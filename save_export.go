@@ -140,7 +140,9 @@ func (p *gamePipeline) planExport(now time.Time) bool {
 		e.active, e.step, e.window = true, exportOpenMenu, p.frame.context.window
 		e.deadline = now.Add(20 * time.Second)
 		p.queue = make(map[actionKind]gameAction)
-		if e.relicsOnly {
+		if e.relicsOnly && p.relic.active {
+			fmt.Println("save export: checking relic equipment")
+		} else if e.relicsOnly {
 			fmt.Println("save export: checking relics before Ascension (read only)")
 		} else {
 			fmt.Println("save export: started")

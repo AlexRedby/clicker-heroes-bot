@@ -26,6 +26,7 @@ const (
 	exportAnalysis
 	outsiderAnalysis
 	autoClickerAnalysis
+	relicAnalysis
 	analysisCount
 )
 
@@ -41,6 +42,7 @@ const (
 	handleAscension
 	handleAncient
 	handleExport
+	handleRelic
 	parkPointer
 	selectQuantity
 	scrollHeroes
@@ -52,7 +54,7 @@ const (
 
 type gameContext struct {
 	known, heroes, mercenaries, questDialog, ascension, ancients, ancientDialog, saveMenu, outsiders bool
-	mercenaryDialog, relicJunk                                                                       bool
+	mercenaryDialog, relicJunk, relics                                                               bool
 	modal                                                                                            gildModal
 	window                                                                                           string
 	bounds                                                                                           image.Rectangle
@@ -65,17 +67,19 @@ type gameFrame struct {
 	context                gameContext
 }
 type analysisJob struct {
-	frame        gameFrame
-	export       *exportJob
-	heroBefore   *heroObservation
-	startup      startupPhase
-	sweep        startupSweep
-	upgrades     bool
-	modeOnly     bool
-	ancientNames bool
-	economy      bool
-	skills       [9]skillState
-	outsiderBase *ancientcalc.TranscensionPreview
+	frame         gameFrame
+	export        *exportJob
+	heroBefore    *heroObservation
+	startup       startupPhase
+	sweep         startupSweep
+	upgrades      bool
+	modeOnly      bool
+	ancientNames  bool
+	economy       bool
+	skills        [9]skillState
+	outsiderBase  *ancientcalc.TranscensionPreview
+	relicSnapshot *ancientcalc.RelicSnapshot
+	relicHover    bool
 }
 type observation struct {
 	kind          analysisKind
@@ -96,6 +100,7 @@ type observation struct {
 	outsider      outsiderObservation
 	outsiderPlan  outsiderAdvice
 	clickerPool   autoClickerPool
+	relic         relicObservation
 	err           error
 }
 type gameAction struct {
@@ -111,6 +116,7 @@ type gameAction struct {
 	ancient       ancientCommand
 	export        *exportCommand
 	clicker       autoClickerCommand
+	relic         relicCommand
 	queuedAt      time.Time
 }
 type actionResult struct {
@@ -183,6 +189,7 @@ type gamePipeline struct {
 	ancient                                             ancientPlanner
 	export                                              saveExporter
 	relicMessage                                        string
+	relic                                               relicPlanner
 	outsiderMessage                                     string
 	outsiderBase                                        *ancientcalc.TranscensionPreview
 	outsiderJobFrame                                    uint64
@@ -272,6 +279,8 @@ func recognizedGame(screen image.Image) (gameContext, error) {
 	c.mercenaries = known && mercenaryTabSelected(screen)
 	c.ancients = known && ancientTabSelected(screen)
 	c.outsiders = c.known && outsiderTabSelected(screen)
+	c.relics = relicPanelPresent(screen)
+	c.known = c.known || c.relics
 	return c, err
 }
 
@@ -293,6 +302,8 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 	switch kind {
 	case autoClickerAnalysis:
 		out.clickerPool, out.err = p.readers.autoClickers(ctx, job.frame)
+	case relicAnalysis:
+		out.relic, out.err = readRelicObservation(ctx, job.frame, job.relicSnapshot, job.relicHover)
 	case fishAnalysis:
 		out.point, out.found, out.err = p.readers.fish(job.frame.image)
 	case skillAnalysis:
@@ -366,6 +377,8 @@ func replaceJob(ch chan analysisJob, job analysisJob) {
 }
 
 func (p *gamePipeline) reset(generation uint64) {
+	relicExport := p.relic.active && p.export.relicsOnly && p.export.requested
+	relicWindow := p.relic.window
 	// F8 revokes the previous reset assessment. A fresh boss attempt must be
 	// possible even when the old farming planner had already exhausted retries.
 	if generation != p.generation && p.options.ascension {
@@ -374,6 +387,12 @@ func (p *gamePipeline) reset(generation uint64) {
 	p.ancient.interrupt()
 	p.export.interrupt()
 	p.ascension.interrupt()
+	p.relic.interrupt()
+	if relicExport {
+		// A relic-only retry still belongs to equipment planning, never to the
+		// advisory export path. Revoked drag decisions require a fresh snapshot.
+		p.relic = relicPlanner{active: true, step: relicAcquire, window: relicWindow, deadline: time.Now().Add(90 * time.Second)}
+	}
 	p.generation = generation
 	p.layout++
 	p.queue = make(map[actionKind]gameAction)
@@ -564,7 +583,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		c.window = p.readers.window()
 		if c.window == "!outside-game" {
 			c.outsiders = false
-			c.ancients, c.ancientDialog, c.saveMenu, c.relicJunk = false, false, false, false
+			c.ancients, c.ancientDialog, c.saveMenu, c.relicJunk, c.relics = false, false, false, false, false
 			c.known, c.heroes, c.mercenaries, c.questDialog, c.mercenaryDialog, c.ascension, c.modal = false, false, false, false, false, false, noGildModal
 		}
 		if c.window == "" && !p.focusFallback {
@@ -594,7 +613,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.ancient.interrupt()
 			p.controls.pauseLocked(p.ancient.pauseReason(), true)
 		}
-		if c.relicJunk != old.relicJunk || c.outsiders != old.outsiders || c.saveMenu != old.saveMenu || c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.mercenaryDialog != old.mercenaryDialog || geometryChanged {
+		if c.relics != old.relics || c.relicJunk != old.relicJunk || c.outsiders != old.outsiders || c.saveMenu != old.saveMenu || c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.mercenaryDialog != old.mercenaryDialog || geometryChanged {
 			if geometryChanged || !p.mercenary.expects(c, now) {
 				p.mercenary.interrupt()
 			}
@@ -609,10 +628,16 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			if geometryChanged && !exportFocus {
 				p.fishTarget = nil
 				p.ascension.interrupt()
+				if p.relic.active {
+					p.relicFailed("game geometry changed", now)
+					p.finishRelics(now, false)
+				}
 			} else if !p.ascension.active {
 				p.ascension.invalidate()
 			}
 			p.ascension.jobFrame = 0
+			p.relic.jobFrame = 0
+			p.relic.latest = relicObservation{}
 			p.ancient.jobFrame = 0
 			p.outsiderJobFrame = 0
 			p.nextOutsider = time.Time{}
@@ -658,7 +683,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 				p.beginStartup()
 			}
 		}
-		if p.options.autoClickers && p.readers.autoClickers != nil && p.startup != startupSave && bootstrapHeroes(c) && p.clickerJobFrame == 0 && !now.Before(p.nextClickerRead) {
+		if !p.relic.active && p.options.autoClickers && p.readers.autoClickers != nil && p.startup != startupSave && bootstrapHeroes(c) && p.clickerJobFrame == 0 && !now.Before(p.nextClickerRead) {
 			p.clickerJobFrame = p.frame.id
 			replaceJob(jobs[autoClickerAnalysis], analysisJob{frame: p.frame})
 			p.nextClickerRead = now.Add(5 * time.Second)
@@ -678,10 +703,18 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.scheduleMercenaryRead(now, jobs)
 			return nil
 		}
+		if p.relic.active && !p.export.requested {
+			if c.relics && (p.relic.step == relicInspect || p.relic.step == relicHover) && p.relic.latest.frame.id == 0 && p.relic.jobFrame == 0 && p.frame.id > p.relic.lastInput && !now.Before(p.relic.nextRead) {
+				p.relic.jobFrame = p.frame.id
+				snapshot := p.relic.snapshot
+				replaceJob(jobs[relicAnalysis], analysisJob{frame: p.frame, relicSnapshot: &snapshot, relicHover: p.relic.step == relicHover})
+			}
+			return nil
+		}
 		if p.startupCheck {
 			return nil
 		}
-		if p.startup != noStartup && p.startup != startupSave {
+		if !p.relic.active && p.startup != noStartup && p.startup != startupSave {
 			if bootstrapHeroes(c) {
 				if p.startup != startupProgression && p.hero.due(now) && p.heroJobFrame == 0 && (p.hero.latest.frame.id == 0 || p.hero.pending != nil) {
 					p.heroJobFrame = p.frame.id
@@ -704,6 +737,14 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		}
 		if c.saveMenu {
 			return nil
+		}
+		if p.options.progression && c.heroes {
+			alert := relicNotification(p.frame.image)
+			if alert && p.relic.previousAlert {
+				p.relic.notice = true
+				p.ascension.relicsChecked = false
+			}
+			p.relic.previousAlert = alert
 		}
 		if p.ascension.active && (p.ascension.step == openAscension || p.ascension.step == waitAscensionReset || p.ascension.step == waitAscensionJunk || p.ascension.latest.frame.id == 0) && c.window != "!outside-game" && p.ascension.jobFrame == 0 && p.frame.id > p.ascension.lastInputFrame && !now.Before(p.ascension.nextRead) {
 			p.ascension.jobFrame = p.frame.id
@@ -762,6 +803,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 }
 
 func (p *gamePipeline) accept(ctx context.Context, out observation, now time.Time) error {
+	if out.kind == relicAnalysis && out.frame.id == p.relic.jobFrame {
+		p.relic.jobFrame = 0
+	}
 	if out.kind == outsiderAnalysis && out.frame.id == p.outsiderJobFrame {
 		p.outsiderJobFrame = 0
 	}
@@ -809,10 +853,17 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 				p.reportRelics(nil, reason)
 			}
 			p.export.interrupt()
+			if p.relic.active {
+				p.export.requested = false
+				p.relicFailed(reason.Error(), now)
+				return nil
+			}
 			p.controls.pauseLocked(fmt.Sprintf("save export failed: %v; focus the game and press F8 to retry", reason), false)
 			return nil
 		}
-		p.reportRelics(out.export.relics, out.export.relicErr)
+		if !p.relic.active && !(p.options.progression && p.export.initialSetup) {
+			p.reportRelics(out.export.relics, out.export.relicErr)
+		}
 		// A newer export with missing prestige metadata revokes the older roster
 		// for advice only; ordinary Ancient/relic stages remain independent.
 		p.outsiderBase = out.export.prestige
@@ -822,6 +873,12 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		if p.export.relicsOnly {
 			p.export.interrupt()
 			p.export.requested = false
+			if p.relic.active {
+				if err := p.acceptRelicSave(out.export.relics, now); err != nil {
+					p.relicFailed(err.Error(), now)
+				}
+				return nil
+			}
 			p.queue = make(map[actionKind]gameAction)
 			p.state = [analysisCount]observation{}
 			p.ascension.invalidate()
@@ -870,6 +927,13 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 					fmt.Println("startup: saved hero levels ready; skipping hero sweep")
 				}
 			}
+		}
+		if initial && p.options.progression && out.export.relics != nil {
+			p.relic = relicPlanner{active: true, step: relicAcquire, deadline: now.Add(90 * time.Second), window: p.frame.context.window}
+			if err := p.acceptRelicSave(out.export.relics, now); err != nil {
+				p.relicFailed(err.Error(), now)
+			}
+			p.ascension.relicsChecked = false // Startup never authorizes a later reset.
 		}
 		if initial {
 			fmt.Println("save export: fresh initial save ready")
@@ -931,6 +995,20 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		return nil
 	}
 	if out.kind != fishAnalysis && !(out.kind == mercenaryAnalysis && p.frame.context.mercenaryDialog || out.kind == ascensionAnalysis && p.frame.context.relicJunk) && (p.export.requested && (p.startup == noStartup && !p.startupCheck || p.startup == startupSave) || p.frame.context.saveMenu) {
+		p.metrics.dropped++
+		return nil
+	}
+	if out.kind == relicAnalysis {
+		if !p.relic.active || out.frame.layout != p.layout || out.frame.context != p.frame.context || out.frame.id < p.barriers[relicAnalysis] || out.frame.id <= p.relic.lastInput || out.frame.id <= p.relic.latest.frame.id || (p.relic.step != relicInspect && p.relic.step != relicHover) {
+			p.metrics.dropped++
+			return nil
+		}
+		if err := p.relic.observe(out.relic, out.err); err != nil {
+			p.relicFailed(err.Error(), now)
+		}
+		return nil
+	}
+	if p.relic.active && out.kind != fishAnalysis {
 		p.metrics.dropped++
 		return nil
 	}
@@ -1173,10 +1251,18 @@ func (p *gamePipeline) plan(now time.Time) {
 		}
 		return
 	}
+	if p.relic.active || p.options.progression && p.frame.context.relics {
+		if p.export.requested {
+			p.planExport(now)
+		} else {
+			p.planRelics(now)
+		}
+		return
+	}
 	if p.startup != startupSave && (p.startup != startupUpgrades || !p.clickers.footerAttempted) {
 		p.planAutoClickers(now)
 	}
-	if p.planStartup(now) || p.planExport(now) || p.planAncients(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
+	if p.planStartup(now) || p.planExport(now) || p.planAncients(now) || p.planRelics(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
 		return
 	}
 	if p.options.mercenaries {
@@ -1227,7 +1313,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if p.startup != noStartup && !(kind == handleMercenary && p.frame.context.mercenaryDialog || kind == handleAscension && p.frame.context.relicJunk) && kind != handleExport && kind != collectFish && kind != enableProgression && kind != buyHero && kind != buyHeroUpgrades && kind != scrollHeroes && kind != selectQuantity && kind != visitHeroes && kind != placeOwnedClicker && kind != clickMonster {
+		if p.startup != noStartup && kind != handleRelic && !(kind == handleMercenary && p.frame.context.mercenaryDialog || kind == handleAscension && p.frame.context.relicJunk) && kind != handleExport && kind != collectFish && kind != enableProgression && kind != buyHero && kind != buyHeroUpgrades && kind != scrollHeroes && kind != selectQuantity && kind != visitHeroes && kind != placeOwnedClicker && kind != clickMonster {
 			delete(p.queue, kind)
 			continue
 		}
@@ -1257,7 +1343,17 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if (p.ancient.active || p.frame.context.ancientDialog || (p.startup == noStartup && !p.startupCheck && p.ancient.plan != nil && !p.ancient.finished)) && kind != handleAncient && kind != collectFish {
+		if (p.relic.active || p.frame.context.relics) && kind != handleRelic && kind != handleExport && kind != collectFish {
+			delete(p.queue, kind)
+			continue
+		}
+		if kind == handleRelic && (!p.relic.active || action.relic.step != p.relic.step || !relicActionStable(action, p.frame)) {
+			delete(p.queue, kind)
+			p.relic.latest = relicObservation{}
+			p.relic.nextRead = now
+			continue
+		}
+		if (p.ancient.active || p.frame.context.ancientDialog || (p.startup == noStartup && !p.startupCheck && p.ancient.plan != nil && !p.ancient.finished)) && kind != handleAncient && kind != collectFish && !(p.relic.active && (kind == handleRelic || kind == handleExport)) {
 			delete(p.queue, kind)
 			continue
 		}
@@ -1391,10 +1487,25 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 		if a.kind == collectFish && (!p.fishContext(p.frame.context) || a.frame.context != p.frame.context) {
 			return errInputContext
 		}
+		if a.kind == handleRelic && !relicActionStable(a, p.frame) {
+			return errInputContext
+		}
 		if scroll, ok := listScrollAction(a); ok {
 			return scrollList(ctx, input, scroll)
 		}
 		switch a.kind {
+		case handleRelic:
+			switch a.relic.step {
+			case relicHover, relicPark:
+				return input.move(a.point)
+			case relicEquip:
+				if err := input.drag(a.point, a.target); err != nil {
+					return err
+				}
+				return input.move(parkPoint(a.frame.context.bounds))
+			default:
+				return input.click(a.point)
+			}
 		case handleExport:
 			if a.export.step == exportRestoreGame {
 				return input.focus(a.export.window)
@@ -1510,6 +1621,10 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 	p.fishAfter = p.frame.id
 	invalidate := func(kind analysisKind) { p.barriers[kind] = p.frame.id + 1; p.state[kind] = observation{} }
 	switch a.kind {
+	case handleRelic:
+		p.relic.sent(a, now)
+		invalidate(relicAnalysis)
+		p.queue = make(map[actionKind]gameAction)
 	case handleExport:
 		p.export.sent(a, now)
 		p.queue = make(map[actionKind]gameAction)
@@ -1575,6 +1690,11 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.nextMercenary = time.Time{}
 		delete(p.queue, handleMercenary)
 		p.hero.obstructed(now)
+		invalidate(relicAnalysis)
+		p.relic.latest, p.relic.nextRead = relicObservation{}, time.Time{}
+		if p.relic.active && p.relic.step == relicHover {
+			p.relic.step = relicInspect
+		}
 		fmt.Printf("clicked fish at (%d, %d)\n", a.point.X, a.point.Y)
 	case castSkill:
 		p.skill.sent(a.key, a.skills, a.frame.id, now)
@@ -1646,7 +1766,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 
 func (m pipelineMetrics) String() string {
 	parts := []string{fmt.Sprintf("captures=%d capture=%s actions=%d input=%s queue=%s stale=%d", m.captures, m.captureTime, m.actions, m.inputTime, m.queueTime, m.dropped)}
-	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers"} {
+	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers", "relics"} {
 		parts = append(parts, fmt.Sprintf("%s=%d/%s", name, m.counts[i], m.elapsed[i]))
 	}
 	return strings.Join(parts, " ")
@@ -1730,6 +1850,13 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 			return false
 		}
 		if p.options.export != nil && !p.ascension.relicsChecked {
+			if p.options.progression {
+				if now.Before(p.relic.nextCheck) {
+					return false
+				}
+				p.startRelics(now)
+				return p.planExport(now)
+			}
 			p.export.requested, p.export.relicsOnly = true, true
 			return p.planExport(now)
 		}
