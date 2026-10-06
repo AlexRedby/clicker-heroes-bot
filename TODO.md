@@ -2,13 +2,13 @@
 
 ## Save-guided startup native acceptance
 
-- In the installed game, start `-progression` mid-run with a complete skill setup: confirm one fresh export before setup, no top-to-bottom preparation sweep and no duplicate export before Ancient planning. A free footer Auto Clicker can still require one direct footer visit; counts and assignments remain UI observations.
+- Confirm that initial Save acquisition produces one fresh export before setup and no duplicate export before Ancient planning. A free footer Auto Clicker can still require one direct footer visit; counts and assignments remain UI observations.
 - Start with a missing earlier hire/active skill, then with sufficient levels but an unpurchased upgrade: confirm the first case uses the bounded visual preparation and the second goes directly to Buy Available Upgrades. The latest hero's unavailable ordinary upgrades must remain in normal progression.
 - Exercise F8 during initial Save/Explorer handoff, then resume: confirm only a fresh completed export is accepted. After a confirmed Ascension, check zero-gold preparation and a new post-startup export; the earlier hero snapshot and Ancient plan must not carry over.
 
 ## Cid and footer clicker native acceptance
 
-- Verify that startup and periodic upgrade checks scroll the installed Heroes list to its actual end and reacquire a complete Buy Available Upgrades control. Include a missed drag, F8 and a final drag near the optional pass deadline; the last free clicker must reach the footer when available, and an obscured control must still allow ordinary automation to continue.
+- Verify recovery to a complete Buy Available Upgrades control after a missed drag, F8 and a final drag near the optional pass deadline. The last free clicker must reach the footer when available, and an obscured control must still allow ordinary automation to continue.
 - Verify the dim-artwork reader and conditional second skill sweep after Ascension: with initially limited gold, hire a passive hero, revisit Cid, level him and buy skill 1 through Buy Available Upgrades. Capture the full startup log and before/after frames; fixture tests do not establish native input acceptance or sufficient gold during the second pass.
 - Verify that a freshly recognized free Auto Clicker reaches Buy Available Upgrades despite an unconfirmed monster placement or delayed pool recognition. Include F8 and an unreadable pool; the optional footer pass must remain bounded and ordinary automation must continue.
 - If all three clickers again end up on the monster, retain the analyzed `artifacts/auto-clicker-unconfirmed-*.png` and expected/read pool log. Distinguish bot input from manual assignments; the previous screenshot was taken 29 minutes after startup and does not prove one input assigned all three.
