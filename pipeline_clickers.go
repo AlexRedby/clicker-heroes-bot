@@ -14,7 +14,7 @@ func (p *gamePipeline) planAutoClickers(now time.Time) {
 	if out.frame.id == 0 || !out.clickerPool.known || out.clickerPool.available == 0 || !autoClickerPoolStable(out.frame.image, p.frame.image) {
 		return
 	}
-	if !p.clickerFooterUntil.IsZero() && !now.Before(p.clickerFooterUntil) {
+	if !p.clickerFooterUntil.IsZero() && !now.Before(p.clickerFooterUntil) && !p.startupFooterGrace(now) {
 		p.clickers.noteFooterUnavailable()
 		p.clickerFooterUntil = time.Time{}
 	}

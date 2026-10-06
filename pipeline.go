@@ -304,9 +304,15 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 			var height int
 			out.hero.thumb, height, out.hero.thumbFound = heroScrollbarThumb(job.frame.image)
 			b := job.frame.image.Bounds()
-			out.hero.bottom = out.hero.thumbFound && absDiff(out.hero.thumb.Y+height/2, b.Min.Y+b.Dy()*965/1000) <= max(3, b.Dy()/100)
+			// The footer needs the actual end; the ordinary row tolerance can
+			// leave its text clipped just below the viewport.
+			out.hero.bottom = out.hero.thumbFound && absDiff(out.hero.thumb.Y+height/2, b.Min.Y+b.Dy()*965/1000) <= max(3, b.Dy()/250)
+			if out.hero.thumbFound && !out.hero.bottom {
+				out.hero.startupScroll = image.Pt(out.hero.thumb.X, b.Max.Y-1)
+			}
 			if !out.hero.thumbFound || out.hero.bottom {
 				out.point, out.upgradesKnown, out.found, out.err = readHeroUpgradeFooter(ctx, job.frame.image)
+				out.hero.bottom = out.hero.bottom || out.upgradesKnown
 			}
 		} else if job.startup == startupHeroes {
 			out.hero, out.err = readStartupHeroObservation(ctx, job.frame, p.readers.heroes, job.heroBefore, job.sweep)
@@ -732,8 +738,11 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		}
 		if p.options.heroes && c.heroes && p.hero.due(now) && p.heroJobFrame == 0 && (p.hero.latest.frame.id == 0 || p.hero.pending != nil) {
 			p.heroJobFrame = p.frame.id
-			upgrades := p.hero.pending == nil && (!p.clickers.upgrades || !p.clickerFooterUntil.IsZero()) && !now.Before(p.nextUpgrades)
-			if upgrades {
+			footerRetry := p.state[heroAnalysis].upgrades && p.state[heroAnalysis].hero.startupScroll.Y != 0 &&
+				p.hero.scrollFailures < 3 && now.Before(p.nextUpgrades)
+			upgrades := footerRetry || p.hero.pending != nil && p.hero.pending.action.hero.startup ||
+				p.hero.pending == nil && (!p.clickers.upgrades || !p.clickerFooterUntil.IsZero()) && !now.Before(p.nextUpgrades)
+			if upgrades && p.hero.pending == nil && !footerRetry {
 				p.nextUpgrades = now.Add(30 * time.Second)
 			}
 			replaceJob(jobs[heroAnalysis], analysisJob{frame: p.frame, heroBefore: p.hero.before(), upgrades: upgrades})
@@ -1044,8 +1053,18 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		}
 	case heroAnalysis:
 		if out.upgrades {
+			p.hero.observe(out.hero, p.state[fishAnalysis], now)
+			if p.hero.pending != nil || p.hero.latest.frame.id != out.frame.id {
+				if p.hero.pending == nil && p.hero.scrollFailures >= 3 {
+					p.hero.nextScan = p.nextUpgrades
+				}
+				return nil
+			}
 			if out.found {
 				p.enqueue(gameAction{kind: buyHeroUpgrades, frame: out.frame, point: out.point}, now)
+				p.hero.latest = heroObservation{}
+			} else if action, ok := p.hero.action(now); ok {
+				p.enqueue(action, now)
 			}
 			return nil
 		}
