@@ -148,6 +148,26 @@ var relicAncientIDs = map[int]int{
 	22: 8, 24: 4, 25: 3, 26: 29, 27: 21, 28: 20,
 }
 
+// RelicAncientName resolves the tooltip label from the existing Ancient catalog.
+func RelicAncientName(kind int) string {
+	id, ok := relicAncientIDs[kind]
+	if !ok {
+		return ""
+	}
+	var definitions struct {
+		Ancients []ancientDefinition `json:"ancients"`
+	}
+	if json.Unmarshal(ancientDataJSON, &definitions) != nil {
+		return ""
+	}
+	for _, definition := range definitions.Ancients {
+		if definition.ID == id {
+			return definition.Name
+		}
+	}
+	return ""
+}
+
 type RelicSuggestion struct {
 	UID        int `json:"uid"`
 	Slot       int `json:"slot"`
@@ -170,6 +190,28 @@ func PreviewRelics(ctx context.Context, exported []byte) (RelicPreview, error) {
 	if err != nil {
 		return RelicPreview{}, err
 	}
+	preview := previewRelicSnapshot(ctx, snapshot, false)
+	if ctx != nil && ctx.Err() != nil {
+		return RelicPreview{}, ctx.Err()
+	}
+	return preview, nil
+}
+
+// PlanRelicEquipment uses the same Active comparison as the advisory preview.
+// Its caller must establish the live inventory layout and match the move's UID
+// before dragging. It never authorizes salvage or spending Forge Cores.
+func PlanRelicEquipment(snapshot RelicSnapshot) (*RelicSuggestion, error) {
+	if snapshot.EquipmentSlots != 4 {
+		return nil, errors.New("unsupported relic equipment slot count")
+	}
+	preview := previewRelicSnapshot(nil, snapshot, true)
+	if len(preview.UnsupportedTypes) != 0 {
+		return nil, errors.New("unsupported relic effects require manual review")
+	}
+	return preview.Suggestion, nil
+}
+
+func previewRelicSnapshot(ctx context.Context, snapshot RelicSnapshot, verifiedJunk bool) RelicPreview {
 	out := RelicPreview{
 		Readiness: "unknown", Reason: "A save snapshot cannot prove current inventory or authorize Ascension. Suggestions require UI confirmation and manual application.",
 		Snapshot: snapshot, UnsupportedTypes: []int{},
@@ -192,11 +234,11 @@ func PreviewRelics(ctx context.Context, exported []byte) (RelicPreview, error) {
 	sort.Ints(out.UnsupportedTypes)
 	if len(out.UnsupportedTypes) > 0 {
 		out.Reason = "Unsupported relic effects require manual review; no equipment suggestion or live readiness."
-		return out, nil
+		return out
 	}
-	if layoutUnknown {
+	if layoutUnknown && !verifiedJunk {
 		out.Reason = "Slots beyond the supported equipment range need UI confirmation; no equipment suggestion or live readiness."
-		return out, nil
+		return out
 	}
 	for slot := 1; slot <= snapshot.EquipmentSlots; slot++ {
 		current := Relic{}
@@ -208,18 +250,18 @@ func PreviewRelics(ctx context.Context, exported []byte) (RelicPreview, error) {
 		}
 		for _, candidate := range snapshot.Items {
 			if ctx != nil && ctx.Err() != nil {
-				return RelicPreview{}, ctx.Err()
+				return out
 			}
 			if candidate.Slot >= 1 && candidate.Slot <= snapshot.EquipmentSlots {
 				continue // Never remove a relic already contributing from another equipment slot.
 			}
 			if relicDominates(candidate, current) {
 				out.Suggestion = &RelicSuggestion{UID: candidate.UID, Slot: slot, ReplaceUID: current.UID}
-				return out, nil
+				return out
 			}
 		}
 	}
-	return out, nil
+	return out
 }
 
 func relicDominates(candidate, current Relic) bool {

@@ -160,3 +160,83 @@ func TestRelicPreviewRemainsManualAndUnknown(t *testing.T) {
 		t.Fatalf("already equipped candidate moved out of its slot: %+v", out)
 	}
 }
+
+func TestRelicEquipmentPlansVerifiedJunkAndConverges(t *testing.T) {
+	item := func(uid, slot int, level string) Relic {
+		return Relic{UID: uid, Slot: slot, Bonuses: []RelicBonus{{Type: 2, Level: level}}}
+	}
+	snapshot := RelicSnapshot{EquipmentSlots: 4, Items: []Relic{item(1, 1, "10"), item(2, 2, "10"), item(3, 3, "10"), item(4, 4, "10"), item(5, 5, "20"), item(6, 6, "30")}}
+	moves := 0
+	for {
+		move, err := PlanRelicEquipment(snapshot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if move == nil {
+			break
+		}
+		if move.UID == move.ReplaceUID || move.Slot < 1 || move.Slot > 4 {
+			t.Fatalf("invalid move: %+v", move)
+		}
+		for i := range snapshot.Items {
+			if snapshot.Items[i].UID == move.ReplaceUID {
+				snapshot.Items[i].Slot = 0
+			}
+			if snapshot.Items[i].UID == move.UID {
+				snapshot.Items[i].Slot = move.Slot
+			}
+		}
+		moves++
+		if moves > 8 {
+			t.Fatal("equipment plan did not converge")
+		}
+	}
+	if moves != 3 {
+		t.Fatalf("expected stronger item then useful displaced upgrade, got %d moves", moves)
+	}
+	// A useful candidate fills an empty slot; already equipped items cannot be candidates.
+	empty := RelicSnapshot{EquipmentSlots: 4, Items: []Relic{item(7, 5, "1")}}
+	move, err := PlanRelicEquipment(empty)
+	if err != nil || move == nil || move.UID != 7 || move.Slot != 1 || move.ReplaceUID != 0 {
+		t.Fatalf("empty slot: %+v %v", move, err)
+	}
+	empty.Items[0].Slot = 1
+	if move, err = PlanRelicEquipment(empty); err != nil || move != nil {
+		t.Fatalf("equipped candidate moved: %+v %v", move, err)
+	}
+}
+
+func TestRelicEquipmentPreservesTiesTradeoffsAndUnknowns(t *testing.T) {
+	base := []Relic{{UID: 1, Slot: 1, Bonuses: []RelicBonus{{Type: 2, Level: "10"}}}, {UID: 2, Slot: 2, Bonuses: []RelicBonus{{Type: 2, Level: "10"}}}, {UID: 3, Slot: 3, Bonuses: []RelicBonus{{Type: 2, Level: "10"}}}, {UID: 4, Slot: 4, Bonuses: []RelicBonus{{Type: 2, Level: "10"}}}}
+	for _, tc := range []struct {
+		name    string
+		bonuses []RelicBonus
+		unknown bool
+	}{
+		{"tie", []RelicBonus{{Type: 2, Level: "10"}}, false},
+		{"tradeoff", []RelicBonus{{Type: 26, Level: "100"}}, false},
+		{"idle only", []RelicBonus{{Type: 1, Level: "100"}, {Type: 24, Level: "100"}}, false},
+		{"unknown", []RelicBonus{{Type: 23, Level: "1"}}, true},
+		{"starting zone", []RelicBonus{{Type: 6, Level: "1"}}, true},
+		{"Solomon after Transcension", []RelicBonus{{Type: 25, Level: "1"}}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snapshot := RelicSnapshot{EquipmentSlots: 4, Transcendent: true, Items: append(append([]Relic{}, base...), Relic{UID: 5, Slot: 5, Bonuses: tc.bonuses})}
+			move, err := PlanRelicEquipment(snapshot)
+			if move != nil || (err != nil) != tc.unknown {
+				t.Fatalf("unexpected move: %+v %v", move, err)
+			}
+		})
+	}
+	if move, err := PlanRelicEquipment(RelicSnapshot{EquipmentSlots: 5}); err == nil || move != nil {
+		t.Fatal("unsupported equipment layout allowed")
+	}
+}
+
+func TestRelicAncientName(t *testing.T) {
+	for kind, want := range map[int]string{2: "Fragsworth", 15: "Bhaal", 28: "Vaagur", 23: "", 0: ""} {
+		if got := RelicAncientName(kind); got != want {
+			t.Errorf("bonus %d: got %q, want %q", kind, got, want)
+		}
+	}
+}
