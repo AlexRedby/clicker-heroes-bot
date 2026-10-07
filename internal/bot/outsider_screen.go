@@ -95,7 +95,7 @@ func outsiderQuantity(screen image.Image) string {
 }
 
 func outsiderCardTops(screen image.Image) []int {
-	// ponytail: the supported skin has a continuous black left border. Require
+	// The supported skin has a continuous black left border. Require
 	// a full card; additional skins need their own calibrated border anchor.
 	b := screen.Bounds()
 	r := vision.Rect(screen, image.Rect(50, 300, 51, 718))
@@ -214,13 +214,13 @@ func readOutsiderObservation(ctx context.Context, frame gameFrame) (outsiderObse
 	for _, top := range outsiderCardTops(screen) {
 		nameRegion := image.Rect(238, top+10, 390, top+36)
 		name := ""
-		for i, asset := range []string{"xyliqil", "chorgorloth"} {
-			found, err := vision.MatchControl(screen, nameRegion, "outsiders/"+asset+".png")
+		for _, candidate := range []struct{ name, asset string }{{"Xyliqil", "xyliqil"}, {"Chor'gorloth", "chorgorloth"}, {"Orphalas", "orphalas"}, {"Sen-Akhan", "senakhan"}} {
+			found, err := vision.MatchControl(screen, nameRegion, "outsiders/"+candidate.asset+".png")
 			if err != nil {
 				return out, err
 			}
 			if found {
-				name = outsiderNames[i]
+				name = candidate.name
 				break
 			}
 		}

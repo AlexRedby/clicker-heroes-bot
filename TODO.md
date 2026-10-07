@@ -167,3 +167,9 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 - Match the fresh `-mode transcension-plan` preview to the installed game's reward/TP display, Outsider costs and respec/refund semantics. Capture reward confirmation, respec controls, one small purchase before/after, immediate manual-reset HUD/export and first-run Ancient summon controls.
 - Enable native Transcension and Outsider spending only after two complete consecutive Ascension/restart cycles, a confirmed combat wall and active-play timing evidence, verified reset recovery and an explicit enabled mode. The current preview is informational; save timestamps do not establish a reset decision.
+## Transcension owner implementation
+
+- Reuse the native Go reward/allocation and existing navigation/bootstrap; define fresh-export timing, one-shot reset ownership, post-reset receipt and restoration handoff without shared CLI/pipeline edits.
+- Add real confirmation and bottom-roster fixtures/readers; verify exact reward, respec state, complete rows, supported quantities and stale/F8 cancellation.
+- Implement bounded Outsider spending and post-reset recovery policy; require fresh level/wallet receipts before subsequent input and identify missing active Ancients for summon after the first earned Hero Souls.
+- Run focused model/native-reader/controller checks and return owner commits to the main chat; retain missing affordable FEED and post-reset/summon native evidence as acceptance gates.
