@@ -1,5 +1,33 @@
 # TODO
 
+## Current implementation sequence
+
+The main chat coordinates integration, tests and delivery to `main`. Feature owners work in their existing chat worktrees and return reviewed commits; shared CLI/pipeline changes are coordinated by the main chat. Finish actionable existing work before enabling achievement goals, then Quick Ascension. Native acceptance that needs an unavailable game state remains an explicit gate, not a reason to stop independent implementation.
+
+### 1. Existing features and reproducible bugs
+
+- [ ] Integrate the prepared Hybrid Ancient API, native Go Timelapse forecast/controller, persisted finite ruby ledger and forecast-bound gild preview. Reconcile current calculator/export APIs; preserve ordinary Active progression. Expose a usable read-only preparation report with missing prerequisites and exact unsupported cases. Owners: Ancient calculator correctness, Timelapse strategy and automation, Gild redistribution; main chat integrates.
+- [ ] Finish Timelapse preparation and paid execution only where native UI evidence exists. Keep purchase execution disabled for missing/ambiguous controls, missing Ancient summons or unverified preparation. Finite allowance and persisted pending debit must survive restart; zero allowance spends nothing. Owner: Timelapse strategy and automation.
+- [ ] Measure and improve fish detection on all saved real, rotated, small and scrollbar-overlap frames. Compare working resolution and OpenCV parameters; ship only a measured improvement without lost detections. Add useful p50/p95 capture, analyzer, OCR and queue metrics with bounded storage, plus reasons for idle action scheduling. Owner: Capture and fish performance; main chat wires shared metrics/CLI.
+- [ ] Fix the known 640x360 Mercenary Collect/Callect recognition failure using the existing native fixture and focused negative cases. Reuse current visual templates/OCR crops and preserve strict row association. Continue recruitment/recovery only for supplied UI states. Owner: Automate mercenary quests.
+- [ ] Recheck remaining startup/footer/Auto Clicker and combat handoff defects against current main and saved fixtures; fix reproducible defects, and identify the precise native states still missing. Do not request deliberate F8 corner-case testing. Owners: Ascension restart and hero bootstrap, Combat and boss recovery.
+- [ ] Run focused checks for every owner commit, then the integrated native OpenCV/Tesseract suite and build on the authorized Docker host. Transfer source and sanitized test fixtures only; do not send personal saves. Commit and push verified integration to `main`.
+
+### 2. Configurable achievement goals
+
+- [ ] Read current earned achievements and supported progress counters from exported saves; pin requirements to the installed-client catalog and distinguish internal achievements from Steam mappings. Legacy reward text and mobile currency fields do not prove current desktop rewards.
+- [ ] Add a small explicit goal configuration and progress report. Start with Mercenary quest type/count and five-minute quest targets using the existing quest policy; after completion restore normal ruby priorities. Then add supported click, boss-kill, hero-level and zone goals with bounded strategy overrides. Owner: Achievement goals and strategies; main chat integrates CLI/pipeline.
+- [ ] Preserve selected goals and completion across restart; unknown counters do not authorize actions. Keep ordinary latest-hero progression unchanged unless an explicit goal requests another strategy. Test already-complete goals, conflicting goals, unsupported IDs, partial progress and restoration after completion. No paid revivals, deliberate Mercenary losses or prestige resets solely for a goal without an explicit policy.
+- [ ] Gate each new execution strategy on the available native control evidence. Register missing inputs precisely while delivering the counter reader, policy and report independently.
+
+### 3. Budgeted Quick Ascension
+
+- [ ] Implement native Go reward/readiness calculations and compare them with current-client/reference data. Evaluate useful gains and the late-game QA-rush interval; respect the reward ceiling beyond zone one million. Owner: Timelapse strategy and automation; coordinate calculator changes with Ancient calculator correctness.
+- [ ] Reuse the persisted ruby spending ledger across Timelapse and Quick Ascension. Add opt-in QA execution with a finite combined allowance, protected balance and per-run/Ascension limits; restarting or earning new rubies must not renew authorization. Avoid a second independent spending mechanism.
+- [ ] Add owned Ruby Shop/QA modal transitions through the shared input queue, one-shot purchase submission, fresh save outcome and Ancient replanning without resetting heroes/zones. Require actual offer/confirmation/result evidence before enabling paid input; test cancellation, changed price, stale save, pending debit and zero allowance.
+
+Clans are deferred by user request. Forge Core relic upgrades are excluded by user request. Existing remaining native acceptance sections below still apply; remove only work that is actually completed and verified.
+
 ## Automatic relic equipment native acceptance
 
 - During ordinary play, verify that a yellow Relics notification leads to a bounded equipment visit, an accepted native drag for a clear Active improvement and a return to Heroes. Retain the relevant log and before/after frames if a move fails; fixture tests do not prove installed-game drag acceptance.
