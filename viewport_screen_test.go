@@ -65,8 +65,8 @@ func TestViewportHUDAndDecorations(t *testing.T) {
 		t.Fatal("unknown desktop accepted")
 	}
 	modal := exportFixture(t, "ancient-quantity.png", 1280)
-	if _, err := findViewport(modal, modal.Bounds()); err == nil {
-		t.Fatal("modal alone established a viewport")
+	if got, err := findViewport(modal, modal.Bounds()); err != nil || got != modal.Bounds() {
+		t.Fatal("verified modal failed to establish a recovery viewport", got, err)
 	}
 }
 
@@ -104,8 +104,8 @@ func TestViewportHUDAt640(t *testing.T) {
 	modal := image.NewRGBA(source.Bounds())
 	region := image.Rect(160, 120, 480, 230)
 	draw.Draw(modal, region, source, region.Min, draw.Src)
-	if _, err := findViewport(modal, modal.Bounds()); err == nil {
-		t.Fatal("recovery modal alone established a viewport")
+	if got, err := findViewport(modal, modal.Bounds()); err != nil || got != modal.Bounds() {
+		t.Fatal("verified recovery modal did not establish a viewport", got, err)
 	}
 }
 
@@ -145,8 +145,8 @@ func TestViewportRelocationInvalidatesPipeline(t *testing.T) {
 	if err := p.capture(context.Background(), now.Add(2*time.Second), jobs); err != nil {
 		t.Fatal(err)
 	}
-	if !p.controls.isPaused() {
-		t.Fatal("capture focus race allowed input")
+	if p.controls.isPaused() || p.frame.context.known || len(p.queue) != 0 {
+		t.Fatal("capture focus race retained input or stopped observation")
 	}
 }
 

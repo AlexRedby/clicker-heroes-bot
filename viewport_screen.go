@@ -19,10 +19,22 @@ func viewportHUD(screen image.Image) bool {
 	return err == nil && (known || heroQuantityBarPresent(screen))
 }
 
+// Specific modal anchors also establish a viewport when the HUD is covered.
+func viewportRecognized(screen image.Image) bool {
+	if screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 {
+		return false
+	}
+	if viewportHUD(screen) {
+		return true
+	}
+	c, err := recognizedGame(screen)
+	return err == nil && c.known && (c.saveMenu || c.ancientDialog || c.ascension || c.relicJunk || c.questDialog || c.mercenaryDialog || c.modal != noGildModal)
+}
+
 func findViewport(screen image.Image, window image.Rectangle) (image.Rectangle, error) {
 	var found image.Rectangle
 	for _, candidate := range viewportCandidates(window) {
-		if !candidate.In(screen.Bounds()) || !viewportHUD(compactCrop(screen, candidate)) {
+		if !candidate.In(screen.Bounds()) || !viewportRecognized(compactCrop(screen, candidate)) {
 			continue
 		}
 		if !found.Empty() {
@@ -37,14 +49,16 @@ func findViewport(screen image.Image, window image.Rectangle) (image.Rectangle, 
 }
 
 func (v *windowCapture) capture() (image.Image, error) {
+	currentScene := nativeScene{Window: "!outside-game"}
 	unavailable := func(reason string) (image.Image, error) {
 		return &viewportImage{Image: image.NewRGBA(image.Rect(0, 0, 1, 1)), reason: reason,
-			geometry: viewportGeometry{Scene: nativeScene{Window: "!outside-game"}}}, nil
+			geometry: viewportGeometry{Scene: currentScene}}, nil
 	}
 	scene, err := readNativeScene()
 	if err != nil {
 		return unavailable(err.Error())
 	}
+	currentScene = scene
 	screen, err := captureNativeDisplay(scene)
 	if err != nil {
 		return unavailable(fmt.Sprintf("capture game display: %v", err))

@@ -232,7 +232,7 @@ func TestStartupVisitsHeroesWithoutInputThroughModal(t *testing.T) {
 	p.frame.context.ancients = true
 	p.plan(now)
 	a, ok := p.nextAction(now)
-	if !ok || a.kind != visitHeroes {
+	if !ok || a.kind != navigateGame || a.navigation != navigationHeroes {
 		t.Fatal("startup did not return to Heroes", a, ok)
 	}
 	p.frame.context.ancientDialog = true

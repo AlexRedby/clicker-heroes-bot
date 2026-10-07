@@ -360,9 +360,6 @@ func (p *ancientPlanner) confirmationStatus() string {
 	}
 	return fmt.Sprintf("stage=%s, Ancient=%s, quantity=%q, dialog=%t, OK=%t, visible rows=%d; %s", stage, name, p.quantity, p.latest.frame.context.ancientDialog, p.latest.okay, len(p.latest.rows), p.seekStatus())
 }
-func (p *ancientPlanner) pauseReason() string {
-	return "Ancient batch blocked: " + p.failure + "; close the dialog, export a fresh save and restart before another batch"
-}
 func (p *ancientPlanner) fail(reason string) {
 	if !p.blocked {
 		p.failure = reason + " (" + p.confirmationStatus() + ")"

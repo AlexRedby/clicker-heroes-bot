@@ -1,5 +1,9 @@
 # TODO
 
+## Navigation recovery native acceptance
+
+- Verify the installed Windows game after delivery: delayed/repeated Explorer focus loss, F8 during Save/export acknowledgement, startup in Settings or a quantity/Ascension/quest dialog, manual tab/dialog changes, and missed close clicks during lag. Confirm known close/No routes retry, return to Heroes, retain export ownership, and never replay a stopped Ancient batch or prestige confirmation. Unsupported dialogs keep observing without input; retain the relevant frame/log for recognition support.
+
 ## Current implementation sequence
 
 The main chat coordinates integration, tests and delivery to `main`. Feature owners work in their existing chat worktrees and return reviewed commits; shared CLI/pipeline changes are coordinated by the main chat. Finish actionable existing work before enabling achievement goals, then Quick Ascension. Native acceptance that needs an unavailable game state remains an explicit gate, not a reason to stop independent implementation.
@@ -104,7 +108,7 @@ Goal: complete the unattended active-play loop using the existing shared capture
 
 1. Validate the integrated hero startup/combat/Ancient handoff and close the remaining Auto Clicker/relic native UI gates below. Keep R6 measurement independent from gameplay decisions.
 2. Validate the integrated owned Auto Clicker placement and obtain native relic interaction evidence; coordinate shared main.go/pipeline.go changes in the main chat.
-3. Retain bounded failure pauses and validate startup/export/spending handoffs. A failed purchase must not be replayed from a stale plan.
+3. Retain bounded transition retries, stop uncertain purchase batches independently of free gameplay, and validate startup/export/spending handoffs. A failed purchase must not be replayed from a stale plan.
 4. Verify two complete consecutive cycles: combat wall -> confirmed Ascension -> zone 1 -> bounded skill sweep -> newly available upgrades -> enabled progression -> fresh export -> Ancient purchases -> Heroes continuation. Include missed input, fish over controls, Explorer focus restoration and unsupported dialogs. Code/fixture checks do not establish native game acceptance.
 5. Add R4 when the repeated loop works. R7 remains independent platform work. Enable R8 automation only after the loop and recommendation/Outsider preview are accepted.
 
@@ -142,7 +146,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 - Verify repeated Q hero purchases with the 100 ms mouse hold and 100 ms release-settling wait in a running game. Then verify the full hero loop: tooltip dismissal after purchase, confirmation of the increased level, the saving decision and transition to the next available hero. Locked next-hero price and gold OCR are covered by real `x1` screenshot regressions.
 - Verify that the faster scrollbar dragging remains reliable on Windows/macOS. Verify bottom-only scrolling, `T` selecting persistent `x1`, `Q` buying MAX levels and returning to `x1`, actual level confirmation and simultaneous fish collection. Use saved before/after screenshots to diagnose any remaining unconfirmed purchase.
 - Verify opt-in `-windowed` on native Windows/macOS: permissions, screenshot-pixel to desktop-coordinate conversion, fish and monster clicks, scrollbar drags and hotkeys. Cover Windows 100/125/150/200% DPI, macOS Retina, secondary displays with negative origins, movement/resize, lost focus and same-title windows. Confirm queued decisions are discarded and an uncertain Ancient purchase is not replayed; check export focus restoration and default primary-display behavior too. Geometry, compact-crop, HUD fixture and pipeline regressions pass; native installed-game acceptance remains open.
-- Capture real windowed HUDs and dialogs to validate the client-area/centered/bottom-aligned 16:9 candidates before broadening detection. Unknown, ambiguous, clipped or display-straddling windows must remain paused; the Heroes tab is still required for hero actions. After resizing with monster clicks enabled, obtain new crop coordinates and restart.
+- Capture real windowed HUDs and dialogs to validate the client-area/centered/bottom-aligned 16:9 candidates before broadening detection. Unknown, ambiguous, clipped or display-straddling windows must suppress input while observation continues; the Heroes tab is still required for hero actions. After resizing with monster clicks enabled, obtain new crop coordinates and restart.
 - Recognize a verified end of the complete hero roster if there is no successor. The current bot skips an owned candidate without a clearly identified next unowned row.
 
 ## Mercenaries

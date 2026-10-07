@@ -286,12 +286,12 @@ func TestPipelineGildBatchIsolationAndPause(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.plan(now.Add(time.Second))
-	if _, ok := p.nextAction(now.Add(time.Second)); ok {
-		t.Fatal("disabled gift collection sent input")
+	if a, ok := p.nextAction(now.Add(time.Second)); !ok || a.kind != navigateGame || a.navigation != navigationGildReward {
+		t.Fatal("disabled gift collection did not safely close the manual dialog")
 	}
 }
 
-func TestGildNoOpPausesAndResumeUsesFreshFrame(t *testing.T) {
+func TestGildNoOpRecoversAndResumeUsesFreshFrame(t *testing.T) {
 	img := gildFixture(t, "chest")
 	c, err := recognizedGame(img)
 	if err != nil {
@@ -312,24 +312,28 @@ func TestGildNoOpPausesAndResumeUsesFreshFrame(t *testing.T) {
 	}
 	p.frame = gameFrame{id: 4, layout: p.layout, at: now, image: img, context: c}
 	p.plan(now)
-	if !controls.isPaused() {
-		t.Fatal("unchanged gift window clicked indefinitely")
+	if controls.isPaused() {
+		t.Fatal("unchanged gift window stopped navigation")
+	}
+	a, ok := p.nextAction(now)
+	if !ok || a.kind != navigateGame || a.navigation != navigationGildChest {
+		t.Fatal("unchanged earned chest did not enter paced navigation recovery")
 	}
 	controls.toggle()
 	p.reset(controls.snapshot())
-	if p.gild.attempts != 0 || !p.gild.active || len(p.queue) != 0 {
+	if p.gild.attempts != 0 || len(p.queue) != 0 {
 		t.Fatal("resume retained stale retries/input")
 	}
 }
 
-func TestGildUnknownTransitionTimesOut(t *testing.T) {
+func TestGildUnknownTransitionKeepsObserving(t *testing.T) {
 	now := time.Now()
 	control := &pauseControl{}
 	p := newGamePipeline(control, heroInput{}, pipelineReaders{}, pipelineOptions{gilds: true})
 	p.gild = gildCollector{active: true, deadline: now}
 	p.frame.context = gameContext{modal: unknownGildModal}
 	p.plan(now.Add(time.Second))
-	if !control.isPaused() || len(p.queue) != 0 {
-		t.Fatal("unknown active transaction did not pause")
+	if control.isPaused() || len(p.queue) != 0 {
+		t.Fatal("unknown active transaction sent input or stopped observation")
 	}
 }

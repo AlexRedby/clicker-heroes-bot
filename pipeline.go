@@ -34,6 +34,7 @@ type actionKind uint8
 
 const (
 	collectFish actionKind = iota
+	navigateGame
 	collectGilds
 	castSkill
 	enableProgression
@@ -115,6 +116,7 @@ type gameAction struct {
 	mercenary     mercenaryCommand
 	ascension     ascensionStep
 	ancient       ancientCommand
+	navigation    navigationStep
 	export        *exportCommand
 	clicker       autoClickerCommand
 	relic         relicCommand
@@ -174,6 +176,7 @@ type gamePipeline struct {
 	nextClickerRead                                     time.Time
 	nextClickerRecovery                                 time.Time
 	clickerFooterUntil                                  time.Time
+	navigation                                          gameNavigation
 	input                                               heroInput
 	controls                                            *pauseControl
 	frame                                               gameFrame
@@ -397,7 +400,8 @@ func (p *gamePipeline) reset(generation uint64) {
 		p.progression = progressionPlanner{}
 	}
 	p.ancient.interrupt()
-	p.export.interrupt()
+	p.export.suspend()
+	p.navigation.nextAction = time.Time{}
 	p.ascension.interrupt()
 	p.relic.interrupt()
 	if relicExport {
@@ -510,19 +514,20 @@ func (p *gamePipeline) run(ctx context.Context) error {
 			}
 		case done := <-actionDone:
 			p.busy = false
+			p.rememberCompletedSave(done)
 			if done.err != nil {
 				if done.action.kind == handleExport {
 					p.exportFailed(done.err)
 					continue
 				}
+				if done.action.kind == navigateGame || p.options.windowed && errors.Is(done.err, errInputContext) && done.action.kind != handleAncient {
+					p.navigation.report(fmt.Sprintf("input context changed: %v; retrying navigation", done.err))
+					p.navigation.nextAction = time.Now().Add(time.Second)
+					continue
+				}
 				if p.options.windowed && errors.Is(done.err, errInputContext) {
-					if done.action.kind == handleAncient {
-						p.ancient.fail("native window context changed during input")
-						p.ancient.interrupt()
-						p.controls.block(p.ancient.pauseReason())
-					} else {
-						p.controls.pause("native window context changed; focus the game and press F8")
-					}
+					p.ancient.fail("native window context changed during input")
+					p.ancient.interrupt()
 					continue
 				}
 				return done.err
@@ -540,9 +545,6 @@ func (p *gamePipeline) run(ctx context.Context) error {
 			generation := p.controls.snapshot()
 			if generation != p.generation {
 				p.reset(generation)
-				if p.ancient.blocked {
-					p.controls.block(p.ancient.pauseReason())
-				}
 			}
 			if !p.controls.valid(ctx, generation) {
 				p.metrics.waitReasons.Record(waitPaused)
@@ -551,7 +553,12 @@ func (p *gamePipeline) run(ctx context.Context) error {
 			now := time.Now()
 			if !p.busy && !now.Before(p.nextCapture) && !now.Before(p.settleUntil) {
 				if err := p.capture(ctx, now, jobs); err != nil {
-					return err
+					p.navigation.report(err.Error() + "; retrying capture")
+					p.queue = make(map[actionKind]gameAction)
+					p.layout++
+					p.frame.layout = p.layout
+					p.frame.context = gameContext{window: p.frame.context.window, bounds: p.frame.context.bounds, geometry: p.frame.context.geometry}
+					p.nextCapture = now.Add(time.Second)
 				}
 			}
 		}
@@ -594,9 +601,8 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	var geometry viewportGeometry
 	if shot, ok := image.(*viewportImage); ok {
 		image, geometry = shot.Image, shot.geometry
-		if shot.reason != "" && !(p.export.active && (p.export.step == exportRestoreGame || p.export.step == exportCloseMenu)) {
-			p.controls.pause(shot.reason + "; focus an unobscured game HUD and press F8")
-			return nil
+		if shot.reason != "" {
+			p.navigation.report(shot.reason)
 		}
 	}
 	contextStart := time.Now()
@@ -619,8 +625,11 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 	}
 	c.geometry = geometry
 	if p.options.windowed && c.window != geometry.Scene.Window {
-		p.controls.pause("native window changed after capture; focus the game and press F8")
-		return nil
+		p.navigation.report("native window changed after capture; retrying observation")
+		c = gameContext{window: "!outside-game", bounds: image.Bounds(), geometry: geometry}
+	}
+	if c.known && c.window != "" && c.window != "!outside-game" {
+		p.navigation.window = c.window
 	}
 	if p.options.windowed && p.options.monster && c.known {
 		if p.monsterSize.X == 0 {
@@ -637,7 +646,6 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		if geometryChanged && p.ancient.active {
 			p.ancient.fail("game window or display changed")
 			p.ancient.interrupt()
-			p.controls.pauseLocked(p.ancient.pauseReason(), true)
 		}
 		if c.relics != old.relics || c.relicJunk != old.relicJunk || c.outsiders != old.outsiders || c.saveMenu != old.saveMenu || c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.mercenaryDialog != old.mercenaryDialog || geometryChanged {
 			if geometryChanged || !p.mercenary.expects(c, now) {
@@ -645,9 +653,10 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			}
 			// Save owns the temporary Explorer focus handoff. Keep the historical
 			// boss wall, but discard current reward/combat observations as usual.
-			exportFocus := p.export.active && c.bounds == old.bounds && c.geometry == old.geometry &&
-				((p.export.step == exportRestoreGame && old.window == p.export.window && c.window == "!outside-game") ||
-					(p.export.step == exportCloseMenu && old.window == "!outside-game" && c.window == p.export.window))
+			exportFocus := p.export.active && (c.bounds == old.bounds && c.geometry == old.geometry || p.options.windowed && (c.window == "!outside-game" || old.window == "!outside-game")) &&
+				(p.export.step == exportRestoreGame || p.export.step == exportCloseMenu) &&
+				(old.window == p.export.window || old.window == "!outside-game") &&
+				(c.window == p.export.window || c.window == "!outside-game")
 			if geometryChanged {
 				p.skill.reset()
 			}
@@ -785,7 +794,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			replaceJob(jobs[ancientAnalysis], analysisJob{frame: p.frame, modeOnly: p.ancient.pending != nil && p.ancient.pending.ancient.step == confirmAncientQuantity, ancientNames: p.ancient.selected < 0 && !p.ancient.needFullRead})
 			p.ancient.nextRead = now.Add(300 * time.Millisecond)
 		}
-		if c.ancientDialog || p.ancient.active || (p.ancient.plan != nil && !p.ancient.finished) {
+		if c.ancientDialog || p.ancient.active || (p.ancient.plan != nil && !p.ancient.finished && !p.ancient.blocked) {
 			return nil
 		}
 		if c.ascension || p.ascension.active || !c.known || c.modal != noGildModal || p.gild.active {
@@ -882,13 +891,13 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			if p.export.relicsOnly {
 				p.reportRelics(nil, reason)
 			}
-			p.export.interrupt()
 			if p.relic.active {
+				p.export.interrupt()
 				p.export.requested = false
 				p.relicFailed(reason.Error(), now)
 				return nil
 			}
-			p.controls.pauseLocked(fmt.Sprintf("save export failed: %v; focus the game and press F8 to retry", reason), false)
+			p.exportFailed(reason)
 			return nil
 		}
 		if goals := p.options.achievements; goals != nil {
@@ -1068,8 +1077,6 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		p.ancient.observe(out.ancient, out.err, now)
 		if p.ancient.finished {
 			fmt.Println("Ancient batch finished on Heroes; continuing automation")
-		} else if p.ancient.blocked {
-			p.controls.pauseLocked(p.ancient.pauseReason(), true)
 		}
 		return nil
 	}
@@ -1295,6 +1302,9 @@ func (p *gamePipeline) plan(now time.Time) {
 	if now.Before(p.settleUntil) {
 		return
 	}
+	if p.planNavigation(now) {
+		return
+	}
 	if p.options.achievements != nil {
 		p.mercenary.questPriority = p.options.achievements.priority
 	}
@@ -1370,6 +1380,14 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 		if !ok {
 			continue
 		}
+		if kind == navigateGame {
+			if !p.navigationStable(action) || now.Sub(action.frame.at) > 3*time.Second {
+				delete(p.queue, kind)
+				continue
+			}
+			delete(p.queue, kind)
+			return action, true
+		}
 		if kind != collectFish && ((p.mercenary.pending != nil && p.frame.id <= p.mercenary.pending.action.frame.id) || (p.ascension.active && p.frame.id <= p.ascension.lastInputFrame) || p.ancient.pending != nil) {
 			continue
 		}
@@ -1417,7 +1435,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			p.relic.nextRead = now
 			continue
 		}
-		if (p.ancient.active || p.frame.context.ancientDialog || (p.startup == noStartup && !p.startupCheck && p.ancient.plan != nil && !p.ancient.finished)) && kind != handleAncient && kind != collectFish && !(p.relic.active && (kind == handleRelic || kind == handleExport)) {
+		if (p.ancient.active || p.frame.context.ancientDialog || (p.startup == noStartup && !p.startupCheck && p.ancient.plan != nil && !p.ancient.finished && !p.ancient.blocked)) && kind != handleAncient && kind != collectFish && !(p.relic.active && (kind == handleRelic || kind == handleExport)) {
 			delete(p.queue, kind)
 			continue
 		}
@@ -1541,11 +1559,11 @@ var errInputContext = errors.New("input context changed")
 
 func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) {
 	input := p.input
-	if input.bind != nil && !(a.kind == handleExport && a.export.step == exportRestoreGame) {
+	if input.bind != nil && !a.restoresFocus() {
 		input = input.bind(a.frame.context.geometry)
 	}
 	acted, err := p.controls.runClick(ctx, a.frame.generation, func() error {
-		if !(a.kind == handleExport && a.export.step == exportRestoreGame) && p.readers.window != nil && p.readers.window() != a.frame.context.window {
+		if !a.restoresFocus() && p.readers.window != nil && p.readers.window() != a.frame.context.window {
 			return errInputContext
 		}
 		if a.kind == collectFish && (!p.fishContext(p.frame.context) || a.frame.context != p.frame.context) {
@@ -1558,6 +1576,11 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			return scrollList(ctx, input, scroll)
 		}
 		switch a.kind {
+		case navigateGame:
+			if a.navigation == navigationFocus {
+				return input.focus(p.navigation.window)
+			}
+			return input.click(a.point)
 		case handleRelic:
 			switch a.relic.step {
 			case relicHover, relicPark:
@@ -1685,6 +1708,11 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 	p.fishAfter = p.frame.id
 	invalidate := func(kind analysisKind) { p.barriers[kind] = p.frame.id + 1; p.state[kind] = observation{} }
 	switch a.kind {
+	case navigateGame:
+		p.navigation.nextAction = now.Add(time.Second)
+		p.navigation.report(a.navigation.String())
+		p.queue = make(map[actionKind]gameAction)
+		p.state = [analysisCount]observation{}
 	case handleRelic:
 		p.relic.sent(a, now)
 		invalidate(relicAnalysis)
@@ -1819,7 +1847,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		}
 	}
 	p.settleUntil = now.Add(150 * time.Millisecond)
-	if a.kind == handleExport {
+	if a.kind == handleExport || a.kind == navigateGame {
 		p.settleUntil = now.Add(500 * time.Millisecond)
 	}
 	if a.kind == buyHero || a.kind == buyHeroUpgrades || a.kind == scrollHeroes || a.kind == parkPointer || a.kind == handleMercenary {
@@ -1878,8 +1906,7 @@ func (p *gamePipeline) planGilds(now time.Time) bool {
 		p.gild.deadline = now.Add(20 * time.Second)
 	}
 	if exclusive && (now.After(p.gild.deadline) || p.gild.attempts >= 3) {
-		p.controls.pause("gild gift window did not advance; check it and press F8 to resume")
-		return true
+		return p.planNavigation(now)
 	}
 	if !p.frame.context.known {
 		return exclusive
@@ -1942,8 +1969,10 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 		return false
 	}
 	if now.After(p.ascension.deadline) {
-		p.controls.pause("Ascension did not advance; check the dialog and press F8 to resume")
-		return true
+		p.ascension.interrupt()
+		p.ascension.nextCheck = now.Add(time.Minute)
+		fmt.Println("Ascension transition timed out; recovering navigation and reassessing combat")
+		return p.planNavigation(now)
 	}
 	if now.Before(p.ascension.nextAction) || p.ascension.latest.frame.id == 0 {
 		return true
@@ -2000,19 +2029,14 @@ func (p *gamePipeline) planAncients(now time.Time) bool {
 		return false
 	}
 	if p.ancient.blocked {
-		p.controls.block(p.ancient.pauseReason())
-		return true
+		return false // A stopped purchase batch cannot block free gameplay.
 	}
 	if !p.ancient.deadline.IsZero() && now.After(p.ancient.deadline) {
 		p.ancient.fail("confirmation timed out after 20s")
-		p.controls.block(p.ancient.pauseReason())
-		return true
+		return p.planNavigation(now)
 	}
 	if action, ok := p.ancient.action(p.frame, now); ok {
 		p.enqueue(action, now)
 	}
-	if p.ancient.blocked {
-		p.controls.block(p.ancient.pauseReason())
-	}
-	return true
+	return !p.ancient.blocked
 }

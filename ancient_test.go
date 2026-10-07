@@ -682,8 +682,8 @@ func TestAncientQueueIsolation(t *testing.T) {
 		t.Fatal("input repeated before observation")
 	}
 	p.plan(now.Add(21 * time.Second))
-	if !p.ancient.blocked || !controls.paused {
-		t.Fatal("missing confirmation did not pause")
+	if !p.ancient.blocked || controls.paused {
+		t.Fatal("missing confirmation did not stop the batch independently")
 	}
 	p.reset(controls.snapshot())
 	if _, ok := p.ancient.action(p.frame, now.Add(time.Minute)); ok {
@@ -798,28 +798,30 @@ func TestAncientFilledQuantityReachesOKWithoutOCR(t *testing.T) {
 	}
 }
 
-func TestAncientBlockedResumeExplainsFailure(t *testing.T) {
+func TestAncientBlockedBatchAllowsNavigationAndF8(t *testing.T) {
 	controls := pauseControl{}
 	p := newGamePipeline(&controls, heroInput{}, pipelineReaders{}, pipelineOptions{ancientPlan: &ancientPlan{}})
 	p.frame = testPipelineFrame()
 	p.frame.context.ancientDialog = true
-	p.ancient.active = true
-	p.ancient.started = true
+	p.ancient.active, p.ancient.started = true, true
 	p.ancient.quantity = "20"
 	p.ancient.pending = &gameAction{frame: p.frame, ancient: ancientCommand{step: fillAncientQuantity}}
 	p.ancient.deadline = time.Now().Add(-time.Second)
 	p.planAncients(time.Now())
-	if !controls.isPaused() || !p.ancient.blocked {
-		t.Fatal("unconfirmed purchase not blocked")
+	if controls.isPaused() || !p.ancient.blocked {
+		t.Fatal("unconfirmed purchase stopped navigation or left purchases enabled")
 	}
-	message := controls.message()
-	if !strings.Contains(message, "stage=type quantity") || !strings.Contains(message, "quantity=\"20\"") || !strings.Contains(message, "restart") {
+	message := p.ancient.failure
+	if !strings.Contains(message, "stage=type quantity") || !strings.Contains(message, "quantity=\"20\"") {
 		t.Fatal("missing failure details", message)
 	}
-	generation := controls.snapshot()
 	for i := 0; i < 3; i++ {
-		if !controls.toggle() || controls.message() != message || controls.snapshot() != generation {
-			t.Fatal("blocked F8 announced a resume or lost reason")
+		if !controls.toggle() || controls.toggle() || controls.message() != "resumed" {
+			t.Fatal("stopped purchase batch blocked F8")
+		}
+		p.reset(controls.snapshot())
+		if !p.ancient.blocked || p.ancient.failure != message {
+			t.Fatal("F8 authorized replay of a stopped purchase batch")
 		}
 	}
 }

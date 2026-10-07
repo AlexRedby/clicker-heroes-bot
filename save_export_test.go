@@ -188,12 +188,12 @@ func TestExportF8CancelsInputAndFileRead(t *testing.T) {
 		t.Fatal("stale export installed")
 	}
 }
-func TestExportTimeoutPausesWithReason(t *testing.T) {
+func TestExportTimeoutSchedulesRecovery(t *testing.T) {
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{export: &saveExportOptions{dir: t.TempDir()}})
 	p.frame = testPipelineFrame()
 	p.export.active, p.export.step, p.export.deadline = true, exportCloseMenu, time.Now().Add(-time.Second)
-	if !p.planExport(time.Now()) || !p.controls.isPaused() || p.controls.message() == "paused: " {
-		t.Fatal("timeout did not explain pause")
+	if !p.planExport(time.Now()) || p.controls.isPaused() || p.export.active || p.export.nextAction.IsZero() {
+		t.Fatal("timeout did not schedule navigation recovery")
 	}
 }
 func TestExportReadWaitsForCompleteSave(t *testing.T) {
@@ -342,8 +342,8 @@ func TestRelicExportRejectsChangedLayout(t *testing.T) {
 	p.layout = p.frame.layout + 1
 	p.export = saveExporter{requested: true, active: true, relicsOnly: true, step: exportReadFile, jobFrame: p.frame.id, window: p.frame.context.window}
 	err := p.accept(context.Background(), observation{kind: exportAnalysis, frame: p.frame, export: exportResult{relics: &ancientcalc.RelicPreview{Readiness: "unknown"}}}, time.Now())
-	if err != nil || !p.controls.isPaused() || p.ascension.relicsChecked || p.ancient.plan != nil {
-		t.Fatal("layout change accepted the preview")
+	if err != nil || p.controls.isPaused() || p.export.active || !p.export.requested || p.ascension.relicsChecked || p.ancient.plan != nil {
+		t.Fatal("layout change accepted the preview or stopped recovery")
 	}
 }
 

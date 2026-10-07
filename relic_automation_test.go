@@ -301,7 +301,7 @@ func TestRelicReturnDeadlineAndResumeRecoverHeroes(t *testing.T) {
 	p.plan(now.Add(time.Second))
 	p.plan(now.Add(2 * time.Second))
 	a, ok = p.nextAction(now.Add(2 * time.Second))
-	if !ok || a.kind != handleRelic || a.relic.step != relicReturn {
+	if !ok || a.kind != navigateGame || a.navigation != navigationHeroes {
 		t.Fatal("resume stranded Relics", a, ok)
 	}
 	covered := loadTestImage(t, "testdata/relic-upgrade.png")

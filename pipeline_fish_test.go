@@ -140,8 +140,8 @@ func TestAncientRecognitionRetryDoesNotWaitForFish(t *testing.T) {
 	p.ancient.pending = pending
 	p.ancient.deadline = now.Add(20 * time.Second)
 	p.plan(now.Add(21 * time.Second))
-	if !p.ancient.blocked || !p.controls.isPaused() {
-		t.Fatal("persistent recognition failure bypassed the deadline")
+	if !p.ancient.blocked || p.controls.isPaused() {
+		t.Fatal("persistent recognition failure did not stop only the purchase batch")
 	}
 }
 

@@ -52,7 +52,7 @@ func TestPipelineMercenaryRecoveryOrphanDuringStartup(t *testing.T) {
 			}
 			p.plan(now)
 			a, ok := p.nextAction(now)
-			if !ok || a.kind != handleMercenary || a.mercenary.step != cancelMercenaryRecovery || a.point != image.Pt(1520, 790) {
+			if !ok || a.kind != navigateGame || a.navigation != navigationRecovery || a.point != mercenaryPoint(screen.Bounds(), 594, 548) {
 				t.Fatalf("orphan must use No, got %+v ok=%t", a, ok)
 			}
 			p.actionCompleted(actionResult{action: a, acted: true}, now)
@@ -61,8 +61,8 @@ func TestPipelineMercenaryRecoveryOrphanDuringStartup(t *testing.T) {
 				t.Fatal(err)
 			}
 			p.plan(now)
-			if a, ok := p.nextAction(now); ok {
-				t.Fatalf("unchanged modal duplicated input: %+v", a)
+			if a, ok := p.nextAction(now); !ok || a.kind != navigateGame || a.navigation != navigationRecovery {
+				t.Fatalf("missed No did not retry safe navigation: %+v", a)
 			}
 		})
 	}

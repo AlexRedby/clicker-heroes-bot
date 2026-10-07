@@ -185,8 +185,8 @@ func TestAscensionPipelineIsolationAndPause(t *testing.T) {
 		}
 	}
 	p.plan(now)
-	if action, ok := p.nextAction(now); ok {
-		t.Fatalf("input through manual dialog: %+v", action)
+	if action, ok := p.nextAction(now); !ok || action.kind != navigateGame || action.navigation != navigationAscension {
+		t.Fatalf("manual dialog was not safely cancelled: %+v", action)
 	}
 	p.ascension.sent(openAscension, 1, now.Add(-time.Second))
 	out, err := readAscensionObservation(context.Background(), p.frame)
@@ -259,8 +259,8 @@ func TestAscensionPipelineIsolationAndPause(t *testing.T) {
 	p.reset(controls.snapshot())
 	p.frame = gameFrame{id: 9, generation: p.generation, layout: p.layout, at: now, image: screen, context: c}
 	p.plan(now)
-	if action, ok := p.nextAction(now); ok {
-		t.Fatalf("F8 authorized a leftover manual dialog: %+v", action)
+	if action, ok := p.nextAction(now); !ok || action.kind != navigateGame || action.navigation != navigationAscension {
+		t.Fatalf("F8 failed to cancel a leftover dialog without confirming it: %+v", action)
 	}
 }
 
@@ -292,8 +292,8 @@ func TestAscensionStaleDecisionAndTimeout(t *testing.T) {
 	}
 	p.ascension.sent(openAscension, 1, now.Add(-time.Minute))
 	p.plan(now)
-	if !p.controls.isPaused() {
-		t.Fatal("missed/blocking dialog did not time out to pause")
+	if p.controls.isPaused() || p.ascension.active || !p.ascension.nextCheck.After(now) {
+		t.Fatal("missed dialog did not release its owner and defer reassessment")
 	}
 }
 

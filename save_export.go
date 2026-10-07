@@ -96,7 +96,7 @@ type saveExporter struct {
 	status                     string
 	before                     exportSnapshot
 	lastFrame, jobFrame        uint64
-	deadline                   time.Time
+	deadline, nextAction       time.Time
 	cancel                     context.CancelFunc
 }
 
@@ -109,15 +109,37 @@ func (e *saveExporter) interrupt() {
 	e.before = nil
 	e.lastFrame, e.jobFrame = 0, 0
 }
+func (e *saveExporter) suspend() {
+	step, window, before := e.step, e.window, e.before
+	e.interrupt()
+	if step >= exportRestoreGame && step < exportReadFile && before != nil {
+		e.step, e.window, e.before = exportCloseMenu, window, before
+	} else {
+		e.step = exportOpenMenu
+	}
+	e.deadline, e.nextAction = time.Time{}, time.Time{}
+}
+
+// Save may finish before F8, while its completion reaches the coordinator later.
+// Retain file ownership only, never an old observation or purchase decision.
+func (p *gamePipeline) rememberCompletedSave(done actionResult) {
+	a := done.action
+	if done.acted && done.err == nil && a.kind == handleExport && a.export.step == exportSave &&
+		a.export.before != nil && a.frame.generation != p.controls.snapshot() &&
+		p.export.requested && p.export.window == a.export.window {
+		p.export.before, p.export.step = a.export.before, exportCloseMenu
+	}
+}
 func (p *gamePipeline) exportFailed(err error) {
 	p.invalidateAchievementGoals()
 	reason := fmt.Sprintf("save export failed at %s: %v", p.export.step, err)
 	if p.export.status != "" {
 		reason += " (" + p.export.status + ")"
 	}
-	reason += "; close any dialog, focus the game and press F8 to retry"
-	p.export.interrupt()
-	p.controls.pause(reason)
+	reason += "; retrying navigation in 5s"
+	p.export.suspend()
+	p.export.nextAction = time.Now().Add(5 * time.Second)
+	fmt.Println(reason)
 	if p.frame.image != nil && p.frame.image.Bounds().Dx() >= 640 {
 		path := fmt.Sprintf("artifacts/save-export-failure-%s.png", time.Now().Format("20060102-150405.000"))
 		if err := saveImage(path, p.frame.image); err != nil {
@@ -132,18 +154,22 @@ func (p *gamePipeline) planExport(now time.Time) bool {
 	if p.options.export == nil || !e.requested {
 		return p.frame.context.saveMenu
 	}
-	if p.frame.id == 0 {
+	if p.frame.id == 0 || now.Before(e.nextAction) {
 		return true
 	}
 	if !e.active {
-		if !p.frame.context.known || (!p.frame.context.heroes && !p.frame.context.ancients && !p.frame.context.saveMenu) {
+		if e.before != nil && e.step == exportCloseMenu {
+			e.active = true
+		} else if !p.frame.context.known || (!p.frame.context.heroes && !p.frame.context.ancients && !p.frame.context.saveMenu) {
 			return true
 		}
-		if p.frame.context.window == "" || p.frame.context.window == "!outside-game" {
+		if !e.active && (p.frame.context.window == "" || p.frame.context.window == "!outside-game") {
 			p.exportFailed(fmt.Errorf("game process identity unavailable"))
 			return true
 		}
-		e.active, e.step, e.window = true, exportOpenMenu, p.frame.context.window
+		if !e.active {
+			e.active, e.step, e.window = true, exportOpenMenu, p.frame.context.window
+		}
 		e.deadline = now.Add(20 * time.Second)
 		p.queue = make(map[actionKind]gameAction)
 		if e.relicsOnly && p.relic.active {
@@ -177,12 +203,15 @@ func (p *gamePipeline) planExport(now time.Time) bool {
 	}
 	if e.step == exportCloseMenu {
 		if c.window != e.window {
-			return true
+			e.step, e.waiting = exportRestoreGame, false
 		}
 		if !c.saveMenu && c.known && (c.heroes || c.ancients) {
 			e.step, e.waiting = exportReadFile, false
 			e.deadline = now.Add(30 * time.Second)
 		}
+	}
+	if e.waiting && !now.Before(e.nextAction) {
+		e.waiting = false // Repeating navigation is safe; Save itself is never replayed here.
 	}
 	if e.step == exportReadFile || e.waiting {
 		return true
@@ -214,10 +243,11 @@ func (p *gamePipeline) planExport(now time.Time) bool {
 func (e *saveExporter) sent(a gameAction, now time.Time) {
 	e.lastFrame = a.frame.id
 	e.waiting = true
-	e.deadline = now.Add(20 * time.Second)
+	e.nextAction = now.Add(time.Second)
 	fmt.Printf("save export: %s\n", a.export.step)
 	switch a.export.step {
 	case exportSave:
+		e.deadline = now.Add(20 * time.Second)
 		e.before = a.export.before
 		e.step, e.waiting = exportRestoreGame, false
 	case exportRestoreGame:
