@@ -18,6 +18,7 @@ func TestReadRelicUIRealStates(t *testing.T) {
 		wantJunk  int
 	}{
 		{"inventory", true, 3},
+		{"inventory-one-junk", true, 1},
 		{"empty", true, 0},
 		{"salvage-dialog", false, 0},
 		{"upgrade", false, 0},
@@ -46,6 +47,7 @@ func TestRelicPanelPresentAllowsTooltipOnly(t *testing.T) {
 		want bool
 	}{
 		{"inventory", true},
+		{"inventory-one-junk", true},
 		{"tooltip", true},
 		{"empty", true},
 		{"salvage-dialog", false},

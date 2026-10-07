@@ -91,19 +91,12 @@ func relicCardLooksReal(screen image.Image, logical image.Rectangle) bool {
 	return bright*500 >= r.Dx()*r.Dy()
 }
 
-func relicTabSelected(screen image.Image) bool {
-	if screen == nil || screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 {
-		return false
-	}
-	found, err := vision.MatchControl(screen, image.Rect(333, 125, 373, 165), "relics/tab.png")
-	return err == nil && found
-}
-
 // relicPanelPresent is intentionally looser than readRelicUI: a card tooltip
 // may cover part of the inventory while the surrounding Relics panel remains
-// safely identifiable. Modals are dimmed and fail the panel anchors.
+// safely identifiable. The animated tab notification is not a panel anchor.
+// Modals are dimmed and fail the panel anchors.
 func relicPanelPresent(screen image.Image) bool {
-	if screen == nil || screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 || !relicTabSelected(screen) {
+	if screen == nil || screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 {
 		return false
 	}
 	if !relicCream(screen, image.Pt(105, 385), image.Pt(520, 385), image.Pt(105, 690), image.Pt(520, 690)) {

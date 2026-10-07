@@ -598,3 +598,43 @@ func TestRelicJunkClosureReturnsWithoutAnotherExport(t *testing.T) {
 		t.Fatal("no-change cleanup failed to continue", p.relic)
 	}
 }
+
+func TestRelicStartupOneJunkContinuesToHover(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+	screen := loadTestImage(t, "../../testdata/relic-inventory-one-junk.png")
+	ui := readRelicUI(screen)
+	if !ui.known || len(ui.junk) != 1 || ui.equipment != [4]bool{true, true, true, true} {
+		t.Fatalf("native one-junk inventory not recognized: %+v", ui)
+	}
+	p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return screen, nil }}, pipelineReaders{context: recognizedGame}, pipelineOptions{heroes: true, progression: true, export: &saveExportOptions{}, fishInterval: time.Second})
+	p.frame = gameFrame{id: 1, at: now, image: screen, context: gameContext{known: true, heroes: true, bounds: screen.Bounds()}}
+	p.startupCheck, p.startup, p.export.requested = false, startupUpgrades, false
+	p.relic = relicPlanner{active: true, step: relicAcquire, deadline: now.Add(time.Minute)}
+	s := relicEquipmentFixture()
+	s.Items = s.Items[:5]
+	if err := p.acceptRelicSave(&ancientcalc.RelicPreview{Snapshot: s}, now); err != nil {
+		t.Fatal(err)
+	}
+	p.relic.step = relicInspect
+	jobs := make([]chan analysisJob, analysisCount)
+	for i := range jobs {
+		jobs[i] = make(chan analysisJob, 1)
+	}
+	if err := p.capture(ctx, now, jobs); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case job := <-jobs[relicAnalysis]:
+		if err := p.accept(ctx, p.analyze(ctx, relicAnalysis, job), now); err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatalf("no inventory analysis: context=%+v relic=%+v", p.frame.context, p.relic)
+	}
+	p.plan(now.Add(time.Second))
+	a, ok := p.nextAction(now.Add(time.Second))
+	if !ok || a.kind != handleRelic || a.relic.step != relicHover || a.point != ui.junk[0] {
+		t.Fatalf("startup blocked hover: action=%+v ok=%v step=%v context=%+v", a, ok, p.relic.step, p.frame.context)
+	}
+}
