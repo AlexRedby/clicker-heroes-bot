@@ -5,15 +5,120 @@ import (
 	"compress/flate"
 	"compress/zlib"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestTimelapseGildPreparationUsesForecastAndKeepsGuards(t *testing.T) {
+	for _, name := range []string{"earlier forecast hero", "needs levels", "missing upgrade", "not hired", "no gain", "nil history", "earlier receipt", "same receipt", "pending receipt", "epoch changed", "no move", "insufficient reserve", "unsupported late hero", "stale forecast", "invalid forecast", "canceled"} {
+		t.Run(name, func(t *testing.T) {
+			f := newGildFixture()
+			setGildHero(f, 41, 1000, 0, false)
+			setGildHero(f, 42, 1000, 0, false)
+			f.Upgrades["196"] = true
+			history := currentGildHistory()
+			forecast := TimelapseGildForecast{HeroID: 41, Level: 1000, WithoutTransferZones: 100, WithTransferZones: 200}
+			reserve, reason, wantError := "0", "", false
+			switch name {
+			case "needs levels":
+				forecast.Level = 1001
+				reason = "required preparation level"
+			case "missing upgrade":
+				f.Upgrades["196"] = false
+				reason = "upgrades are not purchased"
+			case "not hired":
+				setGildHero(f, 41, 0, 0, true)
+				reason = "not purchased"
+			case "no gain":
+				forecast.WithTransferZones = forecast.WithoutTransferZones
+				reason = "no zone gain"
+			case "nil history":
+				history = nil
+				reason = "history is required"
+			case "earlier receipt":
+				history.LastTargetID = 42
+				reason = "not later"
+			case "same receipt":
+				history.LastTargetID = 41
+				reason = "not later"
+			case "pending receipt":
+				history.PendingTargetID = 41
+				reason = "unresolved"
+			case "epoch changed":
+				history.Transcensions++
+				reason = "identity changed"
+			case "no move":
+				setGildHero(f, 41, 1000, 2, false)
+				setGildHero(f, 43, 0, 0, true)
+				reason = "already on the target"
+			case "insufficient reserve":
+				reserve = "1"
+				reason = "protected reserve"
+			case "unsupported late hero":
+				forecast.HeroID = 47
+				setGildHero(f, 47, 1000, 0, false)
+				reason = "outside the supported"
+			case "stale forecast", "invalid forecast", "canceled":
+				wantError = true
+			}
+			save := f.save(t, false)
+			forecast.SaveHash = fmt.Sprintf("%x", sha256.Sum256(save))
+			if name == "stale forecast" {
+				f.WorldResets = 4
+				save = f.save(t, false)
+			}
+			if name == "invalid forecast" {
+				forecast.WithoutTransferZones = -1
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if name == "canceled" {
+				cancel()
+			}
+			p, err := CalculateTimelapseGilds(ctx, save, reserve, history, forecast)
+			if wantError {
+				if err == nil || p.Eligible || !p.PreviewOnly {
+					t.Fatalf("invalid forecast accepted: %+v %v", p, err)
+				}
+				if name == "canceled" && !errors.Is(err, context.Canceled) {
+					t.Fatalf("cancellation error: %v", err)
+				}
+				return
+			}
+			if err != nil || !p.PreviewOnly || p.Target.ID != forecast.HeroID || p.SaveHash != forecast.SaveHash {
+				t.Fatalf("forecast preview: %+v %v", p, err)
+			}
+			if reason == "" {
+				if !p.Eligible || p.Cost != "160" || p.Remaining != "0" {
+					t.Fatalf("exact-fit forecast target: %+v", p)
+				}
+				active, err := CalculateGilds(context.Background(), save, reserve, history)
+				if err != nil || active.Target.ID != 42 {
+					t.Fatalf("ordinary latest-hero policy changed: %+v %v", active, err)
+				}
+			} else if p.Eligible || !strings.Contains(strings.Join(p.Reasons, ";"), reason) {
+				t.Fatalf("missing block %q: %+v", reason, p)
+			}
+		})
+	}
+}
+
+func TestTimelapseGildPreparationBoundsInputBeforeHashing(t *testing.T) {
+	for _, save := range [][]byte{nil, make([]byte, MaxSaveInput+1)} {
+		p, err := CalculateTimelapseGilds(context.Background(), save, "0", nil, TimelapseGildForecast{})
+		if err == nil || !strings.Contains(err.Error(), "4 MiB") || !p.PreviewOnly || p.Eligible {
+			t.Fatalf("unbounded save accepted: %+v %v", p, err)
+		}
+	}
+}
 
 type gildFixture struct {
 	Souls         any

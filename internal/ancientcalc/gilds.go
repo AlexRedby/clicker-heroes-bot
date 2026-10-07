@@ -38,6 +38,18 @@ type GildHistory struct {
 	PendingTargetID       int   `json:"pendingTargetID"`
 }
 
+// TimelapseGildForecast is supplied by the Timelapse model for one save.
+// HeroID/Level describe preparation BEFORE the Timelapse, not its end state.
+// WithTransferZones must include the soul debit and changed gild distribution;
+// WithoutTransferZones is the same forecast without that paid preparation.
+type TimelapseGildForecast struct {
+	SaveHash             string `json:"saveHash"`
+	HeroID               int    `json:"heroID"`
+	Level                int64  `json:"level"`
+	WithoutTransferZones int64  `json:"withoutTransferZones"`
+	WithTransferZones    int64  `json:"withTransferZones"`
+}
+
 type GildPlan struct {
 	PreviewOnly           bool         `json:"previewOnly"`
 	Eligible              bool         `json:"eligible"`
@@ -131,6 +143,38 @@ func gildDecimalString(n *big.Rat, places int) string {
 // Eligible means this snapshot fits the policy; live application still needs
 // fresh state, modal ownership and native verification in the shared pipeline.
 func CalculateGilds(ctx context.Context, exported []byte, reserve string, history *GildHistory) (GildPlan, error) {
+	return calculateGilds(ctx, exported, reserve, history, 0)
+}
+
+// CalculateTimelapseGilds checks a forecast-selected hero using current save
+// levels/upgrades and the existing budget/history policy. It does not forecast
+// damage, buy levels, transfer gilds or authorize a Timelapse purchase.
+func CalculateTimelapseGilds(ctx context.Context, exported []byte, reserve string, history *GildHistory, forecast TimelapseGildForecast) (GildPlan, error) {
+	invalid := GildPlan{PreviewOnly: true}
+	if len(exported) == 0 || len(exported) > MaxSaveInput {
+		return invalid, errors.New("save must be non-empty and at most 4 MiB")
+	}
+	if forecast.SaveHash != fmt.Sprintf("%x", sha256.Sum256(exported)) {
+		return invalid, errors.New("Timelapse gild forecast does not match the save")
+	}
+	if forecast.HeroID < 1 || forecast.HeroID > 54 || forecast.Level < 1 || forecast.Level > maxGildInteger || forecast.WithoutTransferZones < 0 || forecast.WithoutTransferZones > maxGildInteger || forecast.WithTransferZones < 0 || forecast.WithTransferZones > maxGildInteger {
+		return invalid, errors.New("invalid Timelapse gild forecast")
+	}
+	p, err := calculateGilds(ctx, exported, reserve, history, forecast.HeroID)
+	if err != nil {
+		return p, err
+	}
+	if p.Target.Level < forecast.Level {
+		p.Reasons = append(p.Reasons, "forecast hero has not reached the required preparation level")
+	}
+	if forecast.WithTransferZones <= forecast.WithoutTransferZones {
+		p.Reasons = append(p.Reasons, "forecast shows no zone gain from transferring gilds")
+	}
+	p.Eligible = len(p.Reasons) == 0
+	return p, nil
+}
+
+func calculateGilds(ctx context.Context, exported []byte, reserve string, history *GildHistory, targetID int) (GildPlan, error) {
 	p := GildPlan{PreviewOnly: true, UnitCost: 80, Heroes: []GildHero{}, MissingUpgrades: []int{}, Reasons: []string{}}
 	if ctx == nil {
 		ctx = context.Background()
@@ -209,7 +253,7 @@ func CalculateGilds(ctx context.Context, exported []byte, reserve string, histor
 		row := GildHero{def.ID, def.Name, level, gilds, *hero.Locked}
 		p.Heroes = append(p.Heroes, row)
 		p.TotalGilds += gilds
-		if !row.Locked && row.Level > 0 {
+		if (targetID == 0 && !row.Locked && row.Level > 0) || targetID == def.ID {
 			p.Target = row
 		}
 	}
@@ -217,11 +261,18 @@ func CalculateGilds(ctx context.Context, exported []byte, reserve string, histor
 		p.Reasons = append(p.Reasons, "no purchased hero")
 	} else {
 		p.MoveGilds = p.TotalGilds - p.Target.Gilds
+		label := "latest hero"
+		if targetID != 0 {
+			label = "forecast hero"
+			if p.Target.Locked || p.Target.Level == 0 {
+				p.Reasons = append(p.Reasons, "forecast hero is not purchased")
+			}
+		}
 		if p.Target.ID < 28 || p.Target.ID > 46 {
-			p.Reasons = append(p.Reasons, "latest hero is outside the supported Atlas-Xavira progression")
+			p.Reasons = append(p.Reasons, label+" is outside the supported Atlas-Xavira progression")
 		}
 		if p.Target.Level < 1000 {
-			p.Reasons = append(p.Reasons, "latest hero has not reached level 1000")
+			p.Reasons = append(p.Reasons, label+" has not reached level 1000")
 		}
 		for _, upgrade := range definitions[p.Target.ID-1].Upgrades {
 			bought := save.Upgrades[strconv.Itoa(upgrade.ID)]
