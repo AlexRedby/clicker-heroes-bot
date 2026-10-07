@@ -97,22 +97,25 @@ func TestSIFTFishAtScalesAndEdge(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
-		name     string
-		height   int
-		position image.Point
-		rotated  bool
+		name        string
+		height      int
+		position    image.Point
+		rotated     bool
+		largeScreen bool
 	}{
-		{"small", 50, image.Pt(30, 30), false},
-		{"small-rotated", 50, image.Pt(30, 30), true},
-		{"large", 100, image.Pt(30, 30), false},
-		{"height-200", 200, image.Pt(1800, 600), false},
-		{"height-200-rotated", 200, image.Pt(1800, 600), true},
-		{"height-300", 300, image.Pt(1800, 600), false},
-		{"height-300-rotated", 300, image.Pt(1800, 600), true},
+		{"small", 50, image.Pt(30, 30), false, false},
+		{"small-rotated", 50, image.Pt(30, 30), true, false},
+		{"small-large-screen", 50, image.Pt(30, 30), false, true},
+		{"small-rotated-large-screen", 50, image.Pt(30, 30), true, true},
+		{"large", 100, image.Pt(30, 30), false, false},
+		{"height-200", 200, image.Pt(1800, 600), false, false},
+		{"height-200-rotated", 200, image.Pt(1800, 600), true, false},
+		{"height-300", 300, image.Pt(1800, 600), false, false},
+		{"height-300-rotated", 300, image.Pt(1800, 600), true, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			background := background
-			if test.height > 100 {
+			if test.height > 100 || test.largeScreen {
 				background = loadTestImage(t, "testdata/hero-scrollbar-before.png")
 			}
 			width := fish.Bounds().Dx() * test.height / fish.Bounds().Dy()

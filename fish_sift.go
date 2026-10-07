@@ -35,7 +35,7 @@ func newSIFTFishDetector() (*siftFishDetector, error) {
 		return nil, fmt.Errorf("fish image must have an alpha channel")
 	}
 
-	contrast, sigma := 0.001, 0.8
+	contrast, sigma := 0.002, 0.8
 	detector := &siftFishDetector{
 		sift:    gocv.NewSIFTWithParams(nil, nil, &contrast, nil, &sigma),
 		matcher: gocv.NewBFMatcherWithParams(gocv.NormL2, false),
