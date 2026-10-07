@@ -125,8 +125,7 @@ func (e *saveExporter) suspend() {
 func (p *gamePipeline) rememberCompletedSave(done actionResult) {
 	a := done.action
 	if done.acted && done.err == nil && a.kind == handleExport && a.export.step == exportSave &&
-		a.export.before != nil && a.frame.generation != p.controls.snapshot() &&
-		p.export.requested && p.export.window == a.export.window {
+		a.export.before != nil && p.export.requested && p.export.window == a.export.window {
 		p.export.before, p.export.step = a.export.before, exportCloseMenu
 	}
 }

@@ -281,3 +281,21 @@ func TestExportLateSaveCompletionRetainsOnlyFileOwnership(t *testing.T) {
 		}
 	}
 }
+
+func TestExportF8BetweenSaveRecordAndActionAcknowledgement(t *testing.T) {
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{export: &saveExportOptions{}})
+	p.export.active, p.export.window, p.export.step = true, "game", exportSave
+	a := gameAction{kind: handleExport, frame: testPipelineFrame(), export: &exportCommand{step: exportSave, window: "game", before: exportSnapshot{}}}
+	p.rememberCompletedSave(actionResult{action: a, acted: true})
+	// F8 arrives after ownership recording but before the normal acknowledgement.
+	p.controls.toggle()
+	if applied, err := p.controls.runClick(context.Background(), a.frame.generation, func() error { t.Fatal("stale acknowledgement applied"); return nil }); err != nil || applied {
+		t.Fatal(err)
+	}
+	p.reset(p.controls.snapshot())
+	p.controls.toggle()
+	p.reset(p.controls.snapshot())
+	if p.export.before == nil || p.export.step != exportCloseMenu || p.export.active || p.ancient.plan != nil {
+		t.Fatal("F8 lost the actual Save or authorized a stale decision")
+	}
+}
