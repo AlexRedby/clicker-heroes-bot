@@ -135,3 +135,57 @@ func TestRelicPolicyRejectsUnsafeProfilesAndExactDiscardDifferences(t *testing.T
 		t.Fatal("invalid profile accepted")
 	}
 }
+
+func TestActiveRelicPolicyRequiresMeaningfulEffects(t *testing.T) {
+	for _, tc := range []struct {
+		name                string
+		chronos, juggernaut string
+		equipped, candidate RelicBonus
+		wantMove            bool
+	}{
+		{"reported zero-effect Chronos replaces zero-effect Juggernaut", "250", "1e30", RelicBonus{Type: 26, AncientID: 29, Level: "6.46"}, RelicBonus{Type: 3, AncientID: 17, Level: "5.54"}, false},
+		{"useful early Chronos", "10", "1e30", RelicBonus{Type: 26, AncientID: 29, Level: "6.46"}, RelicBonus{Type: 3, AncientID: 17, Level: "5.54"}, true},
+		{"tiny duration must not displace useful damage", "250", "10", RelicBonus{Type: 26, AncientID: 29, Level: "1000"}, RelicBonus{Type: 3, AncientID: 17, Level: "5.54"}, false},
+		{"tiny damage improvement", "250", "1000000", RelicBonus{Type: 26, AncientID: 29, Level: "6"}, RelicBonus{Type: 26, AncientID: 29, Level: "6.46"}, false},
+		{"useful damage improvement", "250", "10000", RelicBonus{Type: 26, AncientID: 29, Level: "6"}, RelicBonus{Type: 26, AncientID: 29, Level: "1000"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := RelicSnapshot{EquipmentSlots: 4, AncientLevels: map[int]string{17: tc.chronos, 29: tc.juggernaut}, Items: []Relic{
+				{UID: 1, Slot: 1, Bonuses: []RelicBonus{tc.equipped}}, {UID: 2, Slot: 2, Bonuses: []RelicBonus{{Type: 2, AncientID: 19, Level: "100"}}},
+				{UID: 3, Slot: 3, Bonuses: []RelicBonus{{Type: 2, AncientID: 19, Level: "100"}}},
+				{UID: 4, Slot: 4, Bonuses: []RelicBonus{{Type: 2, AncientID: 19, Level: "100"}}}, {UID: 5, Bonuses: []RelicBonus{tc.candidate}},
+			}}
+			move, err := PlanRelicEquipment(s)
+			if err != nil || (move != nil) != tc.wantMove {
+				t.Fatalf("move=%+v error=%v want move=%v", move, err, tc.wantMove)
+			}
+		})
+	}
+}
+
+func TestActiveRelicPolicyKeepsUsefulFractionalMonsterReduction(t *testing.T) {
+	s := RelicSnapshot{EquipmentSlots: 4, AncientLevels: map[int]string{21: "250"}, Items: []Relic{
+		{UID: 1, Slot: 1}, {UID: 2, Slot: 2}, {UID: 3, Slot: 3}, {UID: 4, Slot: 4}, {UID: 5, Bonuses: []RelicBonus{{Type: 27, AncientID: 21, Level: "1"}}},
+	}}
+	if move, err := PlanRelicEquipment(s); err != nil || move != nil {
+		t.Fatalf("tiny reduction near the cap: %+v %v", move, err)
+	}
+	// Fractional monsters affect the chance of an extra enemy, so a useful
+	// fractional reduction must remain eligible rather than being rounded away.
+	s.AncientLevels[21] = "1"
+	if move, err := PlanRelicEquipment(s); err != nil || move == nil {
+		t.Fatalf("useful fractional reduction was lost: %+v %v", move, err)
+	}
+}
+
+func TestActiveRelicPolicyDoesNotStartInsignificantBatch(t *testing.T) {
+	s := RelicSnapshot{EquipmentSlots: 4, AncientLevels: map[int]string{17: "210"}, Items: []Relic{{UID: 1, Slot: 1}, {UID: 2, Slot: 2}, {UID: 3, Slot: 3}, {UID: 4, Slot: 4}}}
+	// Four swaps together pass the boss-timer threshold, but each proposed
+	// drag must be useful by itself. There is no stored multi-move outfit plan.
+	for uid := 5; uid <= 8; uid++ {
+		s.Items = append(s.Items, Relic{UID: uid, Bonuses: []RelicBonus{{Type: 3, AncientID: 17, Level: "5.54"}}})
+	}
+	if move, err := PlanRelicEquipment(s); err != nil || move != nil {
+		t.Fatalf("started an individually useless swap: %+v %v", move, err)
+	}
+}

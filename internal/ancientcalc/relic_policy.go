@@ -7,10 +7,9 @@ import (
 	"strconv"
 )
 
-// activeRelicSuggestion enumerates the small inventory (at most ten known
-// items) and compares complete four-item sets. The tuple is deliberately
-// lexicographic: it documents the Active progression policy without inventing
-// exchange rates between unrelated effects.
+// Evaluate each single replacement against the complete equipped set and the
+// saved Ancient profile. Every returned move must improve the current outfit;
+// hypothetical multi-item gains cannot authorize an insignificant first swap.
 func activeRelicSuggestion(snapshot RelicSnapshot) (*RelicSuggestion, error) {
 	if snapshot.AncientLevels == nil {
 		return nil, nil
@@ -39,44 +38,26 @@ func activeRelicSuggestion(snapshot RelicSnapshot) (*RelicSuggestion, error) {
 			current = append(current, Relic{Slot: slot})
 		}
 	}
-	best := scoreActiveRelics(snapshot, current)
-	bestSet := append([]Relic(nil), current...)
-	pool := append([]Relic(nil), snapshot.Items...)
-	for slot := 1; len(pool) < snapshot.EquipmentSlots; slot++ {
-		pool = append(pool, Relic{Slot: slot})
-	}
-	var visit func(int, []Relic)
-	visit = func(start int, set []Relic) {
-		if len(set) == snapshot.EquipmentSlots {
-			score := scoreActiveRelics(snapshot, set)
-			if activeScoreGreater(score, best) {
-				best, bestSet = score, append([]Relic(nil), set...)
-			}
-			return
-		}
-		for i := start; i < len(pool); i++ {
-			visit(i+1, append(set, pool[i]))
-		}
-	}
-	visit(0, nil)
-	for _, item := range bestSet {
-		if item.Slot >= 1 && item.Slot <= snapshot.EquipmentSlots {
+	baseline := scoreActiveRelics(snapshot, current)
+	best := baseline
+	var move *RelicSuggestion
+	for _, candidate := range snapshot.Items {
+		if candidate.Slot >= 1 && candidate.Slot <= snapshot.EquipmentSlots {
 			continue
 		}
-		for _, currentItem := range current {
-			present := false
-			for _, selected := range bestSet {
-				if currentItem.UID != 0 && selected.UID == currentItem.UID {
-					present = true
-					break
-				}
-			}
-			if !present {
-				return &RelicSuggestion{UID: item.UID, Slot: currentItem.Slot, ReplaceUID: currentItem.UID}, nil
+		for i, equipped := range current {
+			set := append([]Relic(nil), current...)
+			set[i] = candidate
+			score := scoreActiveRelics(snapshot, set)
+			// Practical tolerances are not transitive. Compare every option with
+			// the real outfit as well as the best accepted option.
+			if activeScoreGreater(score, baseline) && activeScoreGreater(score, best) {
+				best = score
+				move = &RelicSuggestion{UID: candidate.UID, Slot: equipped.Slot, ReplaceUID: equipped.UID}
 			}
 		}
 	}
-	return nil, nil
+	return move, nil
 }
 
 // This is an Active-play priority tuple, not a prediction of run duration.
@@ -84,8 +65,16 @@ func activeRelicSuggestion(snapshot RelicSnapshot) (*RelicSuggestion, error) {
 type activeRelicScore [20]float64
 
 func activeScoreGreater(a, b activeRelicScore) bool {
+	// Minimum gains in effect units: average monsters, percentage points,
+	// skill uptime, cooldown fraction and boss seconds. Damage/gold scores
+	// are logarithms, so their minimum is a 0.1% multiplier improvement.
+	minimum := [...]float64{.01, .01, .001, .001, .001, .0001, .01, .01, .01, .01, .01, .01}
 	for i := range a {
-		if math.Abs(a[i]-b[i]) < 1e-12 {
+		threshold := math.Log1p(.001)
+		if i < len(minimum) {
+			threshold = minimum[i]
+		}
+		if math.Abs(a[i]-b[i]) < threshold {
 			continue
 		}
 		return a[i] > b[i]
