@@ -23,6 +23,9 @@ const (
 	relicReturn
 	relicVerifyEquip
 	relicAcknowledge
+	relicOpenSalvage
+	relicConfirmSalvage
+	relicWaitSalvage
 )
 
 type relicObservation struct {
@@ -127,6 +130,20 @@ func (p *gamePipeline) acceptRelicSave(preview *ancientcalc.RelicPreview, now ti
 		if !relicSameItems(r.original, after) || !reflect.DeepEqual(relicEquipped(r.snapshot), relicEquipped(after)) {
 			return errors.New("equipment outcome differs from the batch; no replay")
 		}
+		// A landed equipment batch needs fresh inventory evidence before salvage.
+		discard := false
+		if after.AncientLevels != nil {
+			var err error
+			discard, err = ancientcalc.RelicJunkIsDominated(after)
+			if err != nil {
+				return err
+			}
+		}
+		if discard {
+			r.step, r.moves = relicAcquire, 0
+			r.base, r.cards, r.point = gameFrame{}, nil, image.Point{}
+			return p.acceptRelicSave(preview, now)
+		}
 		p.finishRelics(now, true)
 	default:
 		return errors.New("unexpected relic export")
@@ -190,6 +207,18 @@ func (r *relicPlanner) observe(out relicObservation, err error) error {
 		}
 	}
 	// Four moves per Save batch; retry combat before another batch.
+	if r.move == nil && !r.verifyNeeded && r.snapshot.AncientLevels != nil {
+		// No recommendation alone never authorizes destruction. Every junk
+		// item must be no better than a kept item in every supported Active bonus.
+		discard, err := ancientcalc.RelicJunkIsDominated(r.snapshot)
+		if err != nil {
+			return err
+		}
+		if discard && len(out.ui.junk) > 0 {
+			r.step = relicOpenSalvage
+			return nil
+		}
+	}
 	if r.move == nil || r.moves >= 4 {
 		r.acknowledge(out.frame, out.ui)
 	} else if r.point != (image.Point{}) {
@@ -271,7 +300,7 @@ func (p *gamePipeline) planRelics(now time.Time) bool {
 		return true
 	}
 	if r.step == relicOpenTab && p.frame.context.relics {
-		if r.move == nil {
+		if r.move == nil && r.snapshot.AncientLevels == nil {
 			ui := readRelicUI(p.frame.image)
 			if !ui.known {
 				return true
@@ -282,11 +311,48 @@ func (p *gamePipeline) planRelics(now time.Time) bool {
 		}
 		return true
 	}
-	if r.step == relicAcknowledge && now.Before(r.nextRead) {
+	if (r.step == relicAcknowledge || r.step >= relicOpenSalvage) && now.Before(r.nextRead) {
+		return true
+	}
+	if r.step == relicOpenSalvage && p.frame.context.relicJunk && p.frame.context.relics {
+		r.step = relicConfirmSalvage
+	}
+	if r.step == relicWaitSalvage {
+		if p.frame.context.relicJunk {
+			return true
+		} // Never replay Yes.
+		ui := readRelicUI(p.frame.image)
+		if !ui.known || len(ui.junk) != 0 {
+			return true
+		}
+		equipped := relicEquipped(r.snapshot)
+		for i, present := range ui.equipment {
+			if present != (equipped[i+1] != 0) {
+				p.relicFailed("equipment changed during junk salvage", now)
+				return true
+			}
+		}
+		fmt.Println("relics: dominated junk salvaged; equipped items preserved")
+		r.acknowledge(p.frame, ui)
 		return true
 	}
 	a := gameAction{kind: handleRelic, frame: p.frame, relic: relicCommand{step: r.step, before: r.base.image}}
 	switch r.step {
+	case relicOpenSalvage:
+		if !p.frame.context.relics || p.frame.context.relicJunk || !readRelicUI(p.frame.image).known || !relicInventoryStable(r.base.image, p.frame.image) {
+			return true
+		}
+		rg := vision.Rect(p.frame.image, image.Rect(225, 505, 415, 546))
+		a.point = rg.Min.Add(rg.Size().Div(2))
+	case relicConfirmSalvage:
+		if !p.frame.context.relics || !p.frame.context.relicJunk {
+			return true
+		}
+		point, found, err := relicJunkControl(p.frame.image, true)
+		if err != nil || !found {
+			return true
+		}
+		a.point = point
 	case relicOpenTab:
 		if !p.frame.context.heroes {
 			return true
@@ -322,8 +388,10 @@ func (p *gamePipeline) planRelics(now time.Time) bool {
 func (r *relicPlanner) sent(a gameAction, now time.Time) {
 	r.lastInput, r.latest, r.nextRead = a.frame.id, relicObservation{}, now.Add(400*time.Millisecond)
 	switch a.relic.step {
+	case relicConfirmSalvage:
+		r.step = relicWaitSalvage
 	case relicOpenTab:
-		if r.move != nil {
+		if r.move != nil || r.snapshot.AncientLevels != nil {
 			r.step = relicInspect
 		}
 	case relicPark:
@@ -354,6 +422,11 @@ func relicActionStable(a gameAction, current gameFrame) bool {
 	switch a.relic.step {
 	case relicOpenTab:
 		return current.context.heroes
+	case relicConfirmSalvage:
+		point, found, err := relicJunkControl(current.image, true)
+		return current.context.relics && current.context.relicJunk && err == nil && found && point == a.point
+	case relicOpenSalvage:
+		return current.context.relics && !current.context.relicJunk && readRelicUI(current.image).known && relicInventoryStable(a.relic.before, current.image)
 	case relicHover:
 		return current.context.relics && readRelicUI(current.image).known && relicInventoryStable(a.relic.before, current.image)
 	case relicPark, relicReturn, relicAcknowledge:

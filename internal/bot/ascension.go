@@ -266,8 +266,9 @@ func (p *ascensionPlanner) observe(out ascensionObservation, err error, now time
 		if p.step == cancelAscension && p.junkCancelled {
 			p.latest = ascensionObservation{} // A delayed orphan No is not replayed.
 		}
-		if err == nil && out.confirm && out.no && (p.step == openAscension || p.step == confirmAscension) {
+		if err == nil && out.confirm && out.no && (p.step == openAscension || p.step == confirmAscension || p.step == waitAscensionReset) {
 			p.step = salvageAscensionJunk
+			p.deadline = now.Add(20 * time.Second)
 			if p.junkSalvaged {
 				p.step = cancelAscension // Never replay salvage, even after reopening Ascension.
 			}

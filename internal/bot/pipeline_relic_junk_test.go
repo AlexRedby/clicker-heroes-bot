@@ -8,7 +8,7 @@ import (
 )
 
 func TestPipelineRelicJunkSalvageAndResumeAscension(t *testing.T) {
-	current := loadTestImage(t, "../../testdata/ascension-junk.png")
+	current := loadTestImage(t, "../../testdata/ascension-junk-940.png")
 	heroes := loadTestImage(t, "../../testdata/hero-panel-max.png")
 	confirm := loadTestImage(t, "../../testdata/ascension-confirm.png")
 	p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return current, nil }}, pipelineReaders{

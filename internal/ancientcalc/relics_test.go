@@ -137,9 +137,9 @@ func TestRelicPreviewRemainsManualAndUnknown(t *testing.T) {
 		}
 		return out
 	}
-	// An item without a slot is preserved, with a manual suggestion only.
-	if out := check(); out.Suggestion == nil || out.Suggestion.UID != 8 || out.Suggestion.Slot != 1 || out.Suggestion.ReplaceUID != 7 {
-		t.Fatalf("manual dominance suggestion: %+v", out)
+	// A fresh-profile suggestion fills an empty slot before replacing useful gear.
+	if out := check(); out.Suggestion == nil || out.Suggestion.UID != 8 || out.Suggestion.Slot != 2 || out.Suggestion.ReplaceUID != 0 {
+		t.Fatalf("manual Active suggestion: %+v", out)
 	}
 	candidate["bonusType1"] = 23 // Absent from the official asset.
 	if out := check(); out.Suggestion != nil || len(out.UnsupportedTypes) != 1 || out.UnsupportedTypes[0] != 23 {

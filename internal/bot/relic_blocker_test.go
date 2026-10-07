@@ -12,24 +12,29 @@ import (
 )
 
 func TestRelicJunkDialogRealAndScaled(t *testing.T) {
-	base := loadTestImage(t, "../../testdata/ascension-junk.png")
-	for _, scale := range []int{1, 2} {
-		t.Run(string(rune('0'+scale)), func(t *testing.T) {
-			img := base
-			if scale == 1 {
-				scaled := image.NewRGBA(image.Rect(0, 0, 1280, 720))
-				xdraw.CatmullRom.Scale(scaled, scaled.Bounds(), base, base.Bounds(), draw.Src, nil)
-				img = scaled
+	for _, fixture := range []string{"ascension-junk", "ascension-junk-940"} {
+		t.Run(fixture, func(t *testing.T) {
+			base := loadTestImage(t, "../../testdata/"+fixture+".png")
+			for _, scale := range []int{1, 2} {
+				t.Run(string(rune('0'+scale)), func(t *testing.T) {
+					img := base
+					if scale == 1 {
+						scaled := image.NewRGBA(image.Rect(0, 0, 1280, 720))
+						xdraw.CatmullRom.Scale(scaled, scaled.Bounds(), base, base.Bounds(), draw.Src, nil)
+						img = scaled
+					}
+					if !relicJunkDialog(img) {
+						t.Fatal("junk blocker not recognized")
+					}
+					for _, yes := range []bool{true, false} {
+						point, found, err := relicJunkControl(img, yes)
+						if err != nil || !found || point == (image.Point{}) {
+							t.Fatalf("yes=%v point=%v found=%v err=%v", yes, point, found, err)
+						}
+					}
+				})
 			}
-			if !relicJunkDialog(img) {
-				t.Fatal("junk blocker not recognized")
-			}
-			for _, yes := range []bool{true, false} {
-				point, found, err := relicJunkControl(img, yes)
-				if err != nil || !found || point == (image.Point{}) {
-					t.Fatalf("yes=%v point=%v found=%v err=%v", yes, point, found, err)
-				}
-			}
+
 		})
 	}
 }
@@ -50,10 +55,10 @@ func TestRelicJunkDialogRejectsOtherModalsAndChangedText(t *testing.T) {
 	base := loadTestImage(t, "../../testdata/ascension-junk.png")
 	changed := image.NewRGBA(base.Bounds())
 	draw.Draw(changed, changed.Bounds(), base, base.Bounds().Min, draw.Src)
-	// This is fixed reward-prefix text, not the variable count farther right.
-	draw.Draw(changed, vision.Rect(changed, image.Rect(635, 316, 755, 350)), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	// Removing the distinctive warning heading must reject the dialog.
+	draw.Draw(changed, vision.Rect(changed, image.Rect(390, 255, 890, 310)), image.NewUniform(color.Black), image.Point{}, draw.Src)
 	if relicJunkDialog(changed) {
-		t.Fatal("damaged fixed reward text accepted")
+		t.Fatal("damaged fixed heading accepted")
 	}
 	for _, yes := range []bool{true, false} {
 		if point, found, err := relicJunkControl(changed, yes); err != nil || found || point != (image.Point{}) {
@@ -80,6 +85,30 @@ func TestRelicJunkDialogIgnoresCountAndBackgroundButRequiresControls(t *testing.
 	for _, yes := range []bool{true, false} {
 		if _, found, err := relicJunkControl(changed, yes); err != nil || found {
 			t.Fatal("incomplete dialog allowed input")
+		}
+	}
+}
+
+func TestRelicSalvageDialogRequiresItsOwnHeadingAndControls(t *testing.T) {
+	screen := loadTestImage(t, "../../testdata/relic-salvage-dialog.png")
+	if !relicSalvageDialog(screen) || relicJunkDialog(screen) {
+		t.Fatal("ordinary salvage prompt not distinguished")
+	}
+	for _, yes := range []bool{true, false} {
+		point, found, err := relicJunkControl(screen, yes)
+		if err != nil || !found || point == (image.Point{}) {
+			t.Fatal("salvage control missing", yes, point, err)
+		}
+	}
+	changed := image.NewRGBA(screen.Bounds())
+	draw.Draw(changed, changed.Bounds(), screen, screen.Bounds().Min, draw.Src)
+	draw.Draw(changed, vision.Rect(changed, image.Rect(390, 316, 890, 340)), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	if !relicSalvageDialog(changed) {
+		t.Fatal("variable reward line affected fixed-heading recognition")
+	}
+	for _, name := range []string{"ascension-confirm", "ascension-junk-940", "relic-upgrade"} {
+		if relicSalvageDialog(loadTestImage(t, "../../testdata/"+name+".png")) {
+			t.Fatal("unrelated prompt accepted", name)
 		}
 	}
 }

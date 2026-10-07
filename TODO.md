@@ -1,5 +1,3 @@
-# TODO
-
 ## Navigation recovery native acceptance
 
 - Verify the installed Windows game after delivery: delayed/repeated Explorer focus loss, F8 during Save/export acknowledgement, startup in Settings or a quantity/Ascension/quest dialog, manual tab/dialog changes, and missed close clicks during lag. Confirm known close/No routes retry, return to Heroes, retain export ownership, and never replay a stopped Ancient batch or prestige confirmation. Unsupported dialogs keep observing without input; retain the relevant frame/log for recognition support.
@@ -30,7 +28,8 @@ Clans are deferred by user request. Forge Core relic upgrades are excluded by us
 
 ## Automatic relic equipment native acceptance
 
-- Verify hovering all recognized items during a no-improvement Relics visit clears the yellow notification and returns to Heroes without another export; ordinary climbing must not repeat exports for that same notification.
+- Verify a retained-junk visit hovers recognized items, clears the yellow notification and returns to Heroes without another export; ordinary climbing must not repeat exports for that same notification.
+- Verify ordinary cleanup when every junk item is dominated by retained equipment: one native Yes, empty Junk Pile, equipped items preserved and Heroes continuation. Tradeoffs must remain in inventory. The supplied screens cover both prompts and shared-queue/F8 behavior; installed-game cleanup still needs acceptance.
 - During ordinary play, verify that a yellow Relics notification leads to a bounded equipment visit, an accepted native drag for a clear Active improvement and a return to Heroes. Retain the relevant log and before/after frames if a move fails; fixture tests do not prove installed-game drag acceptance.
 - Verify equipment selection before an ordinary automatic Ascension and preservation of equipped items through its Junk Pile salvage. The current reader supports up to six visible junk cards in the first row; larger, obscured or ambiguous inventories defer Ascension without destroying items. Extend the reader when an actual unsupported layout is supplied.
 

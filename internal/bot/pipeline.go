@@ -261,6 +261,10 @@ func recognizedGame(screen image.Image) (gameContext, error) {
 		c.known, c.relicJunk = true, true
 		return c, nil
 	}
+	if relicSalvageDialog(screen) {
+		c.known, c.relicJunk, c.relics = true, true, true
+		return c, nil
+	}
 	ascension, err := ascensionDialog(screen)
 	if err != nil || ascension {
 		c.known, c.ascension = ascension, ascension
@@ -730,7 +734,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			}
 		}
 		if c.relicJunk {
-			if p.options.ascension && p.ascension.jobFrame == 0 && p.frame.id > p.ascension.lastInputFrame && !now.Before(p.ascension.nextRead) {
+			if !c.relics && p.options.ascension && p.ascension.jobFrame == 0 && p.frame.id > p.ascension.lastInputFrame && !now.Before(p.ascension.nextRead) {
 				p.ascension.jobFrame = p.frame.id
 				replaceJob(jobs[ascensionAnalysis], analysisJob{frame: p.frame})
 				p.ascension.nextRead = now.Add(500 * time.Millisecond)
@@ -1310,7 +1314,9 @@ func (p *gamePipeline) plan(now time.Time) {
 	}
 	if p.frame.context.relicJunk {
 		p.planGilds(now)
-		if p.options.ascension {
+		if p.frame.context.relics && p.relic.active {
+			p.planRelics(now)
+		} else if p.options.ascension {
 			p.planAscension(now)
 		}
 		return
@@ -1453,7 +1459,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if p.frame.context.relicJunk && kind != handleAscension {
+		if p.frame.context.relicJunk && kind != handleAscension && !(kind == handleRelic && p.frame.context.relics) {
 			delete(p.queue, kind)
 			continue
 		}

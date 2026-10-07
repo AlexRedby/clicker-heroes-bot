@@ -458,3 +458,143 @@ func TestRelicBatchCapPreservesFurtherUpgradeBeforeAscension(t *testing.T) {
 		t.Fatal("batch cap authorized destruction of useful leftover junk")
 	}
 }
+
+// A no-upgrade decision can only discard junk with a stronger component-wise
+// proof. Exercise the real prompts through the production shared action queue.
+func TestRelicDominatedJunkThroughSharedQueue(t *testing.T) {
+	now := time.Now()
+	current := loadTestImage(t, "../../testdata/relic-inventory.png")
+	snapshot := relicEquipmentFixture()
+	snapshot.AncientLevels = map[int]string{}
+	for i := range snapshot.Items {
+		level := "1"
+		if i < 4 {
+			level = "100"
+		}
+		snapshot.Items[i].Bonuses = []ancientcalc.RelicBonus{{Type: 2, AncientID: 19, Level: level}}
+	}
+	p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return current, nil }, click: func(image.Point) error { return nil }}, pipelineReaders{context: recognizedGame, window: func() string { return "game" }}, pipelineOptions{progression: true, export: &saveExportOptions{}, fishInterval: time.Hour})
+	p.frame = gameFrame{id: 1, at: now, image: current, context: gameContext{known: true, heroes: true, window: "game", bounds: current.Bounds()}}
+	p.relic = relicPlanner{active: true, step: relicAcquire, deadline: now.Add(time.Minute), window: "game"}
+	if err := p.acceptRelicSave(&ancientcalc.RelicPreview{Snapshot: snapshot}, now); err != nil {
+		t.Fatal(err)
+	}
+	p.export.requested = false
+	jobs := mercenaryRecoveryJobs()
+	capture := func() {
+		t.Helper()
+		now = now.Add(time.Second)
+		if err := p.capture(context.Background(), now, jobs); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case job := <-jobs[relicAnalysis]:
+			if err := p.accept(context.Background(), p.analyze(context.Background(), relicAnalysis, job), now); err != nil {
+				t.Fatal(err)
+			}
+		default:
+		}
+	}
+	act := func(step relicStep) {
+		t.Helper()
+		now = now.Add(time.Second)
+		p.settleUntil = time.Time{}
+		p.plan(now)
+		a, ok := p.nextAction(now)
+		if !ok || a.kind != handleRelic || a.relic.step != step {
+			t.Fatalf("step=%v action=%+v ok=%v planner=%+v", step, a, ok, p.relic)
+		}
+		acted, err := p.execute(context.Background(), a)
+		if !acted || err != nil {
+			t.Fatal("input", acted, err)
+		}
+		p.actionCompleted(actionResult{action: a, acted: true}, now)
+	}
+	act(relicOpenTab)
+	capture()
+	act(relicOpenSalvage)
+	current = loadTestImage(t, "../../testdata/relic-salvage-dialog.png")
+	capture()
+	if !p.frame.context.relicJunk || !p.frame.context.relics || p.fishContext(p.frame.context) {
+		t.Fatal("wrong salvage context", p.frame.context)
+	}
+	act(relicConfirmSalvage)
+	capture()
+	p.plan(now)
+	if a, ok := p.nextAction(now); ok {
+		t.Fatalf("repeated destructive input %+v", a)
+	}
+	// Pause relinquishes ownership: shared navigation must cancel with No.
+	p.controls.toggle()
+	p.controls.toggle()
+	p.reset(p.controls.snapshot())
+	capture()
+	p.settleUntil = time.Time{}
+	p.plan(now)
+	a, ok := p.nextAction(now)
+	if !ok || a.kind != navigateGame || a.navigation != navigationJunk {
+		t.Fatal("orphan not cancelled", a, ok)
+	}
+	no, found, err := relicJunkControl(current, false)
+	if err != nil || !found || a.point != no {
+		t.Fatal("orphan selected Yes", a.point, no, err)
+	}
+}
+
+func TestRelicJunkRequiresFreshMatchedInventoryAndFinishedEquipment(t *testing.T) {
+	screen := loadTestImage(t, "../../testdata/relic-inventory.png")
+	snapshot := relicEquipmentFixture()
+	snapshot.AncientLevels = map[int]string{}
+	for i := range snapshot.Items {
+		level := "1"
+		if i < 4 {
+			level = "100"
+		}
+		snapshot.Items[i].Bonuses = []ancientcalc.RelicBonus{{Type: 2, AncientID: 19, Level: level}}
+	}
+	observe := func(s ancientcalc.RelicSnapshot, pending bool) (relicPlanner, error) {
+		r := relicPlanner{active: true, step: relicInspect, snapshot: s, verifyNeeded: pending}
+		f := gameFrame{id: 2, image: screen}
+		err := r.observe(relicObservation{frame: f, ui: readRelicUI(screen)}, nil)
+		return r, err
+	}
+	r, err := observe(snapshot, false)
+	if err != nil || r.step != relicOpenSalvage {
+		t.Fatal("dominated junk not selected", r.step, err)
+	}
+	r, err = observe(snapshot, true)
+	if err != nil || r.step == relicOpenSalvage {
+		t.Fatal("unverified equipment authorized destruction", r.step, err)
+	}
+	snapshot.Items = snapshot.Items[:6]
+	if _, err = observe(snapshot, false); err == nil {
+		t.Fatal("different UI count authorized destruction")
+	}
+}
+
+func TestRelicJunkClosureReturnsWithoutAnotherExport(t *testing.T) {
+	now := time.Now()
+	screen := loadTestImage(t, "../../testdata/relic-empty.png")
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
+	p.frame = gameFrame{id: 5, image: screen, context: gameContext{known: true, relics: true, window: "game", bounds: screen.Bounds()}}
+	p.relic = relicPlanner{active: true, step: relicWaitSalvage, window: "game", deadline: now.Add(time.Minute), snapshot: relicEquipmentFixture()}
+	p.planRelics(now)
+	if p.relic.step != relicAcknowledge || len(p.relic.cards) != 4 || p.export.requested {
+		t.Fatal("junk closure did not preserve equipped cards", p.relic)
+	}
+	p.relic.scan = len(p.relic.cards)
+	p.planRelics(now)
+	p.planRelics(now)
+	a := p.queue[handleRelic]
+	if a.relic.step != relicReturn {
+		t.Fatal("missing return", a)
+	}
+	p.relic.sent(a, now)
+	delete(p.queue, handleRelic)
+	p.frame.id++
+	p.frame.context.relics, p.frame.context.heroes = false, true
+	p.planRelics(now)
+	if p.relic.active || p.export.requested || !p.ascension.relicsChecked {
+		t.Fatal("no-change cleanup failed to continue", p.relic)
+	}
+}

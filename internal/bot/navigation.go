@@ -154,6 +154,12 @@ func (p *gamePipeline) planNavigation(now time.Time) (recovering bool) {
 		}
 		step = navigationQuantity
 	case c.ascension || c.relicJunk:
+		if c.relics && p.relic.active && !p.relic.failed {
+			if !p.relic.failed && now.Before(p.relic.deadline) && (p.relic.step == relicOpenSalvage || p.relic.step == relicConfirmSalvage || p.relic.step == relicWaitSalvage) {
+				return false
+			}
+			p.relicFailed("junk salvage transition interrupted; cancelling", now)
+		}
 		if p.ascension.active && (p.ascension.deadline.IsZero() || now.Before(p.ascension.deadline)) {
 			return false
 		}

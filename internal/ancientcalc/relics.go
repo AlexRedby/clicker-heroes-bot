@@ -29,10 +29,13 @@ type Relic struct {
 
 // A snapshot is not live readiness: a relic can arrive after Save.
 type RelicSnapshot struct {
-	Ascensions     int     `json:"ascensions"`
-	Transcendent   bool    `json:"transcendent"`
-	EquipmentSlots int     `json:"equipmentSlots"`
-	Items          []Relic `json:"items"`
+	Ascensions     int            `json:"ascensions"`
+	Transcendent   bool           `json:"transcendent"`
+	EquipmentSlots int            `json:"equipmentSlots"`
+	Items          []Relic        `json:"items"`
+	AncientLevels  map[int]string `json:"ancientLevels"`
+	OutsiderLevels map[int]string `json:"outsiderLevels"`
+	HighestZone    int            `json:"highestZone"`
 }
 
 type savedRelic struct {
@@ -67,6 +70,31 @@ func ReadRelics(ctx context.Context, exported []byte) (RelicSnapshot, error) {
 		return RelicSnapshot{}, errors.New("missing relic snapshot transcendence state")
 	}
 	out.Transcendent = *save.Transcendent
+	out.AncientLevels = map[int]string{}
+	out.OutsiderLevels = map[int]string{}
+	if out.HighestZone, err = relicInteger(save.HighestFinishedZonePersist, 0); err != nil {
+		return RelicSnapshot{}, errors.New("invalid highest zone")
+	}
+	for key, entry := range save.Ancients.Ancients {
+		id, e := strconv.Atoi(key)
+		if e != nil {
+			return RelicSnapshot{}, errors.New("invalid Ancient identity")
+		}
+		if _, levelErr := Value(entry.Level.String()); levelErr != nil {
+			return RelicSnapshot{}, errors.New("invalid Ancient level")
+		}
+		out.AncientLevels[id] = entry.Level.String()
+	}
+	for key, entry := range save.Outsiders.Outsiders {
+		id, e := strconv.Atoi(key)
+		if e != nil {
+			return RelicSnapshot{}, errors.New("invalid Outsider identity")
+		}
+		if _, levelErr := Value(entry.Level.String()); levelErr != nil {
+			return RelicSnapshot{}, errors.New("invalid Outsider level")
+		}
+		out.OutsiderLevels[id] = entry.Level.String()
+	}
 	byUID := make(map[int]int, len(raw.Slots))
 	for key, value := range raw.Slots {
 		slot, err := relicInteger(json.Number(key), 1)
@@ -204,6 +232,9 @@ func PlanRelicEquipment(snapshot RelicSnapshot) (*RelicSuggestion, error) {
 	if snapshot.EquipmentSlots != 4 {
 		return nil, errors.New("unsupported relic equipment slot count")
 	}
+	if snapshot.AncientLevels != nil {
+		return activeRelicSuggestion(snapshot)
+	}
 	preview := previewRelicSnapshot(nil, snapshot, true)
 	if len(preview.UnsupportedTypes) != 0 {
 		return nil, errors.New("unsupported relic effects require manual review")
@@ -240,6 +271,14 @@ func previewRelicSnapshot(ctx context.Context, snapshot RelicSnapshot, verifiedJ
 		out.Reason = "Slots beyond the supported equipment range need UI confirmation; no equipment suggestion or live readiness."
 		return out
 	}
+	if snapshot.AncientLevels != nil {
+		var err error
+		out.Suggestion, err = activeRelicSuggestion(snapshot)
+		if err != nil {
+			out.Reason, out.Suggestion = err.Error(), nil
+		}
+		return out
+	}
 	for slot := 1; slot <= snapshot.EquipmentSlots; slot++ {
 		current := Relic{}
 		for _, item := range snapshot.Items {
@@ -265,17 +304,7 @@ func previewRelicSnapshot(ctx context.Context, snapshot RelicSnapshot, verifiedJ
 }
 
 func relicDominates(candidate, current Relic) bool {
-	values := func(item Relic) map[int]*big.Rat {
-		out := map[int]*big.Rat{}
-		for _, bonus := range item.Bonuses {
-			if bonus.Type == 1 || bonus.Type == 24 {
-				continue // Active build: Siyalatas and Libertas only contribute while idle.
-			}
-			out[bonus.Type], _ = relicNumber(bonus.Level)
-		}
-		return out
-	}
-	a, b := values(candidate), values(current)
+	a, b := activeRelicBonuses(candidate), activeRelicBonuses(current)
 	for kind, before := range b {
 		if after := a[kind]; (after == nil && before.Sign() > 0) || (after != nil && after.Cmp(before) < 0) {
 			return false
