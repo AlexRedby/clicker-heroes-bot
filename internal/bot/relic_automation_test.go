@@ -178,17 +178,45 @@ func TestRelicEquipmentUnknownMappingReturnsAndDefers(t *testing.T) {
 	}
 }
 
-func TestRelicEquipmentNoCandidateDoesNotVisitAndPauseRevokes(t *testing.T) {
+func TestRelicEquipmentNoCandidateVisitsAndPauseRevokes(t *testing.T) {
 	now := time.Now()
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
 	s := relicEquipmentFixture()
 	s.Items = s.Items[:4]
-	p.relic = relicPlanner{active: true, step: relicAcquire}
+	screen := loadTestImage(t, "../../testdata/relic-inventory.png")
+	p.frame = gameFrame{id: 1, image: screen, context: gameContext{known: true, heroes: true, window: "game", bounds: screen.Bounds()}}
+	p.relic = relicPlanner{active: true, step: relicAcquire, deadline: now.Add(time.Minute), window: "game"}
 	if err := p.acceptRelicSave(&ancientcalc.RelicPreview{Snapshot: s}, now); err != nil {
 		t.Fatal(err)
 	}
+	p.planRelics(now)
+	a := p.queue[handleRelic]
+	if !p.relic.active || p.ascension.relicsChecked || a.relic.step != relicOpenTab {
+		t.Fatal("no candidate did not request notification acknowledgement")
+	}
+	p.relic.sent(a, now)
+	delete(p.queue, handleRelic)
+	p.frame.id++
+	p.planRelics(now)
+	if !p.relic.active || p.relic.step != relicOpenTab || p.ascension.relicsChecked {
+		t.Fatal("missed tab click completed the visit")
+	}
+	delete(p.queue, handleRelic)
+	p.frame.id++
+	p.frame.context.heroes, p.frame.context.relics = false, true
+	p.planRelics(now)
+	p.planRelics(now)
+	a = p.queue[handleRelic]
+	if a.relic.step != relicReturn || p.relic.verifyNeeded || p.export.requested {
+		t.Fatal("no-change visit requested inventory analysis or another export")
+	}
+	p.relic.sent(a, now)
+	delete(p.queue, handleRelic)
+	p.frame.id++
+	p.frame.context.heroes, p.frame.context.relics = true, false
+	p.planRelics(now)
 	if p.relic.active || !p.ascension.relicsChecked || len(p.queue) != 0 {
-		t.Fatal("no candidate opened inventory")
+		t.Fatal("notification visit did not finish on Heroes")
 	}
 	p.relic = relicPlanner{active: true, snapshot: s, step: relicEquip}
 	p.queue[handleRelic] = gameAction{kind: handleRelic}

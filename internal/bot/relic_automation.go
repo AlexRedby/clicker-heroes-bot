@@ -114,15 +114,14 @@ func (p *gamePipeline) acceptRelicSave(preview *ancientcalc.RelicPreview, now ti
 		if err != nil {
 			return err
 		}
-		if move == nil {
-			fmt.Println("relics: no clear Active upgrade")
-			p.finishRelics(now, true)
-			return nil
-		}
-		r.original, r.snapshot = after, after
+		r.original, r.snapshot, r.move = after, after, move
 		r.snapshot.Items = append([]ancientcalc.Relic(nil), after.Items...)
 		r.step = relicOpenTab
-		fmt.Printf("relics: locating candidate UID %d for equipment slot %d\n", move.UID, move.Slot)
+		if move == nil {
+			fmt.Println("relics: no clear Active upgrade; visiting Relics to clear notification")
+		} else {
+			fmt.Printf("relics: locating candidate UID %d for equipment slot %d\n", move.UID, move.Slot)
+		}
 	case relicVerifyEquip:
 		if !relicSameItems(r.original, after) || !reflect.DeepEqual(relicEquipped(r.snapshot), relicEquipped(after)) {
 			return errors.New("equipment outcome differs from the batch; no replay")
@@ -261,7 +260,10 @@ func (p *gamePipeline) planRelics(now time.Time) bool {
 		return true
 	}
 	if r.step == relicOpenTab && p.frame.context.relics {
-		r.step = relicInspect
+		r.step = relicReturn
+		if r.move != nil {
+			r.step = relicInspect
+		}
 		return true
 	}
 	a := gameAction{kind: handleRelic, frame: p.frame, relic: relicCommand{step: r.step, before: r.base.image}}
@@ -295,7 +297,11 @@ func (p *gamePipeline) planRelics(now time.Time) bool {
 func (r *relicPlanner) sent(a gameAction, now time.Time) {
 	r.lastInput, r.latest, r.nextRead = a.frame.id, relicObservation{}, now.Add(400*time.Millisecond)
 	switch a.relic.step {
-	case relicOpenTab, relicPark:
+	case relicOpenTab:
+		if r.move != nil {
+			r.step = relicInspect
+		}
+	case relicPark:
 		r.step = relicInspect
 	case relicReturn:
 		r.returnAttempts++
