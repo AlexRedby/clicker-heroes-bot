@@ -121,7 +121,7 @@ func chooseMercenaryQuest(quests []mercenaryQuest) int {
 }
 
 func chooseMercenaryQuestForGoal(quests []mercenaryQuest, priority achievementgoal.QuestPriority) int {
-	// Keep recruitment first, then matching goals, then the ordinary ranking.
+	// Keep recruitment first, then shortest matching goals, then ordinary ranking.
 	best, group, rank := -1, 3, int(^uint(0)>>1)
 	for i, q := range quests {
 		r := mercenaryQuestRank(q)
@@ -134,7 +134,11 @@ func chooseMercenaryQuestForGoal(quests []mercenaryQuest, priority achievementgo
 		} else if priority.Matches(q.reward, q.duration) {
 			g = 1
 		}
-		if g < group || g == group && r < rank {
+		better := r < rank
+		if g == 1 && group == 1 && q.duration != quests[best].duration {
+			better = q.duration < quests[best].duration
+		}
+		if g < group || g == group && better {
 			best, group, rank = i, g, r
 		}
 	}
