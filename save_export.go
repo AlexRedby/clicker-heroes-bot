@@ -12,7 +12,8 @@ import (
 
 func saveControl(screen image.Image, which int) (image.Point, bool, error) {
 	// Icon patches stay inside the opaque artwork, excluding surrounding scenery.
-	regions := [...]image.Rectangle{image.Rect(290, 192, 449, 216), image.Rect(1006, 137, 1034, 165), image.Rect(1233, 17, 1255, 39)}
+	// The settings patch aligns to the 4:1 sampling grid for 640px HUDs.
+	regions := [...]image.Rectangle{image.Rect(290, 192, 449, 216), image.Rect(1006, 137, 1034, 165), image.Rect(1232, 16, 1256, 40)}
 	names := [...]string{"ui/save.png", "ui/menu-close.png", "ui/settings.png"}
 	found, err := matchControl(screen, regions[which], names[which])
 	r := controlRect(screen, regions[which])

@@ -17,7 +17,7 @@ import (
 var zoneLabel = regexp.MustCompile(`(?i)[li]v[li]\s*([0-9]+)\s*$`)
 
 func progressionMode(screen image.Image) (known, enabled bool, err error) {
-	if screen == nil || screen.Bounds().Dx() < 500 || screen.Bounds().Dy() < 500 {
+	if screen == nil || screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 {
 		return false, false, nil
 	}
 	b := screen.Bounds()

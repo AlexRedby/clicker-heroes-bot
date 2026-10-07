@@ -70,6 +70,45 @@ func TestViewportHUDAndDecorations(t *testing.T) {
 	}
 }
 
+func TestViewportHUDAt640(t *testing.T) {
+	for _, path := range []string{"testdata/hero-panel-max.png", "testdata/mercenary-collect.png"} {
+		im := mercenaryScaled(t, path, 4)
+		roi, err := findViewport(im, im.Bounds())
+		if err != nil || roi != im.Bounds() {
+			t.Fatalf("%s: viewport=%v err=%v", path, roi, err)
+		}
+		c, err := recognizedGame(im)
+		if err != nil || !c.known || c.heroes != (path == "testdata/hero-panel-max.png") || c.mercenaries != (path == "testdata/mercenary-collect.png") {
+			t.Fatalf("%s: context=%+v err=%v", path, c, err)
+		}
+		for _, size := range []image.Point{{639, 360}, {640, 359}} {
+			clipped := compactCrop(im, image.Rectangle{Max: size})
+			if _, err := findViewport(clipped, clipped.Bounds()); err == nil {
+				t.Fatalf("undersized viewport accepted: %v", size)
+			}
+		}
+		covered := image.NewRGBA(im.Bounds())
+		draw.Draw(covered, covered.Bounds(), im, im.Bounds().Min, draw.Src)
+		draw.Draw(covered, image.Rect(614, 6, 630, 22), image.NewUniform(color.Black), image.Point{}, draw.Src)
+		if viewportHUD(covered) {
+			t.Fatal("HUD with missing Settings anchor accepted")
+		}
+	}
+	for _, size := range []image.Point{{639, 360}, {640, 359}, {640, 360}} {
+		blank := image.NewRGBA(image.Rectangle{Max: size})
+		if _, err := findViewport(blank, blank.Bounds()); err == nil {
+			t.Fatalf("unknown viewport accepted: %v", size)
+		}
+	}
+	source := mercenaryScaled(t, "testdata/mercenary-revive.png", 4)
+	modal := image.NewRGBA(source.Bounds())
+	region := image.Rect(160, 120, 480, 230)
+	draw.Draw(modal, region, source, region.Min, draw.Src)
+	if _, err := findViewport(modal, modal.Bounds()); err == nil {
+		t.Fatal("recovery modal alone established a viewport")
+	}
+}
+
 func TestViewportRelocationInvalidatesPipeline(t *testing.T) {
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{windowed: true, fishInterval: time.Second})
 	screen := image.NewRGBA(image.Rect(0, 0, 100, 100))

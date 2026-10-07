@@ -67,6 +67,31 @@ func TestProgressionScreen(t *testing.T) {
 	}
 }
 
+func TestProgressionModeAt640(t *testing.T) {
+	for _, test := range []struct {
+		path    string
+		enabled bool
+	}{{"testdata/hero-panel-max.png", true}, {"testdata/hero-tsuchi-x1.png", false}} {
+		im := mercenaryScaled(t, test.path, 4)
+		known, enabled, err := progressionMode(im)
+		if err != nil || !known || enabled != test.enabled {
+			t.Fatalf("%s: known=%t enabled=%t err=%v", test.path, known, enabled, err)
+		}
+		for _, size := range []image.Point{{639, 360}, {640, 359}} {
+			clipped := compactCrop(im, image.Rectangle{Max: size})
+			if known, _, err := progressionMode(clipped); err != nil || known {
+				t.Fatalf("undersized progression HUD accepted: %v err=%v", size, err)
+			}
+		}
+		covered := image.NewRGBA(im.Bounds())
+		draw.Draw(covered, covered.Bounds(), im, im.Bounds().Min, draw.Src)
+		draw.Draw(covered, image.Rect(607, 90, 640, 120), image.NewUniform(color.Black), image.Point{}, draw.Src)
+		if known, _, err := progressionMode(covered); err != nil || known {
+			t.Fatalf("covered 640px progression control accepted: known=%t err=%v", known, err)
+		}
+	}
+}
+
 func TestProgressionCombatContinuity(t *testing.T) {
 	for _, scenario := range []string{"continuous expiry", "gap after proof", "gap before fallback", "unknown", "cancelled context", "new attempt", "delayed analysis"} {
 		t.Run(scenario, func(t *testing.T) {

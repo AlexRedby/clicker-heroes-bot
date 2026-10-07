@@ -8,7 +8,7 @@ import (
 type windowCapture struct{ geometry viewportGeometry }
 
 func viewportHUD(screen image.Image) bool {
-	if screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 500 {
+	if screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 {
 		return false
 	}
 	_, settings, err := saveControl(screen, 2)
