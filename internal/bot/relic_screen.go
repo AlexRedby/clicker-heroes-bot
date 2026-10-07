@@ -241,7 +241,9 @@ func relicTooltipMatches(raw string, item ancientcalc.Relic) bool {
 func readRelicObservation(ctx context.Context, frame gameFrame, snapshot *ancientcalc.RelicSnapshot, hover bool) (relicObservation, error) {
 	out := relicObservation{frame: frame, ui: readRelicUI(frame.image)}
 	if hover {
-		if !relicPanelPresent(frame.image) {
+		// The preceding inventory frame established ownership. Its tooltip can
+		// cover panel anchors; unique item matching still precedes any drag.
+		if !relicPanelPresent(frame.image) && !gameScreenVisible(frame.context) {
 			return out, errors.New("relic panel is not present")
 		}
 		region := relicTooltipRegion(frame.image)

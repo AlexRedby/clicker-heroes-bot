@@ -34,7 +34,7 @@ func TestPipelineMercenaryRecoveryOrphanDuringStartup(t *testing.T) {
 			if err := p.capture(context.Background(), now, jobs); err != nil {
 				t.Fatal(err)
 			}
-			if !p.frame.context.mercenaryDialog || p.fishTarget == nil || p.fishContext(p.frame.context) {
+			if !p.frame.context.mercenaryDialog || p.fishTarget == nil || gameScreenVisible(p.frame.context) {
 				t.Fatalf("covered fish/context: %+v", p.frame.context)
 			}
 			select {

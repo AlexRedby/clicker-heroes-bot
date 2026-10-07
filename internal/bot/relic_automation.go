@@ -374,10 +374,14 @@ func (p *gamePipeline) planRelics(now time.Time) bool {
 	case relicEquip:
 		a.point, a.target = r.point, relicEquipmentPoint(p.frame.image, r.move.Slot)
 	case relicReturn:
-		if r.returnAttempts >= 2 || !p.frame.context.relics || !relicPanelPresent(p.frame.image) {
+		if r.returnAttempts >= 2 {
 			return true
 		}
-		a.point = ancientTabPoint(p.frame.image, true)
+		point, found, err := navigationControl(p.frame, navigationHeroes)
+		if err != nil || !found {
+			return true
+		}
+		a.point = point
 	default:
 		return true
 	}
@@ -429,8 +433,12 @@ func relicActionStable(a gameAction, current gameFrame) bool {
 		return current.context.relics && !current.context.relicJunk && readRelicUI(current.image).known && relicInventoryStable(a.relic.before, current.image)
 	case relicHover:
 		return current.context.relics && readRelicUI(current.image).known && relicInventoryStable(a.relic.before, current.image)
-	case relicPark, relicReturn, relicAcknowledge:
-		return current.context.relics && relicPanelPresent(current.image)
+	case relicPark, relicAcknowledge:
+		// Only pointer movement: an owned tooltip may hide the panel anchors.
+		return gameScreenVisible(current.context)
+	case relicReturn:
+		point, found, err := navigationControl(current, navigationHeroes)
+		return gameScreenVisible(current.context) && err == nil && found && point == a.point
 	case relicEquip:
 		return current.context.relics && readRelicUI(current.image).known && relicInventoryStable(a.relic.before, current.image)
 	}

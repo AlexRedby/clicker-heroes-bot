@@ -68,7 +68,7 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 		return true
 	}
 	if p.startupCheck || !bootstrapHeroes(p.frame.context) {
-		if p.startupCheck && p.fishContext(p.frame.context) && !p.frame.context.heroes {
+		if p.startupCheck && gameScreenVisible(p.frame.context) && !p.frame.context.heroes {
 			p.enqueue(gameAction{kind: visitHeroes, frame: p.frame, point: ancientTabPoint(p.frame.image, true)}, now)
 		}
 		return true

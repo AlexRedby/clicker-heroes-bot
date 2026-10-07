@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"path/filepath"
 	"reflect"
@@ -515,7 +516,7 @@ func TestRelicDominatedJunkThroughSharedQueue(t *testing.T) {
 	act(relicOpenSalvage)
 	current = loadTestImage(t, "../../testdata/relic-salvage-dialog.png")
 	capture()
-	if !p.frame.context.relicJunk || !p.frame.context.relics || p.fishContext(p.frame.context) {
+	if !p.frame.context.relicJunk || !p.frame.context.relics || gameScreenVisible(p.frame.context) {
 		t.Fatal("wrong salvage context", p.frame.context)
 	}
 	act(relicConfirmSalvage)
@@ -636,5 +637,97 @@ func TestRelicStartupOneJunkContinuesToHover(t *testing.T) {
 	a, ok := p.nextAction(now.Add(time.Second))
 	if !ok || a.kind != handleRelic || a.relic.step != relicHover || a.point != ui.junk[0] {
 		t.Fatalf("startup blocked hover: action=%+v ok=%v step=%v context=%+v", a, ok, p.relic.step, p.frame.context)
+	}
+}
+
+func TestRelicTooltipDismissalThroughSharedQueue(t *testing.T) {
+	for _, step := range []relicStep{relicAcknowledge, relicReturn, relicPark} {
+		t.Run(fmt.Sprint(step), func(t *testing.T) {
+			now := time.Now()
+			screen := loadTestImage(t, "../../testdata/relic-equipped-tooltip.png")
+			c, err := recognizedGame(screen)
+			if err != nil || !c.known {
+				t.Fatal("tooltip hid the main game HUD", c, err)
+			}
+			// Other equipped-card tooltips can cover the cream anchors too.
+			// The owned main screen remains visible while Relics is obscured.
+			c.relics = false
+			var moved []image.Point
+			var clicked []image.Point
+			p := newGamePipeline(&pauseControl{}, heroInput{
+				move:  func(point image.Point) error { moved = append(moved, point); return nil },
+				click: func(point image.Point) error { clicked = append(clicked, point); return nil },
+			}, pipelineReaders{}, pipelineOptions{progression: true})
+			p.frame = gameFrame{id: 2, image: screen, at: now, context: c}
+			point := relicEquipmentPoint(screen, 2)
+			p.relic = relicPlanner{active: true, step: step, cards: []image.Point{point}, deadline: now.Add(time.Minute)}
+			p.plan(now)
+			a, ok := p.nextAction(now)
+			if !ok || a.kind != handleRelic || a.relic.step != step {
+				t.Fatalf("covered panel blocked dismissal: action=%+v ok=%v", a, ok)
+			}
+			acted, err := p.execute(context.Background(), a)
+			if !acted || err != nil || len(moved) == 0 || moved[0] != parkPoint(screen.Bounds()) {
+				t.Fatal("tooltip was not dismissed first", moved, clicked, acted, err)
+			}
+			if step == relicAcknowledge && (len(moved) != 2 || moved[1] != point || len(clicked) != 0) {
+				t.Fatal("next hover was not preceded by parking", moved, clicked)
+			}
+			if step == relicReturn && (len(clicked) != 1 || clicked[0] != ancientTabPoint(screen, true)) {
+				t.Fatal("Heroes return did not follow tooltip dismissal", moved, clicked)
+			}
+		})
+	}
+}
+
+func TestRelicTooltipHiddenPanelStillSchedulesRead(t *testing.T) {
+	requireAncientOCR(t)
+	now := time.Now()
+	screen := loadTestImage(t, "../../testdata/relic-equipped-tooltip.png")
+	c, err := recognizedGame(screen)
+	if err != nil || !c.known {
+		t.Fatal(c, err)
+	}
+	c.relics = false
+	p := newGamePipeline(&pauseControl{}, heroInput{capture: func() (image.Image, error) { return screen, nil }}, pipelineReaders{context: func(image.Image) (gameContext, error) { return c, nil }}, pipelineOptions{progression: true, fishInterval: time.Hour})
+	p.frame = gameFrame{id: 1, image: screen, at: now, context: c}
+	p.relic = relicPlanner{active: true, step: relicHover, lastInput: 1, cards: []image.Point{relicEquipmentPoint(screen, 1)}, snapshot: ancientcalc.RelicSnapshot{Items: []ancientcalc.Relic{{UID: 46, Level: "94", Rarity: 3, Bonuses: []ancientcalc.RelicBonus{{Type: 3, AncientID: 17, Level: "5.54"}}}}}, move: &ancientcalc.RelicSuggestion{UID: 46}, deadline: now.Add(time.Minute)}
+	jobs := mercenaryRecoveryJobs()
+	if err := p.capture(context.Background(), now.Add(time.Second), jobs); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case job := <-jobs[relicAnalysis]:
+		out := p.analyze(context.Background(), relicAnalysis, job)
+		if out.err != nil || out.relic.uid != 46 {
+			t.Fatalf("tooltip read failed: uid=%d error=%v", out.relic.uid, out.err)
+		}
+		if err := p.accept(context.Background(), out, now.Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatal("hidden panel blocked an owned tooltip read")
+	}
+	if p.relic.step != relicPark || p.relic.point != (p.relic.cards[0]) {
+		t.Fatal("tooltip did not advance to dismissal", p.relic.step, p.relic.point)
+	}
+}
+
+func TestRelicTooltipPointerActionsRejectCoveringDialogs(t *testing.T) {
+	screen := loadTestImage(t, "../../testdata/relic-equipped-tooltip.png")
+	for _, change := range []func(*gameContext){
+		func(c *gameContext) { c.known = false }, func(c *gameContext) { c.window = "!outside-game" },
+		func(c *gameContext) { c.saveMenu = true }, func(c *gameContext) { c.ancientDialog = true }, func(c *gameContext) { c.ascension = true },
+		func(c *gameContext) { c.relicJunk = true }, func(c *gameContext) { c.questDialog = true }, func(c *gameContext) { c.mercenaryDialog = true }, func(c *gameContext) { c.modal = gildChestModal },
+	} {
+		c := gameContext{known: true, bounds: screen.Bounds()}
+		change(&c)
+		f := gameFrame{id: 1, image: screen, context: c}
+		for _, step := range []relicStep{relicPark, relicAcknowledge, relicReturn} {
+			a := gameAction{frame: f, point: ancientTabPoint(screen, true), relic: relicCommand{step: step}}
+			if relicActionStable(a, f) {
+				t.Fatal("covering context admitted pointer input", step, c)
+			}
+		}
 	}
 }

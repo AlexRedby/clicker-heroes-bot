@@ -49,7 +49,7 @@ func TestPipelineRelicJunkSalvageAndResumeAscension(t *testing.T) {
 		return a
 	}
 	capture()
-	if !p.frame.context.relicJunk || p.frame.context.ascension || p.fishContext(p.frame.context) {
+	if !p.frame.context.relicJunk || p.frame.context.ascension || gameScreenVisible(p.frame.context) {
 		t.Fatalf("wrong native junk context: %+v", p.frame.context)
 	}
 	select {

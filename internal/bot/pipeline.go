@@ -711,7 +711,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		// Slow capture must not consume its own interval and immediately repeat.
 		p.nextCapture = now.Add(time.Since(start) + min(250*time.Millisecond, p.options.fishInterval))
 		// Fish can cover controls on any tab; modal windows cover the fish.
-		if p.fishTarget == nil && p.fishContext(c) && !now.Before(p.nextFish) {
+		if p.fishTarget == nil && gameScreenVisible(c) && !now.Before(p.nextFish) {
 			replaceJob(jobs[fishAnalysis], analysisJob{frame: p.frame})
 			p.nextFish = now.Add(p.options.fishInterval)
 		}
@@ -746,7 +746,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			return nil
 		}
 		if p.relic.active && !p.export.requested {
-			if c.relics && (p.relic.step == relicInspect || p.relic.step == relicHover) && p.relic.latest.frame.id == 0 && p.relic.jobFrame == 0 && p.frame.id > p.relic.lastInput && !now.Before(p.relic.nextRead) {
+			if (c.relics || p.relic.step == relicHover && gameScreenVisible(c)) && (p.relic.step == relicInspect || p.relic.step == relicHover) && p.relic.latest.frame.id == 0 && p.relic.jobFrame == 0 && p.frame.id > p.relic.lastInput && !now.Before(p.relic.nextRead) {
 				p.relic.jobFrame = p.frame.id
 				snapshot := p.relic.snapshot
 				replaceJob(jobs[relicAnalysis], analysisJob{frame: p.frame, relicSnapshot: &snapshot, relicHover: p.relic.step == relicHover})
@@ -999,7 +999,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		}
 		return nil
 	}
-	if out.kind == fishAnalysis && !p.fishContext(out.frame.context) {
+	if out.kind == fishAnalysis && !gameScreenVisible(out.frame.context) {
 		return nil
 	}
 	if out.kind == autoClickerAnalysis {
@@ -1298,7 +1298,7 @@ func (p *gamePipeline) waitReason(now time.Time) actionWaitReason {
 	}
 	return waitNoDueAction
 }
-func (p *gamePipeline) fishContext(c gameContext) bool {
+func gameScreenVisible(c gameContext) bool {
 	return c.known && c.window != "!outside-game" && !c.ancientDialog && !c.ascension && !c.saveMenu && !c.questDialog && !c.mercenaryDialog && !c.relicJunk && c.modal == noGildModal
 }
 
@@ -1376,7 +1376,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 	if now.Before(p.settleUntil) {
 		return gameAction{}, false
 	}
-	if p.fishTarget != nil && p.frame.id > p.fishAfter && p.fishContext(p.frame.context) && p.fish.shouldClick(*p.fishTarget, true) {
+	if p.fishTarget != nil && p.frame.id > p.fishAfter && gameScreenVisible(p.frame.context) && p.fish.shouldClick(*p.fishTarget, true) {
 		p.enqueue(gameAction{kind: collectFish, frame: p.frame, point: *p.fishTarget}, now)
 	} else {
 		delete(p.queue, collectFish)
@@ -1419,7 +1419,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if kind == visitHeroes && (!p.startupCheck || !p.fishContext(p.frame.context)) {
+		if kind == visitHeroes && (!p.startupCheck || !gameScreenVisible(p.frame.context)) {
 			delete(p.queue, kind)
 			continue
 		}
@@ -1445,7 +1445,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if kind == collectFish && !p.fishContext(p.frame.context) {
+		if kind == collectFish && !gameScreenVisible(p.frame.context) {
 			delete(p.queue, kind)
 			continue
 		}
@@ -1572,7 +1572,7 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 		if !a.restoresFocus() && p.readers.window != nil && p.readers.window() != a.frame.context.window {
 			return errInputContext
 		}
-		if a.kind == collectFish && (!p.fishContext(p.frame.context) || a.frame.context != p.frame.context) {
+		if a.kind == collectFish && (!gameScreenVisible(p.frame.context) || a.frame.context != p.frame.context) {
 			return errInputContext
 		}
 		if a.kind == handleRelic && !relicActionStable(a, p.frame) {
@@ -1589,7 +1589,18 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			return input.click(a.point)
 		case handleRelic:
 			switch a.relic.step {
-			case relicHover, relicPark, relicAcknowledge:
+			case relicAcknowledge, relicReturn:
+				if err := input.move(parkPoint(a.frame.context.bounds)); err != nil {
+					return err
+				}
+				if err := waitInput(ctx, 100*time.Millisecond); err != nil {
+					return err
+				}
+				if a.relic.step == relicReturn {
+					return input.click(a.point)
+				}
+				return input.move(a.point)
+			case relicHover, relicPark:
 				return input.move(a.point)
 			case relicEquip:
 				if err := input.drag(a.point, a.target); err != nil {
