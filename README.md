@@ -195,9 +195,24 @@ go build .
 
 On headless Linux, run tests with `xvfb-run -a go test ./...` because the keyboard hook needs an X display. `Dockerfile.gocv` includes OpenCV and Tesseract with English data and sets `REQUIRE_OCR_TESTS=1`, so missing OCR dependencies fail the test suite. For a native test environment, use `REQUIRE_OCR_TESTS=1 go test ./...` to require OCR checks too. When running `xvfb-run` as a Docker command, use `docker run --init` so its X server startup signal is handled correctly.
 
-`go.mod` declares the module name and dependency versions; `go.sum` records checksums for downloaded modules. `main.go` contains the command modes, and `fish_sift.go` detects the fish in screenshots.
+## Project layout
 
-The pure Ancient calculator lives in `internal/ancientcalc`, together with its embedded data and test fixtures. It decodes exported saves and returns purchase plans; the root package handles the CLI, screenshots and game input. The project remains one Go module. Calculator tests need no OpenCV, Tesseract or desktop session:
+The project uses one Go module and keeps `go run .` and `go build .` as its entry points.
+
+```text
+main.go                     Command launcher
+internal/bot/               CLI, shared pipeline, navigation, input and game controllers
+internal/vision/            OpenCV templates, alpha masks, SIFT fish detection and embedded assets
+internal/ancientcalc/       Save decoding, Ancient allocation and prestige/build calculations
+internal/achievementgoal/   Achievement goal rules
+internal/rubybudget/        Persisted ruby allowance and purchase ledger
+internal/timelapse/         Forecast and purchase policy
+testdata/                   Shared screenshot regression corpus
+```
+
+`internal/bot/input.go` owns cancellable input waits and held-key clicks. `list_scroll.go` owns common list scrolling and scrollbar recognition; `navigation.go` owns recovery to known game screens. Feature controllers retain their own targets and completion rules. `internal/vision` consumes images and returns recognition results; it does not capture screens, send input or depend on the bot coordinator. Its assets are embedded, so the executable does not require the source folders at runtime.
+
+`go.mod` declares dependencies and `go.sum` records their checksums. The calculator remains independent of native vision and input. Calculator tests need no OpenCV, Tesseract or desktop session:
 
 ```sh
 CGO_ENABLED=0 go test ./internal/ancientcalc

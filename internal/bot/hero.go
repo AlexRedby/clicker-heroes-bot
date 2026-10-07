@@ -1,0 +1,292 @@
+package bot
+
+import (
+	"image"
+	"image/color"
+)
+
+func findHeroLevelButton(screen image.Image) (image.Point, bool) {
+	buttons := findHeroLevelButtons(screen)
+	if len(buttons) == 0 {
+		return image.Point{}, false
+	}
+	return buttons[len(buttons)-1], true
+}
+
+func findHeroLevelButtons(screen image.Image) []image.Point {
+	return findHeroButtons(screen, true)
+}
+
+func findHeroButtons(screen image.Image, enabled bool) []image.Point {
+	bands := findHeroButtonBands(screen, enabled)
+	var buttons []image.Point
+	for _, band := range bands {
+		buttons = append(buttons, image.Pt(screen.Bounds().Min.X+screen.Bounds().Dx()*8/100, (band.Min.Y+band.Max.Y-1)/2))
+	}
+	return buttons
+}
+
+// Use the visible list, including the bottom edge, to measure a button's band.
+func heroListViewport(screen image.Image) image.Rectangle {
+	b := screen.Bounds()
+	top := b.Min.Y + b.Dy()/5
+	if heroQuantityBarPresent(screen) {
+		top = b.Min.Y + b.Dy()*38/100
+	}
+	return image.Rect(b.Min.X, top, b.Max.X, b.Max.Y)
+}
+
+func findHeroButtonBands(screen image.Image, enabled bool) []image.Rectangle {
+	if screen == nil {
+		return nil
+	}
+	bounds := screen.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	if w < 640 || h < 360 {
+		return nil
+	}
+	if !heroTabSelected(screen) {
+		return nil
+	}
+	xStart, xEnd := bounds.Min.X+w*55/1000, bounds.Min.X+w*130/1000
+	viewport := heroListViewport(screen)
+	yStart, yEnd := viewport.Min.Y, viewport.Max.Y
+	xStep, gap := max(1, w/500), max(3, h/150)
+	var buttons []image.Rectangle
+	start, last := -1, -1
+	for y := yStart; y <= yEnd+gap; y++ {
+		blue, samples := 0, 0
+		if y < yEnd {
+			for x := xStart; x < xEnd; x += xStep {
+				r, g, b := rgb(screen.At(x, y))
+				if enabled && b > 150 && b > r+40 && b >= g-10 && g > 90 || !enabled && r < 150 && g < 150 && b < 150 {
+					blue++
+				}
+				samples++
+			}
+		}
+		threshold := 3
+		if !enabled {
+			threshold = 5
+		}
+		if samples > 0 && blue*10 >= samples*threshold {
+			if start < 0 {
+				start = y
+			}
+			last = y
+			continue
+		}
+		if start >= 0 && y-last > gap {
+			center := (start + last) / 2
+			if (last-start > h/40 || (start == yStart || last == yEnd-1) && last-start > h/100) && heroRowYellow(screen, center) {
+				buttons = append(buttons, image.Rect(xStart, start, xEnd, last+1))
+			}
+			start = -1
+		}
+	}
+	return buttons
+}
+
+func findNextHeroButton(screen image.Image, current image.Point) (image.Point, bool) {
+	if screen == nil {
+		return image.Point{}, false
+	}
+	for _, button := range findHeroButtons(screen, false) {
+		if button.Y >= current.Y+screen.Bounds().Dy()/15 {
+			return button, true
+		}
+	}
+	return image.Point{}, false
+}
+
+func heroQuantityBarPresent(screen image.Image) bool {
+	if screen == nil || !heroTabSelected(screen) {
+		return false
+	}
+	b := screen.Bounds()
+	w, h := b.Dx(), b.Dy()
+	for _, x := range []int{100, 410} {
+		r, g, blue := rgb(screen.At(b.Min.X+w*x/1000, b.Min.Y+h*345/1000))
+		if r < 180 || g < 100 || blue > 100 {
+			return false
+		}
+	}
+	return true
+}
+
+func heroRowHasLevel(screen image.Image, y int) bool {
+	b := screen.Bounds()
+	w, h := b.Dx(), b.Dy()
+	region := image.Rect(b.Min.X+w*26/100, y-h*3/100, b.Min.X+w*36/100, y+h*3/100).Intersect(b)
+	white, total := 0, 0
+	for row := region.Min.Y; row < region.Max.Y; row += max(1, h/600) {
+		for x := region.Min.X; x < region.Max.X; x += max(1, w/600) {
+			r, g, blue := rgb(screen.At(x, row))
+			if min(r, g, blue) > 180 && max(r, g, blue)-min(r, g, blue) < 55 {
+				white++
+			}
+			total++
+		}
+	}
+	return total > 0 && white*100 > total*3
+}
+
+func heroTabSelected(screen image.Image) bool {
+	bounds := screen.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	tab := image.Rect(bounds.Min.X+w*45/1000, bounds.Min.Y+h*15/100, bounds.Min.X+w*70/1000, bounds.Min.Y+h*21/100)
+	gold, samples := 0, 0
+	for y := tab.Min.Y; y < tab.Max.Y; y++ {
+		for x := tab.Min.X; x < tab.Max.X; x++ {
+			r, g, b := rgb(screen.At(x, y))
+			if r >= 160 && g >= 100 && g <= 145 && b <= 60 {
+				gold++
+			}
+			samples++
+		}
+	}
+	return samples > 0 && gold*4 >= samples
+}
+
+func heroRowYellow(screen image.Image, y int) bool {
+	bounds := screen.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	yStart := max(bounds.Min.Y, y-h*15/1000)
+	yEnd := min(bounds.Max.Y, y+h*15/1000)
+	yellow, samples := 0, 0
+	for x := bounds.Min.X + w*17/100; x < bounds.Min.X+w*35/100; x += max(1, w/200) {
+		for row := yStart; row < yEnd; row += max(1, h/100) {
+			r, g, b := rgb(screen.At(x, row))
+			if r > 150 && g > 110 && r > b+40 && g > b+20 {
+				yellow++
+			}
+			samples++
+		}
+	}
+	return samples > 0 && yellow*10 >= samples*4
+}
+
+func heroScrollbarThumb(screen image.Image) (image.Point, int, bool) {
+	if screen == nil || !heroTabSelected(screen) {
+		return image.Point{}, 0, false
+	}
+	if point, height, found := listScrollbarThumb(screen, 320); found {
+		return point, height, true
+	}
+	if !heroQuantityBarPresent(screen) {
+		return image.Point{}, 0, false
+	}
+	// At the top of the Heroes list the arrow can merge with the gold thumb.
+	// Scan below the arrow while retaining the same shape and size checks.
+	return listScrollbarThumb(screen, 420)
+}
+
+func rgb(c color.Color) (int, int, int) {
+	r, g, b, _ := c.RGBA()
+	return int(r >> 8), int(g >> 8), int(b >> 8)
+}
+
+func absDiff(a, b int) int {
+	if a < b {
+		return b - a
+	}
+	return a - b
+}
+
+func heroQuantitySelected(screen image.Image, xPercent int) bool {
+	if !heroQuantityBarPresent(screen) {
+		return false
+	}
+	b := screen.Bounds()
+	r, g, blue := rgb(screen.At(b.Min.X+b.Dx()*(xPercent-25)/1000, b.Min.Y+b.Dy()*345/1000))
+	return r > 180 && g > 90 && g < 190 && blue < 100 && r-g > 50
+}
+
+func heroScrollbarAtBottom(screen image.Image) bool {
+	thumb, height, found := heroScrollbarThumb(screen)
+	if !found {
+		return false
+	}
+	b := screen.Bounds()
+	return absDiff(thumb.Y+height/2, b.Min.Y+b.Dy()*965/1000) <= max(3, b.Dy()/100)
+}
+
+func heroListStable(before, after image.Image) bool {
+	if before == nil || after == nil || before.Bounds() != after.Bounds() {
+		return false
+	}
+	beforeThumb, beforeHeight, beforeFound := heroScrollbarThumb(before)
+	afterThumb, afterHeight, afterFound := heroScrollbarThumb(after)
+	return beforeFound && afterFound && absDiff(beforeThumb.Y-beforeHeight/2, afterThumb.Y-afterHeight/2) <= max(3, before.Bounds().Dy()/100)
+}
+
+func heroRowUnowned(screen image.Image, y int) bool {
+	if screen == nil || heroRowHasLevel(screen, y) {
+		return false
+	}
+	b := screen.Bounds()
+	w, h := b.Dx(), b.Dy()
+	region := image.Rect(b.Min.X+w*28/100, y-h/100, b.Min.X+w*36/100, y+h/100).Intersect(b)
+	// Empty level areas are warm cream or gold, depending on gilding.
+	background, total := 0, 0
+	for row := region.Min.Y; row < region.Max.Y; row++ {
+		for x := region.Min.X; x < region.Max.X; x++ {
+			r, g, blue := rgb(screen.At(x, row))
+			if r > 200 && g > 160 && r-blue > 40 && g-blue > 20 {
+				background++
+			}
+			total++
+		}
+	}
+	return total > 0 && background*100 >= total*98
+}
+
+func heroCandidateKnown(screen image.Image, button image.Point) bool {
+	if !heroScrollbarAtBottom(screen) {
+		return false
+	}
+	if heroRowUnowned(screen, button.Y) {
+		return true
+	}
+	if !heroRowHasLevel(screen, button.Y) {
+		return false
+	}
+	next, found := findNextHeroButton(screen, button)
+	// A missing successor can be a clipped or obscured row. Wait for a clear frame.
+	return found && heroRowUnowned(screen, next.Y)
+}
+
+func heroRowNameMatches(before, after image.Image, old, current image.Point) bool {
+	if before == nil || after == nil || before.Bounds() != after.Bounds() {
+		return false
+	}
+	b := before.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if absDiff(old.X, current.X) > max(2, w/200) || absDiff(old.Y, current.Y) > max(2, h/200) {
+		return false
+	}
+	// The name is static across quantity changes and leveling; animated artwork is excluded.
+	region := image.Rect(b.Min.X+w*28/100, old.Y-h*5/100, b.Min.X+w*365/1000, old.Y-h*3/100).Intersect(b)
+	changed, total := 0, 0
+	for y := region.Min.Y; y < region.Max.Y; y++ {
+		for x := region.Min.X; x < region.Max.X; x++ {
+			ar, ag, ab := rgb(before.At(x, y))
+			br, bg, bb := rgb(after.At(x, y+current.Y-old.Y))
+			a := min(ar, ag, ab) > 180
+			z := min(br, bg, bb) > 180
+			if a != z {
+				changed++
+			}
+			total++
+		}
+	}
+	return total > 0 && changed*100 <= total
+}
+
+func heroLayoutValid(screen image.Image) bool {
+	if screen == nil || screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 || !heroQuantityBarPresent(screen) {
+		return false
+	}
+	_, _, found := heroScrollbarThumb(screen)
+	return found && (heroQuantitySelected(screen, 122) || heroQuantitySelected(screen, 435) || heroQuantitySelected(screen, 200) || heroQuantitySelected(screen, 278) || heroQuantitySelected(screen, 356))
+}
