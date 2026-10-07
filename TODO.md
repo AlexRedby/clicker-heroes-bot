@@ -7,8 +7,8 @@ The main chat coordinates integration, tests and delivery to `main`. Feature own
 ### 1. Existing features and reproducible bugs
 
 - [ ] Finish Timelapse preparation and paid execution only where native UI evidence exists. Keep purchase execution disabled for missing/ambiguous controls, missing Ancient summons or unverified preparation. Finite allowance and persisted pending debit must survive restart; zero allowance spends nothing. Owner: Timelapse integration and Quick Ascension.
-- [ ] Measure and improve fish detection on all saved real, rotated, small and scrollbar-overlap frames. Compare working resolution and OpenCV parameters; ship only a measured improvement without lost detections. Add useful p50/p95 capture, analyzer, OCR and queue metrics with bounded storage, plus reasons for idle action scheduling. Owner: Capture and fish performance; main chat wires shared metrics/CLI.
-- [ ] Reproduce and fix the remaining 640x360 common HUD recognition and dead Mercenary property OCR errors against supplied fixtures. Coordinate changes to shared game-context helpers with the main chat; keep strict row association and paid recovery decisions unchanged. Owner: Automate mercenary quests.
+- [ ] Measure and improve fish detection on all saved real, rotated, small and scrollbar-overlap frames. Compare working resolution and OpenCV parameters; ship only a measured improvement without lost detections. Owner: Capture and fish performance; main chat wires shared metrics/CLI.
+- [ ] Resolve ambiguous dead Mercenary bonus OCR at 640x360 against supplied fixtures if the source preserves enough information. Unknown traits must continue to prevent automatic revive/bury; keep strict row association and paid recovery decisions unchanged. Owner: Automate mercenary quests.
 - [ ] Run focused checks for every owner commit, then the integrated native OpenCV/Tesseract suite and build on the authorized Docker host. Transfer source and sanitized test fixtures only; do not send personal saves. Commit and push verified integration to `main`.
 
 ### 2. Configurable achievement goals

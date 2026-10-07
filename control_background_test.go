@@ -15,7 +15,7 @@ func TestControlsIgnoreSurroundingScenery(t *testing.T) {
 		find          func(image.Image) (image.Point, bool, error)
 	}{
 		{"menu close", "save-menu.png", image.Rect(1006, 137, 1034, 165), func(img image.Image) (image.Point, bool, error) { return saveControl(img, 1) }},
-		{"settings", "ascension-ancients.png", image.Rect(1233, 17, 1255, 39), func(img image.Image) (image.Point, bool, error) { return saveControl(img, 2) }},
+		{"settings", "ascension-ancients.png", image.Rect(1232, 16, 1256, 40), func(img image.Image) (image.Point, bool, error) { return saveControl(img, 2) }},
 		{"ascension", "ascension-ancients.png", image.Rect(1237, 247, 1251, 263), func(img image.Image) (image.Point, bool, error) { return ascensionControl(img, ascensionSpiral) }},
 		{"gild close", "gild-roster.png", image.Rect(1137, 27, 1161, 51), func(img image.Image) (image.Point, bool, error) {
 			return gildActionPoint(gameFrame{image: img, context: gameContext{modal: gildRosterModal}})
@@ -26,7 +26,11 @@ func TestControlsIgnoreSurroundingScenery(t *testing.T) {
 	}
 	backgrounds := []color.Color{color.Black, color.White, color.RGBA{0, 170, 230, 255}}
 	for _, tc := range cases {
-		for _, width := range []int{1280, 2560} {
+		widths := []int{1280, 2560}
+		if tc.name == "settings" {
+			widths = append(widths, 640)
+		}
+		for _, width := range widths {
 			original := exportFixture(t, tc.fixture, width)
 			core := controlRect(original, tc.core)
 			for bg, background := range backgrounds {

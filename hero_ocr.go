@@ -71,11 +71,23 @@ func (w *cappedBuffer) Write(p []byte) (int, error) {
 var ocrSlots = make(chan struct{}, 2)
 
 func runTesseract(ctx context.Context, encoded []byte, args ...string) (string, error) {
+	wait, execution := timingCollector(ctx)
+	waitStart := time.Now()
 	select {
 	case ocrSlots <- struct{}{}:
 		defer func() { <-ocrSlots }()
 	case <-ctx.Done():
+		if wait != nil {
+			wait.Record(time.Since(waitStart))
+		}
 		return "", ctx.Err()
+	}
+	if wait != nil {
+		wait.Record(time.Since(waitStart))
+	}
+	executionStart := time.Now()
+	if execution != nil {
+		defer func() { execution.Record(time.Since(executionStart)) }()
 	}
 	ctx, cancel := context.WithTimeout(ctx, ocrTimeout)
 	defer cancel()

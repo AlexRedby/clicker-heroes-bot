@@ -68,6 +68,7 @@ type gameFrame struct {
 }
 type analysisJob struct {
 	frame         gameFrame
+	queuedAt      time.Time
 	export        *exportJob
 	heroBefore    *heroObservation
 	startup       startupPhase
@@ -153,11 +154,15 @@ type pipelineOptions struct {
 	fishInterval, clickInterval, gildInterval                           time.Duration
 }
 type pipelineMetrics struct {
-	captures                          uint64
-	counts                            [analysisCount]uint64
-	elapsed                           [analysisCount]time.Duration
-	captureTime, inputTime, queueTime time.Duration
-	actions, dropped                  uint64
+	captures                                      uint64
+	counts                                        [analysisCount]uint64
+	elapsed                                       [analysisCount]time.Duration
+	captureTime, inputTime, queueTime             time.Duration
+	actions, dropped                              uint64
+	contextTime, actionQueueTime                  timingSamples
+	captureSamples, ocrWaitTime, ocrExecutionTime timingSamples
+	analysisTime, analyzerQueueTime               [analysisCount]timingSamples
+	waitReasons                                   waitReasonCounters
 }
 
 type gamePipeline struct {
@@ -356,11 +361,13 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 		}
 	}
 	out.elapsed = time.Since(start)
+	p.metrics.analysisTime[kind].Record(out.elapsed)
 	return out
 }
 
 // Each worker has one running job and one replaceable waiting frame.
 func replaceJob(ch chan analysisJob, job analysisJob) {
+	job.queuedAt = time.Now()
 	select {
 	case ch <- job:
 		return
@@ -424,6 +431,7 @@ func (p *gamePipeline) reset(generation uint64) {
 
 func (p *gamePipeline) run(ctx context.Context) error {
 	workerCtx, cancel := context.WithCancel(ctx)
+	workerCtx = withTimingCollector(workerCtx, &p.metrics.ocrWaitTime, &p.metrics.ocrExecutionTime)
 	var wg sync.WaitGroup
 	defer func() { cancel(); p.export.interrupt(); close(p.diagnostics); wg.Wait() }()
 	wg.Add(1)
@@ -449,6 +457,7 @@ func (p *gamePipeline) run(ctx context.Context) error {
 				case <-workerCtx.Done():
 					return
 				case job := <-jobs[kind]:
+					p.metrics.analyzerQueueTime[kind].Record(time.Since(job.queuedAt))
 					if !p.controls.valid(workerCtx, job.frame.generation) {
 						continue
 					}
@@ -472,6 +481,7 @@ func (p *gamePipeline) run(ctx context.Context) error {
 			case <-workerCtx.Done():
 				return
 			case action := <-actions:
+				p.metrics.actionQueueTime.Record(time.Since(action.queuedAt))
 				start := time.Now()
 				acted, err := p.execute(workerCtx, action)
 				select {
@@ -485,6 +495,7 @@ func (p *gamePipeline) run(ctx context.Context) error {
 	timer := time.NewTicker(25 * time.Millisecond)
 	defer timer.Stop()
 	for {
+		timerPoll := false
 		select {
 		case <-ctx.Done():
 			return nil
@@ -520,6 +531,7 @@ func (p *gamePipeline) run(ctx context.Context) error {
 				})
 			}
 		case <-timer.C:
+			timerPoll = true
 			generation := p.controls.snapshot()
 			if generation != p.generation {
 				p.reset(generation)
@@ -528,6 +540,7 @@ func (p *gamePipeline) run(ctx context.Context) error {
 				}
 			}
 			if !p.controls.valid(ctx, generation) {
+				p.metrics.waitReasons.Record(waitPaused)
 				continue
 			}
 			now := time.Now()
@@ -537,7 +550,9 @@ func (p *gamePipeline) run(ctx context.Context) error {
 				}
 			}
 		}
-		if !p.busy && p.controls.valid(ctx, p.generation) {
+		if timerPoll && p.busy {
+			p.metrics.waitReasons.Record(waitInputBusy)
+		} else if !p.busy && p.controls.valid(ctx, p.generation) {
 			now := time.Now()
 			p.plan(now)
 			if action, ok := p.nextAction(now); ok {
@@ -551,6 +566,8 @@ func (p *gamePipeline) run(ctx context.Context) error {
 				case <-ctx.Done():
 					return nil
 				}
+			} else if timerPoll {
+				p.metrics.waitReasons.Record(p.waitReason(now))
 			}
 		}
 	}
@@ -559,7 +576,9 @@ func (p *gamePipeline) run(ctx context.Context) error {
 func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan analysisJob) error {
 	start := time.Now()
 	image, err := p.input.capture()
-	p.metrics.captureTime += time.Since(start)
+	captureElapsed := time.Since(start)
+	p.metrics.captureTime += captureElapsed
+	p.metrics.captureSamples.Record(captureElapsed)
 	p.metrics.captures++
 	if err != nil {
 		return fmt.Errorf("capture game: %w", err)
@@ -575,7 +594,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			return nil
 		}
 	}
+	contextStart := time.Now()
 	c, err := p.readers.context(image)
+	p.metrics.contextTime.Record(time.Since(contextStart))
 	if err != nil {
 		return err
 	}
@@ -1227,6 +1248,22 @@ func (p *gamePipeline) enqueue(action gameAction, now time.Time) {
 	}
 	p.queue[action.kind] = action
 }
+
+func (p *gamePipeline) waitReason(now time.Time) actionWaitReason {
+	if now.Before(p.settleUntil) {
+		return waitSettling
+	}
+	if !p.frame.context.known {
+		return waitUnknownContext
+	}
+	if p.frame.context.questDialog || p.frame.context.mercenaryDialog || p.frame.context.relicJunk || p.frame.context.saveMenu || p.frame.context.ancientDialog || p.frame.context.ascension || p.frame.context.modal != noGildModal {
+		return waitCoveringModal
+	}
+	if p.hero.pending != nil || p.clickers.pending != nil || p.skill.pending != nil || p.mercenary.pending != nil || p.ascension.active || p.ancient.pending != nil || p.progression.pending != nil {
+		return waitAwaitingConfirmation
+	}
+	return waitNoDueAction
+}
 func (p *gamePipeline) fishContext(c gameContext) bool {
 	return c.known && c.window != "!outside-game" && !c.ancientDialog && !c.ascension && !c.saveMenu && !c.questDialog && !c.mercenaryDialog && !c.relicJunk && c.modal == noGildModal
 }
@@ -1764,8 +1801,14 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 	p.nextCapture = time.Time{}
 }
 
-func (m pipelineMetrics) String() string {
+func (m *pipelineMetrics) String() string {
 	parts := []string{fmt.Sprintf("captures=%d capture=%s actions=%d input=%s queue=%s stale=%d", m.captures, m.captureTime, m.actions, m.inputTime, m.queueTime, m.dropped)}
+	parts = append(parts, fmt.Sprintf("timings=capture=%s context=%s action-queue=%s ocr-wait=%s ocr-exec=%s wait-polls={%s}", m.captureSamples.Snapshot(), m.contextTime.Snapshot(), m.actionQueueTime.Snapshot(), m.ocrWaitTime.Snapshot(), m.ocrExecutionTime.Snapshot(), m.waitReasons.String()))
+	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers", "relics"} {
+		if summary := m.analysisTime[i].Snapshot(); summary.Window > 0 {
+			parts = append(parts, fmt.Sprintf("%s-time=%s analyzer-queue=%s", name, summary, m.analyzerQueueTime[i].Snapshot()))
+		}
+	}
 	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers", "relics"} {
 		parts = append(parts, fmt.Sprintf("%s=%d/%s", name, m.counts[i], m.elapsed[i]))
 	}
