@@ -15,6 +15,9 @@ func configureRun(options pipelineOptions) (pipelineOptions, error) {
 		options.heroes, options.skills, options.autoClickers = true, true, true
 		options.gilds, options.ascension = true, true
 	}
+	if options.achievements != nil && (!options.mercenaries || options.export == nil || options.export.dir == "") {
+		return options, errors.New("-achievement-goals in run requires -mercenaries and -export-dir")
+	}
 	if options.ascension && (options.ascensionStall <= 0 || options.ascensionMinGain <= 0 || math.IsNaN(options.ascensionMinGain) || math.IsInf(options.ascensionMinGain, 0)) {
 		return options, errors.New("-ascension-stall must be positive; -ascension-min-gain must be finite and positive")
 	}

@@ -60,13 +60,16 @@ type exportCommand struct {
 	before exportSnapshot
 }
 type exportJob struct {
-	ctx          context.Context
-	options      saveExportOptions
-	before       exportSnapshot
-	relicsOnly   bool
-	initialSetup bool
+	ctx                     context.Context
+	options                 saveExportOptions
+	before                  exportSnapshot
+	relicsOnly              bool
+	goalsOnly, achievements bool
+	initialSetup            bool
 }
 type exportResult struct {
+	achievements        *ancientcalc.AchievementState
+	achievementErr      error
 	plan                *ancientPlan
 	prestige            *ancientcalc.TranscensionPreview
 	relics              *ancientcalc.RelicPreview
@@ -86,6 +89,7 @@ func (p *gamePipeline) reportRelics(preview *ancientcalc.RelicPreview, err error
 type saveExporter struct {
 	requested, active, waiting bool
 	relicsOnly                 bool
+	goalsOnly                  bool
 	initialSetup               bool
 	step                       exportStep
 	window                     string
@@ -106,6 +110,7 @@ func (e *saveExporter) interrupt() {
 	e.lastFrame, e.jobFrame = 0, 0
 }
 func (p *gamePipeline) exportFailed(err error) {
+	p.invalidateAchievementGoals()
 	reason := fmt.Sprintf("save export failed at %s: %v", p.export.step, err)
 	if p.export.status != "" {
 		reason += " (" + p.export.status + ")"
@@ -230,6 +235,16 @@ func readExport(job exportJob) (exportResult, error) {
 			return exportResult{}, fmt.Errorf("waiting for new or changed clickerHeroSave*.txt in %q: %w", job.options.dir, err)
 		}
 		var result exportResult
+		if job.achievements {
+			value, err := ancientcalc.ReadAchievementState(job.ctx, data)
+			result.achievementErr = err
+			if err == nil {
+				result.achievements = &value
+			} else if job.goalsOnly {
+				last = err
+				continue
+			}
+		}
 		if job.initialSetup {
 			value, err := ancientcalc.PlanHeroSetup(job.ctx, data)
 			if err != nil && !errors.Is(err, ancientcalc.ErrHeroSetupUnsupported) {
@@ -241,7 +256,7 @@ func readExport(job exportJob) (exportResult, error) {
 				result.heroSetup = &value
 			}
 		}
-		if !job.relicsOnly {
+		if !job.relicsOnly && !job.goalsOnly {
 			value, err := calculateAncientData(job.ctx, data, path, job.options.reserve, job.options.skillRate, job.options.beyond8k)
 			if err != nil {
 				if !job.initialSetup {
@@ -253,7 +268,7 @@ func readExport(job exportJob) (exportResult, error) {
 				result.plan = &value
 				result.prestige = value.Transcension
 			}
-		} else {
+		} else if !job.goalsOnly {
 			// An advisory Outsider roster does not require owned Ancients and
 			// cannot block a valid relic-only export when metadata is absent.
 			value, err := ancientcalc.PreviewTranscension(job.ctx, data)
@@ -264,16 +279,18 @@ func readExport(job exportJob) (exportResult, error) {
 				result.prestige = &value
 			}
 		}
-		preview, err := ancientcalc.PreviewRelics(job.ctx, data)
-		if err == nil {
-			result.relics = &preview
-		} else if job.relicsOnly {
-			// The writer can pause between chunks longer than the stability window.
-			// A read-only check also waits for a complete, supported inventory.
-			last = err
-			continue
+		if !job.goalsOnly {
+			preview, err := ancientcalc.PreviewRelics(job.ctx, data)
+			if err == nil {
+				result.relics = &preview
+			} else if job.relicsOnly {
+				// The writer can pause between chunks longer than the stability window.
+				// A read-only check also waits for a complete, supported inventory.
+				last = err
+				continue
+			}
+			result.relicErr = err
 		}
-		result.relicErr = err
 		if err := job.ctx.Err(); err != nil {
 			return exportResult{}, err
 		}

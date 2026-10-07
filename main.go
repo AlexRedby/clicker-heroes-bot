@@ -26,9 +26,10 @@ import (
 
 func main() {
 	robotgo.Scale = false
-	mode := flag.String("mode", "help", "help, shot, click, run, ancients-plan, relics-plan, transcension-plan, or timelapse-plan")
-	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot or preview JSON for transcension-plan or timelapse-plan mode")
+	mode := flag.String("mode", "help", "help, shot, click, run, ancients-plan, relics-plan, transcension-plan, timelapse-plan, or achievements-plan")
+	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot or preview JSON for transcension-plan, timelapse-plan or achievements-plan mode")
 	save := flag.String("save", "", "exported save for preview modes, run Outsider roster, or Ascension invested-soul baseline (read only)")
+	achievementGoals := flag.String("achievement-goals", "", "ordered goal state/config JSON for achievements-plan or run (run persists progress)")
 	outsiderShot := flag.String("screenshot", "", "existing Outsiders screenshot to reconcile with -save in transcension-plan mode (read only)")
 	ancientReserve := flag.String("ancient-reserve", "0", "Optional Hero Souls spending floor beyond the calculator soul bank")
 	ancientSkillRate := flag.Float64("ancient-skill-rate", 1, "calculator allocation to skill Ancients, from 0 to 1")
@@ -55,6 +56,9 @@ func main() {
 	if *mode == "help" {
 		flag.Usage()
 		return
+	}
+	if *achievementGoals != "" && *mode != "achievements-plan" && *mode != "run" {
+		log.Fatal("-achievement-goals requires achievements-plan or run mode")
 	}
 	if *outsiderShot != "" && *mode != "transcension-plan" {
 		log.Fatal("-screenshot requires transcension-plan mode")
@@ -105,7 +109,7 @@ func main() {
 		if err == nil {
 			err = writeAncientPlan(*ancientPlanOutput, plan)
 		}
-	case "timelapse-plan":
+	case "achievements-plan", "timelapse-plan", "transcension-plan":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -116,22 +120,17 @@ func main() {
 				path = *output
 			}
 		})
-		err = previewTimelapse(ctx, *save, path, os.Stdout, ancientcalc.BuildOptions{Mode: ancientcalc.HybridBuild, Reserve: *ancientReserve, SkillRate: *ancientSkillRate, Beyond8k: *ancientBeyond8k})
-	case "transcension-plan":
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-		defer stop()
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		path := ""
-		flag.Visit(func(f *flag.Flag) {
-			if f.Name == "out" {
-				path = *output
+		switch *mode {
+		case "achievements-plan":
+			err = previewAchievements(ctx, *save, *achievementGoals, path, os.Stdout)
+		case "timelapse-plan":
+			err = previewTimelapse(ctx, *save, path, os.Stdout, ancientcalc.BuildOptions{Mode: ancientcalc.HybridBuild, Reserve: *ancientReserve, SkillRate: *ancientSkillRate, Beyond8k: *ancientBeyond8k})
+		case "transcension-plan":
+			if *outsiderShot != "" {
+				err = previewOutsiders(ctx, *save, *outsiderShot, path, os.Stdout)
+			} else {
+				err = previewTranscension(ctx, *save, path, os.Stdout)
 			}
-		})
-		if *outsiderShot != "" {
-			err = previewOutsiders(ctx, *save, *outsiderShot, path, os.Stdout)
-		} else {
-			err = previewTranscension(ctx, *save, path, os.Stdout)
 		}
 	case "relics-plan":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -192,11 +191,18 @@ func main() {
 			}
 			export = &saveExportOptions{dir: *exportDir, reserve: *ancientReserve, skillRate: *ancientSkillRate, beyond8k: *ancientBeyond8k, planOutput: *ancientPlanOutput}
 		}
+		var goals *achievementSession
+		if *achievementGoals != "" {
+			goals, err = loadAchievementSession(*achievementGoals)
+			if err != nil {
+				break
+			}
+		}
 		options, e := configureRun(pipelineOptions{
 			progression: *progression, mercenaries: *mercenaries, monster: hasX,
 			monsterPoint: image.Pt(*x, *y), clickInterval: *interval, fishInterval: *fishInterval,
 			gildInterval: *gildInterval, ascensionStall: *ascensionStall, ascensionMinGain: *ascensionMinGain,
-			export: export, windowed: *windowed,
+			export: export, windowed: *windowed, achievements: goals,
 		})
 		if e != nil {
 			err = e

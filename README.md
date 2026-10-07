@@ -113,6 +113,30 @@ Ascension is part of `-progression`. A disabled toggle by itself is insufficient
 
 The bot clicks the recognized right-hand red spiral, independently reads the reward from the specific Ascension dialog, and confirms with its green `Yes` only if the reward still meets the minimum gain. A manually opened Ascension dialog is never automatically confirmed. A recognized Junk Pile blocker belonging to this transaction receives one Yes, then the bot waits for closure and resumes the normal reward validation. If the client returns to Heroes, it reopens Ascension. An orphaned Junk Pile prompt after F8/restart receives No. Recognition matches fixed text and controls without OCR of the Forge Core amount; equipped relics are untouched. All background actions are suspended during this transaction, and the reward must remain visible and unchanged before confirmation. It does not use `Buy Quick Ascension`, spend rubies or transcend. A blocked or missed transition pauses after twenty seconds. Following a confirmed return to zone 1, `-progression -export-dir` performs the bounded MAX skill setup, buys newly unlocked upgrades and starts progression as soon as passive damage is recognized. The startup sweep does not OCR hero names or levels; ordinary play levels only the latest available hero. A fresh export and Ancient plan follow the upgrade/progression handoff. The game bulk buyer excludes Ascension. Combat/progression continues during Ancient spending; input stays serialized and popup windows suppress fish clicks. Startup retains its cursor across F8 and pauses with a reason if a stage cannot finish within five minutes. `-progression` requires `-export-dir` at launch so the cycle can continue after reset. Free owned clickers are assigned again after the reset. Fixture tests cover startup and handoffs; two complete native cycles still need live verification.
 
+### Achievement progress preview
+
+```sh
+go run . -mode achievements-plan -save "path/to/fresh-save.txt" -out artifacts/achievements-plan.json
+```
+
+This read-only report lists internal achievements, earned status, supported save counters and separate Steam labels. Missing counters and unsupported builds are reported explicitly. It does not change gameplay or spend rubies. Omit `-out` to print JSON.
+
+To inspect ordered goals, create `artifacts/achievement-goals.json`:
+
+```json
+{"config":{"goals":[140,126]}}
+```
+
+Then add `-achievement-goals artifacts/achievement-goals.json`. Internal ID 140 is Overtime (250 five-minute quests); 126 is Red Sea (500 ruby quests). The report's `questPriority` is a preference among valid free quest offers. `nextState` contains profile-bound completion for a later evaluation; the preview leaves the input file unchanged. Internal IDs and requirements come from the installed-client catalog, not Steam label spelling.
+
+Enable Mercenary goal selection in the normal run:
+
+```sh
+go run . -mode run -progression -mercenaries -export-dir "path/to/export" -achievement-goals artifacts/achievement-goals.json -stats
+```
+
+The file is updated with profile-bound completion; keep it across restarts. Goals are evaluated from the startup export and once after a reward-collection visit while a quest goal is active, reusing an already needed export. Free recruitment remains first; active quest goals prefer the shortest valid matching offer, with ordinary ranking for ties or missing matches. Completed goals advance to the next configured goal, then restore normal ruby priorities. Missing counters, a different save profile or a state-file error revoke the goal preference. Click, boss-kill, hero-level and zone strategies remain report-only until their native controls are verified. No goal authorizes paid revival, deliberate burial or a prestige reset.
+
 ### Timelapse preparation preview
 
 ```sh

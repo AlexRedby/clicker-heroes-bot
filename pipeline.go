@@ -149,6 +149,7 @@ type pipelineOptions struct {
 	ascensionMinGain, ascensionCapital                                  float64
 	ancientPlan                                                         *ancientPlan
 	outsiderBase                                                        *ancientcalc.TranscensionPreview
+	achievements                                                        *achievementSession
 	export                                                              *saveExportOptions
 	monsterPoint                                                        image.Point
 	fishInterval, clickInterval, gildInterval                           time.Duration
@@ -225,6 +226,7 @@ func newGamePipeline(controls *pauseControl, input heroInput, readers pipelineRe
 		p.outsiderBase = options.ancientPlan.Transcension
 	}
 	p.export.requested = options.export != nil
+	p.export.goalsOnly = options.achievements != nil && !options.progression
 	p.startupCheck = options.heroes
 	p.hero.onDiagnostic = func(a heroDiagnostic) bool {
 		select {
@@ -384,6 +386,9 @@ func replaceJob(ch chan analysisJob, job analysisJob) {
 }
 
 func (p *gamePipeline) reset(generation uint64) {
+	if generation != p.generation {
+		p.invalidateAchievementGoals()
+	}
 	relicExport := p.relic.active && p.export.relicsOnly && p.export.requested
 	relicWindow := p.relic.window
 	// F8 revokes the previous reset assessment. A fresh boss attempt must be
@@ -646,6 +651,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			if geometryChanged {
 				p.skill.reset()
 			}
+			if c.window != old.window && !exportFocus {
+				p.invalidateAchievementGoals()
+			}
 			if geometryChanged && !exportFocus {
 				p.fishTarget = nil
 				p.ascension.interrupt()
@@ -697,7 +705,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		if p.startupCheck && bootstrapHeroes(c) {
 			if p.options.export != nil {
 				p.startupCheck, p.startup = false, startupSave
-				p.export.requested, p.export.initialSetup, p.export.relicsOnly = true, true, false
+				p.export.requested, p.export.initialSetup, p.export.relicsOnly, p.export.goalsOnly = true, true, false, false
 				p.queue = make(map[actionKind]gameAction)
 				fmt.Println("startup: acquiring fresh save before hero preparation")
 			} else {
@@ -752,7 +760,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			if p.export.active && p.export.step == exportReadFile && p.export.jobFrame == 0 && c.window == p.export.window && c.known && !c.saveMenu {
 				jobCtx, cancel := context.WithDeadline(ctx, p.export.deadline)
 				p.export.cancel, p.export.jobFrame = cancel, p.frame.id
-				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before, relicsOnly: p.export.relicsOnly, initialSetup: p.export.initialSetup}})
+				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before, relicsOnly: p.export.relicsOnly, goalsOnly: p.export.goalsOnly, achievements: p.options.achievements != nil, initialSetup: p.export.initialSetup}})
 			}
 			return nil
 		}
@@ -869,6 +877,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			if reason == nil {
 				reason = errors.New("game context changed while reading export")
 			}
+			p.invalidateAchievementGoals()
 			// applyObservation owns the pause mutex.
 			if p.export.relicsOnly {
 				p.reportRelics(nil, reason)
@@ -880,6 +889,20 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 				return nil
 			}
 			p.controls.pauseLocked(fmt.Sprintf("save export failed: %v; focus the game and press F8 to retry", reason), false)
+			return nil
+		}
+		if goals := p.options.achievements; goals != nil {
+			delete(p.queue, handleMercenary)
+			if err := goals.acceptSnapshot(out.export.achievements, out.export.achievementErr); err != nil {
+				fmt.Printf("achievement goals unavailable: %v; using normal quest priorities until the next fresh export\n", err)
+			}
+			goals.dirty = false
+		}
+		if p.export.goalsOnly {
+			p.export.interrupt()
+			p.export.requested, p.export.goalsOnly = false, false
+			p.queue = make(map[actionKind]gameAction)
+			fmt.Println("save export: achievement progress refreshed")
 			return nil
 		}
 		if !p.relic.active && !(p.options.progression && p.export.initialSetup) {
@@ -1272,6 +1295,9 @@ func (p *gamePipeline) plan(now time.Time) {
 	if now.Before(p.settleUntil) {
 		return
 	}
+	if p.options.achievements != nil {
+		p.mercenary.questPriority = p.options.achievements.priority
+	}
 	if p.frame.context.relicJunk {
 		p.planGilds(now)
 		if p.options.ascension {
@@ -1299,6 +1325,7 @@ func (p *gamePipeline) plan(now time.Time) {
 	if p.startup != startupSave && (p.startup != startupUpgrades || !p.clickers.footerAttempted) {
 		p.planAutoClickers(now)
 	}
+	p.planAchievementRefresh()
 	if p.planStartup(now) || p.planExport(now) || p.planAncients(now) || p.planRelics(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
 		return
 	}
@@ -1704,6 +1731,9 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		fmt.Printf("clicked gild gift control at (%d, %d)\n", a.point.X, a.point.Y)
 
 	case handleMercenary:
+		if goals := p.options.achievements; goals != nil && goals.priority.GoalID != 0 && (a.mercenary.step == claimMercenaryReward || a.mercenary.step == claimAndOpenMercenaryQuest) {
+			goals.dirty = true
+		}
 		p.mercenary.sent(a, now)
 		p.nextMercenary = time.Time{}
 		invalidate(mercenaryAnalysis)
