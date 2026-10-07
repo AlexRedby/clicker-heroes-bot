@@ -113,6 +113,14 @@ Ascension is part of `-progression`. A disabled toggle by itself is insufficient
 
 The bot clicks the recognized right-hand red spiral, independently reads the reward from the specific Ascension dialog, and confirms with its green `Yes` only if the reward still meets the minimum gain. A manually opened Ascension dialog is never automatically confirmed. A recognized Junk Pile blocker belonging to this transaction receives one Yes, then the bot waits for closure and resumes the normal reward validation. If the client returns to Heroes, it reopens Ascension. An orphaned Junk Pile prompt after F8/restart receives No. Recognition matches fixed text and controls without OCR of the Forge Core amount; equipped relics are untouched. All background actions are suspended during this transaction, and the reward must remain visible and unchanged before confirmation. It does not use `Buy Quick Ascension`, spend rubies or transcend. A blocked or missed transition pauses after twenty seconds. Following a confirmed return to zone 1, `-progression -export-dir` performs the bounded MAX skill setup, buys newly unlocked upgrades and starts progression as soon as passive damage is recognized. The startup sweep does not OCR hero names or levels; ordinary play levels only the latest available hero. A fresh export and Ancient plan follow the upgrade/progression handoff. The game bulk buyer excludes Ascension. Combat/progression continues during Ancient spending; input stays serialized and popup windows suppress fish clicks. Startup retains its cursor across F8 and pauses with a reason if a stage cannot finish within five minutes. `-progression` requires `-export-dir` at launch so the cycle can continue after reset. Free owned clickers are assigned again after the reset. Fixture tests cover startup and handoffs; two complete native cycles still need live verification.
 
+### Timelapse preparation preview
+
+```sh
+go run . -mode timelapse-plan -save "path/to/fresh-save.txt" -out artifacts/timelapse-plan.json
+```
+
+This read-only report combines saved state, a Hybrid Ancient allocation, the native Go Timelapse forecast and missing preparation requirements. Omit `-out` to print JSON. The forecast assumes ideal allocation, hero upgrades and gilds; it does not prove that the current game is ready. Missing Ancients are reported without summoning them. Paid Timelapse and Quick Ascension input remain disabled until their native controls and outcome are verified. The normal run keeps its Active strategy.
+
 ### Ancient purchases
 
 Export a fresh save using the game settings. Preview an Active-build allocation without game input:

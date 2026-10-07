@@ -60,3 +60,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Driej/Clicker-Heroes-Timelapses
+
+The native Go forecast and hero tables in `internal/timelapse` derive from
+[Driej/Clicker-Heroes-Timelapses](https://github.com/Driej/Clicker-Heroes-Timelapses),
+revision `9fa560705139957b0c2021b99f51b3b12754fd47` (desktop `js/main.js`).
+The source is dedicated to the public domain under the Unlicense.

@@ -26,8 +26,8 @@ import (
 
 func main() {
 	robotgo.Scale = false
-	mode := flag.String("mode", "help", "help, shot, click, run, ancients-plan, relics-plan, or transcension-plan")
-	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot or preview JSON for transcension-plan mode")
+	mode := flag.String("mode", "help", "help, shot, click, run, ancients-plan, relics-plan, transcension-plan, or timelapse-plan")
+	output := flag.String("out", "artifacts/screenshot.png", "screenshot file for shot or preview JSON for transcension-plan or timelapse-plan mode")
 	save := flag.String("save", "", "exported save for preview modes, run Outsider roster, or Ascension invested-soul baseline (read only)")
 	outsiderShot := flag.String("screenshot", "", "existing Outsiders screenshot to reconcile with -save in transcension-plan mode (read only)")
 	ancientReserve := flag.String("ancient-reserve", "0", "Optional Hero Souls spending floor beyond the calculator soul bank")
@@ -105,6 +105,18 @@ func main() {
 		if err == nil {
 			err = writeAncientPlan(*ancientPlanOutput, plan)
 		}
+	case "timelapse-plan":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		path := ""
+		flag.Visit(func(f *flag.Flag) {
+			if f.Name == "out" {
+				path = *output
+			}
+		})
+		err = previewTimelapse(ctx, *save, path, os.Stdout, ancientcalc.BuildOptions{Mode: ancientcalc.HybridBuild, Reserve: *ancientReserve, SkillRate: *ancientSkillRate, Beyond8k: *ancientBeyond8k})
 	case "transcension-plan":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()

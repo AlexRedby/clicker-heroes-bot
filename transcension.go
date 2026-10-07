@@ -23,27 +23,37 @@ func previewTranscension(ctx context.Context, savePath, output string, stdout io
 }
 
 func readTranscensionPreview(ctx context.Context, savePath string) (ancientcalc.TranscensionPreview, error) {
-	var preview ancientcalc.TranscensionPreview
+	exported, err := readPreviewSave(savePath)
+	if err != nil {
+		return ancientcalc.TranscensionPreview{}, err
+	}
+	return ancientcalc.PreviewTranscension(ctx, exported)
+}
+
+func readPreviewSave(savePath string) ([]byte, error) {
 	if savePath == "" {
-		return preview, errors.New("-save is required")
+		return nil, errors.New("-save is required")
 	}
 	file, err := os.Open(savePath)
 	if err != nil {
-		return preview, err
+		return nil, err
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return preview, err
+		return nil, err
 	}
 	if !info.Mode().IsRegular() || info.Size() == 0 || info.Size() > ancientcalc.MaxSaveInput {
-		return preview, errors.New("save must be a nonempty regular file no larger than 4 MiB")
+		return nil, errors.New("save must be a nonempty regular file no larger than 4 MiB")
 	}
 	exported, err := io.ReadAll(io.LimitReader(file, ancientcalc.MaxSaveInput+1))
 	if err != nil {
-		return preview, err
+		return nil, err
 	}
-	return ancientcalc.PreviewTranscension(ctx, exported)
+	if len(exported) > ancientcalc.MaxSaveInput {
+		return nil, errors.New("save exceeds 4 MiB")
+	}
+	return exported, nil
 }
 
 func previewOutsiders(ctx context.Context, savePath, screenshotPath, output string, stdout io.Writer) error {
