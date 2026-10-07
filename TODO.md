@@ -30,7 +30,7 @@ Clans are deferred by user request. Forge Core relic upgrades are excluded by us
 
 ## Automatic relic equipment native acceptance
 
-- Verify a no-improvement Relics visit clears the yellow notification and returns to Heroes without another export; ordinary climbing must not repeat exports for that same notification.
+- Verify hovering all recognized items during a no-improvement Relics visit clears the yellow notification and returns to Heroes without another export; ordinary climbing must not repeat exports for that same notification.
 - During ordinary play, verify that a yellow Relics notification leads to a bounded equipment visit, an accepted native drag for a clear Active improvement and a return to Heroes. Retain the relevant log and before/after frames if a move fails; fixture tests do not prove installed-game drag acceptance.
 - Verify equipment selection before an ordinary automatic Ascension and preservation of equipped items through its Junk Pile salvage. The current reader supports up to six visible junk cards in the first row; larger, obscured or ambiguous inventories defer Ascension without destroying items. Extend the reader when an actual unsupported layout is supplied.
 

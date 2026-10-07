@@ -22,6 +22,7 @@ const (
 	relicEquip
 	relicReturn
 	relicVerifyEquip
+	relicAcknowledge
 )
 
 type relicObservation struct {
@@ -138,6 +139,16 @@ func relicEquipmentPoint(screen image.Image, slot int) image.Point {
 	return r.Min.Add(r.Size().Div(2))
 }
 
+func (r *relicPlanner) acknowledge(frame gameFrame, ui relicUI) {
+	r.cards = append([]image.Point(nil), ui.junk...)
+	for i, present := range ui.equipment {
+		if present {
+			r.cards = append(r.cards, relicEquipmentPoint(frame.image, i+1))
+		}
+	}
+	r.scan, r.step = 0, relicAcknowledge
+}
+
 func (r *relicPlanner) observe(out relicObservation, err error) error {
 	if !r.active || out.frame.id <= r.lastInput {
 		return nil
@@ -180,7 +191,7 @@ func (r *relicPlanner) observe(out relicObservation, err error) error {
 	}
 	// Four moves per Save batch; retry combat before another batch.
 	if r.move == nil || r.moves >= 4 {
-		r.step = relicReturn
+		r.acknowledge(out.frame, out.ui)
 	} else if r.point != (image.Point{}) {
 		r.step = relicEquip
 	} else if r.scan < len(r.cards) {
@@ -260,10 +271,18 @@ func (p *gamePipeline) planRelics(now time.Time) bool {
 		return true
 	}
 	if r.step == relicOpenTab && p.frame.context.relics {
-		r.step = relicReturn
-		if r.move != nil {
+		if r.move == nil {
+			ui := readRelicUI(p.frame.image)
+			if !ui.known {
+				return true
+			}
+			r.acknowledge(p.frame, ui)
+		} else {
 			r.step = relicInspect
 		}
+		return true
+	}
+	if r.step == relicAcknowledge && now.Before(r.nextRead) {
 		return true
 	}
 	a := gameAction{kind: handleRelic, frame: p.frame, relic: relicCommand{step: r.step, before: r.base.image}}
@@ -273,6 +292,12 @@ func (p *gamePipeline) planRelics(now time.Time) bool {
 			return true
 		}
 		a.point = relicTabPoint(p.frame.image)
+	case relicAcknowledge:
+		if r.scan >= len(r.cards) {
+			r.step = relicReturn
+			return true
+		}
+		a.point = r.cards[r.scan]
 	case relicHover:
 		if r.latest.frame.id == 0 {
 			return true
@@ -303,6 +328,8 @@ func (r *relicPlanner) sent(a gameAction, now time.Time) {
 		}
 	case relicPark:
 		r.step = relicInspect
+	case relicAcknowledge:
+		r.scan++
 	case relicReturn:
 		r.returnAttempts++
 	case relicEquip:
@@ -329,7 +356,7 @@ func relicActionStable(a gameAction, current gameFrame) bool {
 		return current.context.heroes
 	case relicHover:
 		return current.context.relics && readRelicUI(current.image).known && relicInventoryStable(a.relic.before, current.image)
-	case relicPark, relicReturn:
+	case relicPark, relicReturn, relicAcknowledge:
 		return current.context.relics && relicPanelPresent(current.image)
 	case relicEquip:
 		return current.context.relics && readRelicUI(current.image).known && relicInventoryStable(a.relic.before, current.image)

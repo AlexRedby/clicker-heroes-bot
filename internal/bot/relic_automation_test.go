@@ -178,54 +178,93 @@ func TestRelicEquipmentUnknownMappingReturnsAndDefers(t *testing.T) {
 	}
 }
 
-func TestRelicEquipmentNoCandidateVisitsAndPauseRevokes(t *testing.T) {
-	now := time.Now()
-	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
-	s := relicEquipmentFixture()
-	s.Items = s.Items[:4]
-	screen := loadTestImage(t, "../../testdata/relic-inventory.png")
-	p.frame = gameFrame{id: 1, image: screen, context: gameContext{known: true, heroes: true, window: "game", bounds: screen.Bounds()}}
-	p.relic = relicPlanner{active: true, step: relicAcquire, deadline: now.Add(time.Minute), window: "game"}
-	if err := p.acceptRelicSave(&ancientcalc.RelicPreview{Snapshot: s}, now); err != nil {
-		t.Fatal(err)
-	}
-	p.planRelics(now)
-	a := p.queue[handleRelic]
-	if !p.relic.active || p.ascension.relicsChecked || a.relic.step != relicOpenTab {
-		t.Fatal("no candidate did not request notification acknowledgement")
-	}
-	p.relic.sent(a, now)
-	delete(p.queue, handleRelic)
-	p.frame.id++
-	p.planRelics(now)
-	if !p.relic.active || p.relic.step != relicOpenTab || p.ascension.relicsChecked {
-		t.Fatal("missed tab click completed the visit")
-	}
-	delete(p.queue, handleRelic)
-	p.frame.id++
-	p.frame.context.heroes, p.frame.context.relics = false, true
-	p.planRelics(now)
-	p.planRelics(now)
-	a = p.queue[handleRelic]
-	if a.relic.step != relicReturn || p.relic.verifyNeeded || p.export.requested {
-		t.Fatal("no-change visit requested inventory analysis or another export")
-	}
-	p.relic.sent(a, now)
-	delete(p.queue, handleRelic)
-	p.frame.id++
-	p.frame.context.heroes, p.frame.context.relics = true, false
-	p.planRelics(now)
-	if p.relic.active || !p.ascension.relicsChecked || len(p.queue) != 0 {
-		t.Fatal("notification visit did not finish on Heroes")
-	}
-	p.relic = relicPlanner{active: true, snapshot: s, step: relicEquip}
-	p.queue[handleRelic] = gameAction{kind: handleRelic}
-	p.reset(p.generation + 1)
-	if p.relic.active || p.ascension.relicsChecked || len(p.queue) != 0 {
-		t.Fatal("pause retained equipment ownership")
-	}
-	if !reflect.DeepEqual(s.Items, relicEquipmentFixture().Items[:4]) {
-		t.Fatal("save snapshot mutated")
+func TestRelicEquipmentNoCandidateHoversAndPauseRevokes(t *testing.T) {
+	for _, fixture := range []string{"inventory", "empty"} {
+		t.Run(fixture, func(t *testing.T) {
+			now := time.Now()
+			p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
+			s := relicEquipmentFixture()
+			s.Items = s.Items[:4]
+			screen := loadTestImage(t, "../../testdata/relic-"+fixture+".png")
+			p.frame = gameFrame{id: 1, image: screen, context: gameContext{known: true, heroes: true, window: "game", bounds: screen.Bounds()}}
+			p.relic = relicPlanner{active: true, step: relicAcquire, deadline: now.Add(time.Minute), window: "game"}
+			if err := p.acceptRelicSave(&ancientcalc.RelicPreview{Snapshot: s}, now); err != nil {
+				t.Fatal(err)
+			}
+			p.planRelics(now)
+			a := p.queue[handleRelic]
+			if !p.relic.active || p.ascension.relicsChecked || a.relic.step != relicOpenTab {
+				t.Fatal("no candidate did not request notification acknowledgement")
+			}
+			p.relic.sent(a, now)
+			delete(p.queue, handleRelic)
+			p.frame.id++
+			p.planRelics(now)
+			if !p.relic.active || p.relic.step != relicOpenTab || p.ascension.relicsChecked {
+				t.Fatal("missed tab click completed the visit")
+			}
+			delete(p.queue, handleRelic)
+			p.frame.id++
+			p.frame.context.heroes, p.frame.context.relics = false, true
+			p.planRelics(now)
+			ui := readRelicUI(screen)
+			points := append([]image.Point(nil), ui.junk...)
+			for i, present := range ui.equipment {
+				if present {
+					points = append(points, relicEquipmentPoint(screen, i+1))
+				}
+			}
+			moved := image.Point{}
+			p.input.move = func(point image.Point) error { moved = point; return nil }
+			p.input.click = func(image.Point) error { t.Fatal("acknowledgement clicked instead of hovering"); return nil }
+			for _, point := range points {
+				now = now.Add(time.Second)
+				p.frame.id++
+				p.planRelics(now)
+				a = p.queue[handleRelic]
+				if a.relic.step != relicAcknowledge || a.point != point || p.export.requested {
+					t.Fatal("missing item acknowledgement", a, point)
+				}
+				acted, err := p.execute(context.Background(), a)
+				if err != nil || !acted || moved != point {
+					t.Fatal("hover input failed", acted, err, moved)
+				}
+				p.relic.sent(a, now)
+				delete(p.queue, handleRelic)
+				p.frame.id++
+				p.planRelics(now.Add(100 * time.Millisecond))
+				if len(p.queue) != 0 {
+					t.Fatal("hover did not allow time for the game to acknowledge the item")
+				}
+				p.frame.image = loadTestImage(t, "../../testdata/relic-tooltip.png")
+			}
+			now = now.Add(time.Second)
+			p.frame.id++
+			p.planRelics(now)
+			p.planRelics(now)
+			a = p.queue[handleRelic]
+			if a.relic.step != relicReturn || p.relic.verifyNeeded || p.export.requested {
+				t.Fatal("no-change visit requested inventory analysis or another export")
+			}
+			p.relic.sent(a, now)
+			delete(p.queue, handleRelic)
+			p.frame.id++
+			p.frame.context.heroes, p.frame.context.relics = true, false
+			p.planRelics(now)
+			if p.relic.active || !p.ascension.relicsChecked || len(p.queue) != 0 {
+				t.Fatal("notification visit did not finish on Heroes")
+			}
+			p.relic = relicPlanner{active: true, snapshot: s, step: relicEquip}
+			p.queue[handleRelic] = gameAction{kind: handleRelic}
+			p.reset(p.generation + 1)
+			if p.relic.active || p.ascension.relicsChecked || len(p.queue) != 0 {
+				t.Fatal("pause retained equipment ownership")
+			}
+			if !reflect.DeepEqual(s.Items, relicEquipmentFixture().Items[:4]) {
+				t.Fatal("save snapshot mutated")
+			}
+
+		})
 	}
 }
 
@@ -408,7 +447,7 @@ func TestRelicBatchCapPreservesFurtherUpgradeBeforeAscension(t *testing.T) {
 	if err := p.relic.observe(relicObservation{frame: f, ui: readRelicUI(screen)}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if p.relic.step != relicReturn || p.relic.move == nil {
+	if p.relic.step != relicAcknowledge || p.relic.move == nil {
 		t.Fatal("fixture did not reach cap with a remaining upgrade")
 	}
 	p.relic.step = relicVerifyEquip

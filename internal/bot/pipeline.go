@@ -1583,7 +1583,7 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			return input.click(a.point)
 		case handleRelic:
 			switch a.relic.step {
-			case relicHover, relicPark:
+			case relicHover, relicPark, relicAcknowledge:
 				return input.move(a.point)
 			case relicEquip:
 				if err := input.drag(a.point, a.target); err != nil {
