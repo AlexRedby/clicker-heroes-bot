@@ -56,9 +56,7 @@ func TestMercenaryDeadRowSkipsTimerOCR(t *testing.T) {
 	if os.Getenv("REQUIRE_OCR_TESTS") == "" {
 		t.Skip("set REQUIRE_OCR_TESTS=1")
 	}
-	// The visual detector also covers 640px above. Ordinary button OCR at that
-	// resolution can already read Collect as Callect, independently of death.
-	for _, divisor := range []int{1, 2} {
+	for _, divisor := range []int{1, 2, 4} {
 		im := mercenaryScaled(t, "testdata/mercenary-dead.png", divisor)
 		rows := mercenaryRows(im)
 		// Obscure the dead timer and recovery controls. Its portrait is sufficient;

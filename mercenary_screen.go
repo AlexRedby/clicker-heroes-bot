@@ -192,6 +192,17 @@ func mercenaryDead(screen image.Image, row image.Point) bool {
 	return mercenaryTemplate(screen, region, "mercenaries/tombstone.png", image.Pt(127, 151))
 }
 
+func readMercenaryButtons(ctx context.Context, screen image.Image, region image.Rectangle, scale, psm int, formats ...string) (string, error) {
+	if scale >= 6 {
+		// At 640px, thresholding first destroys the small rounded glyph strokes.
+		// Resize the color crop first; TSV positions retain the same total scale.
+		scaled := image.NewRGBA(image.Rect(0, 0, region.Dx()*scale, region.Dy()*scale))
+		xdraw.CatmullRom.Scale(scaled, scaled.Bounds(), screen, region, draw.Src, nil)
+		screen, region, scale = scaled, scaled.Bounds(), 1
+	}
+	return readGameText(ctx, screen, region, scale, psm, -170, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789: ", formats...)
+}
+
 var mercenaryDurationText = regexp.MustCompile(`(?i)^time:\s*([0-9]{1,4})\s+(minute|hour|day)s?$`)
 var mercenaryRewardText = regexp.MustCompile(`(?i)^reward:\s*(.+)$`)
 
@@ -303,7 +314,7 @@ func readMercenaryObservation(ctx context.Context, frame gameFrame) (mercenaryOb
 		labels := make([]string, len(rows))
 		if len(rows) > 0 {
 			scale := max(2, 4096/w)
-			raw, err := readGameText(ctx, buttons, buttons.Bounds(), scale, 6, -170, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789: ", "tsv")
+			raw, err := readMercenaryButtons(ctx, buttons, buttons.Bounds(), scale, 6, "tsv")
 			if err != nil {
 				return out, err
 			}
@@ -329,7 +340,7 @@ func readMercenaryObservation(ctx context.Context, frame gameFrame) (mercenaryOb
 			if label == "" {
 				// A blank crop stays attached to its own row; retry it individually.
 				region := image.Rect(b.Min.X+w*237/1000, point.Y-h*27/1000, b.Min.X+w*371/1000, point.Y+h*27/1000)
-				raw, err := readGameText(ctx, screen, region, max(2, 4096/w), 7, -170, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789: ")
+				raw, err := readMercenaryButtons(ctx, screen, region, max(2, 4096/w), 7)
 				if err != nil {
 					return out, err
 				}

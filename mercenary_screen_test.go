@@ -147,6 +147,23 @@ func TestMercenaryScreenRecognizers(t *testing.T) {
 	}
 }
 
+func TestMercenaryButtonOCRAt640(t *testing.T) {
+	if os.Getenv("REQUIRE_OCR_TESTS") == "" {
+		t.Skip("set REQUIRE_OCR_TESTS=1")
+	}
+	for _, path := range []string{"testdata/mercenary-collect.png", "testdata/mercenary-idle.png"} {
+		im := mercenaryScaled(t, path, 4)
+		o, err := readMercenaryObservation(context.Background(), gameFrame{image: im})
+		wantCollect, wantStart := 3, 0
+		if path == "testdata/mercenary-idle.png" {
+			wantCollect, wantStart = 0, 3
+		}
+		if err != nil || !o.readable || len(o.collect) != wantCollect || len(o.start) != wantStart || len(o.running) != 1 {
+			t.Fatalf("%s: collect=%v start=%v running=%v readable=%t err=%v", path, o.collect, o.start, o.running, o.readable, err)
+		}
+	}
+}
+
 func TestMercenaryBatchOCRKeepsLabelsAtTheirRows(t *testing.T) {
 	if os.Getenv("REQUIRE_OCR_TESTS") == "" {
 		t.Skip("set REQUIRE_OCR_TESTS=1")
@@ -166,26 +183,32 @@ func TestMercenaryBatchOCRKeepsLabelsAtTheirRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	im := loadTestImage(t, "testdata/mercenary-collect.png")
-	frame := gameFrame{image: im, context: gameContext{known: true, mercenaries: true, bounds: im.Bounds()}}
-	before, err := readMercenaryObservation(ctx, frame)
-	if err != nil {
-		t.Fatal(err)
-	}
-	count, err := os.ReadFile(calls)
-	if err != nil || strings.Count(string(count), "call") != 1 {
-		t.Fatalf("four visible buttons needed more than one OCR process: %q err=%v", count, err)
-	}
-	// Missing first-row text must not shift the later Collect labels upward.
-	tesseractExecutable = original
-	blank := image.NewRGBA(im.Bounds())
-	draw.Draw(blank, blank.Bounds(), im, im.Bounds().Min, draw.Src)
-	row := before.collect[0]
-	region := image.Rect(im.Bounds().Dx()*237/1000, row.Y-im.Bounds().Dy()*27/1000, im.Bounds().Dx()*371/1000, row.Y+im.Bounds().Dy()*27/1000)
-	draw.Draw(blank, region, image.NewUniform(color.Black), image.Point{}, draw.Src)
-	frame.image = blank
-	if o, err := readMercenaryObservation(ctx, frame); err == nil || o.readable {
-		t.Fatal("a blank first button was given another row's label")
+	for _, divisor := range []int{1, 4} {
+		tesseractExecutable = filepath.Join(dir, "tesseract")
+		if err := os.WriteFile(calls, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		im := mercenaryScaled(t, "testdata/mercenary-collect.png", divisor)
+		frame := gameFrame{image: im, context: gameContext{known: true, mercenaries: true, bounds: im.Bounds()}}
+		before, err := readMercenaryObservation(ctx, frame)
+		if err != nil {
+			t.Fatal(err)
+		}
+		count, err := os.ReadFile(calls)
+		if err != nil || strings.Count(string(count), "call") != 1 {
+			t.Fatalf("four visible buttons needed more than one OCR process: %q err=%v", count, err)
+		}
+		// Missing first-row text must not shift the later Collect labels upward.
+		tesseractExecutable = original
+		blank := image.NewRGBA(im.Bounds())
+		draw.Draw(blank, blank.Bounds(), im, im.Bounds().Min, draw.Src)
+		row := before.collect[0]
+		region := image.Rect(im.Bounds().Dx()*237/1000, row.Y-im.Bounds().Dy()*27/1000, im.Bounds().Dx()*371/1000, row.Y+im.Bounds().Dy()*27/1000)
+		draw.Draw(blank, region, image.NewUniform(color.Black), image.Point{}, draw.Src)
+		frame.image = blank
+		if o, err := readMercenaryObservation(ctx, frame); err == nil || o.readable {
+			t.Fatal("a blank first button was given another row's label")
+		}
 	}
 }
 
