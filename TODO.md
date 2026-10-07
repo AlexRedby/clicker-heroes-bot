@@ -1,6 +1,6 @@
-## Navigation recovery native acceptance
+## Owned dialog interruption checks
 
-- Verify the installed Windows game after delivery: delayed/repeated Explorer focus loss, F8 during Save/export acknowledgement, startup in Settings or a quantity/Ascension/quest dialog, manual tab/dialog changes, and missed close clicks during lag. Confirm known close/No routes retry, return to Heroes, retain export ownership, and never replay a stopped Ancient batch or prestige confirmation. Unsupported dialogs keep observing without input; retain the relevant frame/log for recognition support.
+- Verify F8 during an owned quantity/Ascension/quest dialog and manual cancellation while a purchase is pending. Never replay a stopped Ancient batch or prestige confirmation. Unsupported dialogs must keep observing without input.
 
 ## Current implementation sequence
 
@@ -26,23 +26,15 @@ The main chat coordinates integration, tests and delivery to `main`. Feature own
 
 Clans are deferred by user request. Forge Core relic upgrades are excluded by user request. Remove resolved checks and checks explicitly retired by the user; keep unfinished work below.
 
-## Automatic relic equipment native acceptance
-
-- Verify a retained-junk visit clears the yellow notification without another export; ordinary climbing must not repeat exports for that same notification.
-- During ordinary play, verify that a yellow Relics notification leads to a bounded equipment visit with an accepted native drag for a clear Active improvement. Retain the relevant log and before/after frames if a move fails; fixture tests do not prove installed-game drag acceptance.
-- Verify equipment selection before an ordinary automatic Ascension.
-
 ## Save-guided startup native acceptance
 
 - Confirm that initial Save acquisition produces one fresh export before setup and no duplicate export before Ancient planning. A free footer Auto Clicker can still require one direct footer visit; counts and assignments remain UI observations.
 - Start with a missing earlier hire/active skill, then with sufficient levels but an unpurchased upgrade: confirm the first case uses the bounded visual preparation and the second goes directly to Buy Available Upgrades. The latest hero's unavailable ordinary upgrades must remain in normal progression.
 - Check zero-gold preparation after Ascension using the reset hero snapshot.
 
-## Footer clicker native acceptance
+## Footer clicker recognition edge cases
 
-- Verify recovery to a complete Buy Available Upgrades control after a missed drag and a final drag near the optional pass deadline. The last free clicker must reach the footer when available, and an obscured control must still allow ordinary automation to continue.
-- Verify that a freshly recognized free Auto Clicker reaches Buy Available Upgrades despite an unconfirmed monster placement or delayed pool recognition. Include an unreadable pool; the optional footer pass must remain bounded and ordinary automation must continue.
-- If all three clickers again end up on the monster, retain the analyzed `artifacts/auto-clicker-unconfirmed-*.png` and expected/read pool log. Distinguish bot input from manual assignments; the previous screenshot was taken 29 minutes after startup and does not prove one input assigned all three.
+- Verify bounded recovery when the free pool is unreadable or Buy Available Upgrades is clipped/obscured near the optional footer deadline. Keep existing assignments intact and continue ordinary automation when no usable target is recognized.
 
 ## Opt-in Timelapse preparation and implementation
 
@@ -76,10 +68,8 @@ Owners: Timelapse integration and Quick Ascension (purchase controller and forec
 
 - Verify bounded startup skill setup in the installed game, including unlocked rows with or without purchased checks, one-slot low-level rows, missing hires, limited gold, two Q/MAX inputs, overlap scrolling and final Buy Available Upgrades. Capture before/after rows if a skill remains locked.
 - Verify two consecutive startup/progression cycles with zero gold, short/expanding lists, no-purchase plans, obscured upgrade strips/unreadable prices and fish over controls.
-- Verify five-minute Auto Clicker recovery in the installed game: remove a monster/footer assignment, check the freshly recognized free pool restores it, and test missed C input and an unavailable footer. Count confirmation does not establish which target the user assigned manually.
 - Extend shared scrolling acceptance beyond the user-observed working cases: current thumb centering, 200 ms source hover, RobotGo smooth drag, 350 ms post-scroll observation settling, partial movement and short no-motion retries. Include Heroes overlap/edges, Ancient wheel/fine arrows and Mercenary edges.
-- Extend owned Auto Clicker placement acceptance beyond the user-observed working cases: available/owned count before and after C + click, monster and Buy Available Upgrades assignments, a sole clicker, already occupied or unreadable footer and scene background changes. Confirm the optional footer pass hands off within 10 seconds when recognition fails; ordinary periodic upgrade checks remain available. Pool recognition passes supplied native 3/3 frames and placement/queue acknowledgement is covered with modeled observations; actual assigned targets still need native evidence. Existing assignments must remain intact and rubies must not be spent.
-- Verify initial hero/skill upgrade setup at a later zone, including missing earlier heroes, already-disabled Buy Available Upgrades, and an empty Ancient plan that stays on Heroes. Confirm a placed footer clicker handles newly unlocked upgrades; ordinary clicks remain a periodic fallback.
+- Verify initial hero/skill upgrade setup at a later zone, including missing earlier heroes, already-disabled Buy Available Upgrades, and an empty Ancient plan that stays on Heroes.
 - Obtain a final Ace Scout Dorothy frame before enabling terminal-roster recognition without a successor.
 
 ## Remaining feature roadmap
@@ -90,23 +80,21 @@ Goal: complete the unattended active-play loop using the existing shared capture
 
 | ID | Scope and deliverable | Priority | Completion gate |
 | --- | --- | --- | --- |
-| R1 | Validate the integrated bounded hero skill restart, place owned Auto Clickers, and recognize the last hero without a successor. | First | Two native startup cycles, verified bounded startup inputs and ordinary Q confirmation and clicker targets, no regression to latest-hero leveling, missing-input recovery, and terminal-roster evidence. |
+| R1 | Validate remaining hero startup edge cases and recognize the last hero without a successor. | First | Bounded startup inputs and ordinary Q confirmation, missing-input recovery, and terminal-roster evidence. |
 | R2 | Validate conservative Ancient price bounds in the installed game. | First | Compare Juggernaut/Solomon bulk purchases and Chor'gorloth discount/balance rounding to fresh before/after exports; preserve the reserve. |
-| R3 | Relic management: verify automatic Active equipment selection. | First | Accepted native drag for a meaningful current benefit and exact before/after equipment evidence. |
 | R4 | Gild redistribution: choose a good target consistent with latest-hero progression, calculate transfer cost from current save/state, and plan UI application. | Next | Keep earned gift opening separate; account for soul costs and reserves; no ruby spending and no repeated transfers to the same target. |
 | R5 | Combat and boss recovery: validate active/ready skill states, Energize/Reload waves, variable cooldowns, failed-boss retry and the Ascension handoff. | First | Concrete remaining gaps and fixture/live scenarios; reuse current skill/progression/Ascension policies rather than replacing them without evidence. |
 | R6 | Native Windows capture, SIFT, OCR and queue measurement with the integrated changes. | First | Collect p50/p95 timing and timeout rate, with real, rotated, small and scrollbar-overlap fish; no win inferred from fewer detections. |
 | R7 | Windowed game and display scaling: locate the game viewport, map screenshot coordinates to input, and plan focus/permission handling across Windows/macOS. | Later | Native coordinate evidence; correct ROI translation, unknown-window behavior; full-screen behavior remains supported. |
 | R8 | Transcension and Outsiders: validate the read-only preview against the installed UI and implement gated native stages. | Later | Match reward, TP, costs and respec semantics to UI; automated reset waits for the complete Ascension loop and an explicit enabled mode. |
-| R9 | Mercenary recovery and recruitment in the existing mercenary chat: current quest loop validation, dead/missing mercenaries and free recruitment. | Parallel | Preserve saved roster plans and the fixed Okay delay; unsupported screens do not spend rubies; no duplicate quest implementation. |
+| R9 | Mercenary extra-life chooser and explicit vacancy/in-flight recruitment tracking in the existing mercenary chat. | Parallel | Verified chooser controls, no paid Hire/Reroll, bounded roster tracking, and no duplicate quest implementation. |
 
 ### Integration sequence (owned by the main chat)
 
-1. Close the remaining hero startup, combat, Auto Clicker and relic equipment checks below. Keep R6 measurement independent from gameplay decisions.
-2. Validate the integrated owned Auto Clicker placement and obtain native relic interaction evidence; coordinate shared main.go/pipeline.go changes in the main chat.
-3. Retain bounded transition retries, stop uncertain purchase batches independently of free gameplay, and validate startup/export/spending handoffs. A failed purchase must not be replayed from a stale plan.
-4. Verify recovery during Ascension/startup: missed input, fish over controls, Explorer focus restoration and unsupported dialogs.
-5. Add R4 when the repeated loop works. R7 remains independent platform work. Enable R8 automation only after the loop and recommendation/Outsider preview are accepted.
+1. Close the remaining hero startup and combat checks below. Keep R6 measurement independent from gameplay decisions.
+2. Verify pending-purchase interruption and cancellation without replay from a stale plan.
+3. Verify the remaining Ascension/startup edge cases: missed input, fish over controls and unsupported dialogs.
+4. Add R4 when the repeated loop works. R7 remains independent platform work. Enable R8 automation only after the loop and recommendation/Outsider preview are accepted.
 
 The detailed unfinished implementation and live-validation gates below remain authoritative. Remove completed work; keep missing screenshot/native-game gates visible.
 
@@ -147,13 +135,10 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Mercenaries
 
-- Verify dead-card handling in the installed game: mixed living/dead roster, death notification, bounded all-dead return to Heroes and fish during the visit. Real-frame and pipeline regressions pass; no live recovery action has been tested.
-- Verify one installed-game paid revive and one burial/free-replacement cycle, using the integrated policy and actual displayed price/balance. Capture the extra-life chooser before enabling it; cards with remaining lives are deferred. Native paid revive, Bury, post-burial roster, paid Hire negative and free recruitment offer fixtures are covered; recruitment completion is still missing.
-- Run the existing `-mercenaries` loop on the target device before changing its timing: four/five completed quests, mixed Collect/Start Quest/running rows, animated notification, paired Collect/Start clicks, fixed Okay after 300 ms, one bounded scroll sweep and return to Heroes. Include fish between rows and unreadable offers; capture frames/logs for any failure. Preserve the saved visible-row plan without intermediate roster OCR or countdown confirmation.
-- Obtain verified game frames for an actually vacant slot, an all-dead/empty roster, a free recruitment offer, its completed reward, any completion dialog and the new mercenary's Start Quest row. The Emma death frame is covered; the post-burial roster and free offer are covered, but vacancy tracking and recruitment completion remain unverified. Do not infer a vacancy from a dead card or from the number of rows visible in one viewport.
-- After those frames are available, extend the existing reader/planner to track verified vacancies and recruitment already in flight, and choose free recruitment only for an available slot. Preserve the bounded return to Heroes when no living mercenary or verified free action is available. Preserve the verified Revive/Bury flow; paid Hire and Reroll remain excluded. Unknown layouts must not spend rubies.
-- After the recruitment-completion UI is verified, handle its reward separately from the ordinary same-position Collect/Start pair. Rebuild the saved row plan only when recruitment changes the roster or opens a new UI state, then reuse the existing quest-selection loop for the new mercenary.
-- Gate replenishment on real-frame OCR/planner regressions for dead/vacant/full rosters, recruitment already in flight, interrupted completion and unknown dialogs, followed by one native free-recruitment cycle. Until the missing frames and native run are available, leave further Mercenary production changes pending.
+- Obtain the extra-life chooser before enabling it; cards with remaining lives must stay deferred rather than being buried.
+- Extend the existing reader/planner with explicit verified-vacancy and recruitment-in-flight tracking. Do not infer a vacancy from a dead card or one visible viewport. Preserve ordinary free recruitment, bounded Heroes return and the existing Revive/Bury policy; paid Hire and Reroll remain excluded.
+- Add dedicated recruitment-reward handling if a completion dialog differs from the ordinary Collect/Start flow. Rebuild the saved row plan when recruitment changes the roster, then reuse ordinary quest selection.
+- Cover explicit vacancy/in-flight tracking with dead/vacant/full roster, interrupted-completion and unknown-dialog regressions before enabling the additional logic. Unknown layouts must not spend rubies.
 
 ## Ancient fresh-save budget acceptance
 
@@ -176,7 +161,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 - Verify a live large Ancient purchase with six-significant-digit input and the 200 ms entry wait, including closed owned-dialog acknowledgement. Confirm repeated fresh-export plans stop once large non-exponential increases fall below 0.1%.
 - Verify Ancient purchase recovery after an open quantity-dialog timeout or a silently failed purchase that closes the dialog: allow underbuy without replay. Supplied frames and regressions cover transaction ownership, stale input and interruption.
-- Verify Windows export recovery from delayed Explorer focus, a failed Save or blocked OK. Check highlighted Save/menu closing and stale/partial files. Pending Ascension souls must not authorize spending; interrupted purchases must not be replayed.
+- Verify rejection of stale/partial export files and pending Ascension souls during spending decisions; interrupted purchases must not be replayed.
 
 ### Transcension
 
