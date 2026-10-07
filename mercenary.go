@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"image"
 	"time"
+
+	"clicker-heroes-bot/internal/achievementgoal"
 )
 
 type mercenaryQuest struct {
@@ -71,6 +73,7 @@ type mercenaryPlanner struct {
 	aborting              bool
 	collectOnly           bool
 	questRow              image.Point
+	questPriority         achievementgoal.QuestPriority
 	deathLogged           bool
 	recoveryRow           *mercenaryDeadCard
 	recoveryMethod        mercenaryRecoveryMethod
@@ -114,10 +117,25 @@ func mercenaryQuestRank(q mercenaryQuest) int {
 }
 
 func chooseMercenaryQuest(quests []mercenaryQuest) int {
-	best, rank := -1, int(^uint(0)>>1)
+	return chooseMercenaryQuestForGoal(quests, achievementgoal.QuestPriority{})
+}
+
+func chooseMercenaryQuestForGoal(quests []mercenaryQuest, priority achievementgoal.QuestPriority) int {
+	// Keep recruitment first, then matching goals, then the ordinary ranking.
+	best, group, rank := -1, 3, int(^uint(0)>>1)
 	for i, q := range quests {
-		if r := mercenaryQuestRank(q); r >= 0 && r < rank {
-			best, rank = i, r
+		r := mercenaryQuestRank(q)
+		if r < 0 {
+			continue
+		}
+		g := 2
+		if r == 0 {
+			g = 0
+		} else if priority.Matches(q.reward, q.duration) {
+			g = 1
+		}
+		if g < group || g == group && r < rank {
+			best, group, rank = i, g, r
 		}
 	}
 	return best
@@ -360,7 +378,7 @@ func (p *mercenaryPlanner) action(now time.Time) (gameAction, bool) {
 		} else if o.selected >= 0 {
 			p.aborting = true
 			return p.action(now)
-		} else if index := chooseMercenaryQuest(o.quests); index >= 0 {
+		} else if index := chooseMercenaryQuestForGoal(o.quests, p.questPriority); index >= 0 {
 			a.mercenary = mercenaryCommand{step: selectMercenaryQuest, quest: index}
 			a.point = o.quests[index].point
 		} else {

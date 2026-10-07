@@ -8,7 +8,58 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"clicker-heroes-bot/internal/achievementgoal"
 )
+
+func TestMercenaryAchievementQuestPriority(t *testing.T) {
+	ruby := mercenaryQuest{reward: "rubies", duration: 4 * time.Hour}
+	gold := mercenaryQuest{reward: "gold", duration: time.Hour}
+	five := mercenaryQuest{reward: "skills", duration: 5 * time.Minute}
+	for _, test := range []struct {
+		name     string
+		quests   []mercenaryQuest
+		priority achievementgoal.QuestPriority
+		want     int
+	}{
+		{"zero priority", []mercenaryQuest{gold, ruby}, achievementgoal.QuestPriority{}, 1},
+		{"cleared goal ID", []mercenaryQuest{gold, ruby}, achievementgoal.QuestPriority{Reward: "gold"}, 1},
+		{"gold goal", []mercenaryQuest{ruby, gold}, achievementgoal.QuestPriority{GoalID: 113, Reward: "gold"}, 1},
+		{"five-minute goal", []mercenaryQuest{ruby, gold, five}, achievementgoal.QuestPriority{GoalID: 138, FiveMinutes: true}, 2},
+		{"recruitment first", []mercenaryQuest{ruby, five, {reward: "recruitment", duration: 8 * time.Hour}}, achievementgoal.QuestPriority{GoalID: 138, FiveMinutes: true}, 2},
+		{"matching reward rank", []mercenaryQuest{ruby, {reward: "gold", duration: 2 * time.Hour}, gold}, achievementgoal.QuestPriority{GoalID: 113, Reward: "gold"}, 2},
+		{"matching ruby rank", []mercenaryQuest{{reward: "rubies", duration: 5 * time.Minute}, ruby}, achievementgoal.QuestPriority{GoalID: 125, Reward: "rubies"}, 1},
+		{"matching five-minute rank", []mercenaryQuest{five, {reward: "rubies", duration: 5 * time.Minute}}, achievementgoal.QuestPriority{GoalID: 138, FiveMinutes: true}, 1},
+		{"stable equal-rank tie", []mercenaryQuest{gold, gold, ruby}, achievementgoal.QuestPriority{GoalID: 113, Reward: "gold"}, 0},
+		{"no match", []mercenaryQuest{gold, ruby}, achievementgoal.QuestPriority{GoalID: 118, Reward: "relics"}, 1},
+		{"invalid matching duration", []mercenaryQuest{{reward: "rubies", duration: 6 * time.Hour}, gold}, achievementgoal.QuestPriority{GoalID: 125, Reward: "rubies"}, 1},
+		{"paid recovery never valid", []mercenaryQuest{{reward: "revive", duration: time.Hour}, ruby}, achievementgoal.QuestPriority{GoalID: 1, Reward: "revive"}, 1},
+		{"invalid recruitment", []mercenaryQuest{{reward: "recruitment", duration: 9 * time.Hour}, gold, ruby}, achievementgoal.QuestPriority{GoalID: 113, Reward: "gold"}, 1},
+		{"no valid offers", []mercenaryQuest{{reward: "unknown", duration: 5 * time.Minute}}, achievementgoal.QuestPriority{GoalID: 138, FiveMinutes: true}, -1},
+		{"empty offers", nil, achievementgoal.QuestPriority{GoalID: 113, Reward: "gold"}, -1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := chooseMercenaryQuestForGoal(test.quests, test.priority); got != test.want {
+				t.Fatalf("selected=%d want=%d", got, test.want)
+			}
+		})
+	}
+}
+
+func TestMercenaryPlannerClearedAchievementPriorityRestoresNormalChoice(t *testing.T) {
+	now := time.Now()
+	quests := []mercenaryQuest{{reward: "rubies", duration: 4 * time.Hour, point: image.Pt(1000, 390)}, {reward: "gold", duration: time.Hour, point: image.Pt(1000, 600)}}
+	p := mercenaryPlanner{active: true, questRow: image.Pt(700, 400), questPriority: achievementgoal.QuestPriority{GoalID: 113, Reward: "gold"}}
+	p.observe(mercenaryObservation{frame: gameFrame{id: 1, context: gameContext{known: true, mercenaries: true, questDialog: true, bounds: image.Rect(0, 0, 2560, 1440)}}, readable: true, selected: -1, quests: quests}, now)
+	if a, ok := p.action(now); !ok || a.mercenary.step != selectMercenaryQuest || a.mercenary.quest != 1 || a.point != quests[1].point {
+		t.Fatalf("goal priority was not applied: action=%+v ok=%t", a, ok)
+	}
+	// The fresh-save owner clears this field on completion or a failed snapshot.
+	p.questPriority = achievementgoal.QuestPriority{}
+	if a, ok := p.action(now); !ok || a.mercenary.step != selectMercenaryQuest || a.mercenary.quest != 0 || a.point != quests[0].point {
+		t.Fatalf("cleared priority kept an old goal choice: action=%+v ok=%t", a, ok)
+	}
+}
 
 func TestMercenaryPolicyAndConfirmedCycle(t *testing.T) {
 	for _, tc := range []struct {
