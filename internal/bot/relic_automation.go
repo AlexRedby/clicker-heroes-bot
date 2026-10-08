@@ -122,7 +122,7 @@ func (p *gamePipeline) acceptRelicSave(preview *ancientcalc.RelicPreview, now ti
 		r.snapshot.Items = append([]ancientcalc.Relic(nil), after.Items...)
 		r.step = relicOpenTab
 		if move == nil {
-			fmt.Println("relics: no clear Active upgrade; visiting Relics to clear notification")
+			fmt.Println("relics: no clear Active upgrade; checking junk and notifications")
 		} else {
 			fmt.Printf("relics: locating candidate UID %d for equipment slot %d\n", move.UID, move.Slot)
 		}

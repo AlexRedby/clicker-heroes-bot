@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -1068,6 +1069,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			}
 			p.beginStartup()
 			p.startupExported = true
+			p.ascension.relicsChecked = false // Startup never authorizes a later reset.
 			if out.export.heroErr != nil {
 				fmt.Printf("startup: save hero data unsupported; using bounded visual setup: %v\n", out.export.heroErr)
 			}
@@ -1080,12 +1082,13 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 				}
 			}
 		}
-		if initial && p.options.progression && out.export.relics != nil {
+		if initial && p.options.progression && out.export.relics != nil && slices.ContainsFunc(out.export.relics.Snapshot.Items, func(item ancientcalc.Relic) bool {
+			return item.Slot < 1 || item.Slot > out.export.relics.Snapshot.EquipmentSlots
+		}) {
 			p.relic = relicPlanner{active: true, step: relicAcquire, deadline: now.Add(90 * time.Second), window: p.frame.context.window}
 			if err := p.acceptRelicSave(out.export.relics, now); err != nil {
 				p.relicFailed(err.Error(), now)
 			}
-			p.ascension.relicsChecked = false // Startup never authorizes a later reset.
 		}
 		if initial {
 			fmt.Println("save export: fresh initial save ready")

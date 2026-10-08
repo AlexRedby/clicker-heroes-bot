@@ -321,6 +321,80 @@ func TestRelicEquipmentInitialSavePrecedesStartupAndCachedAncients(t *testing.T)
 	}
 }
 
+func TestInitialRelicSaveSkipsEmptyJunkAndKeepsEquipmentAndSalvage(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		junk, useful, tradeoff bool
+		step                   relicStep
+	}{
+		{name: "equipped only"},
+		{name: "useful junk", junk: true, useful: true, step: relicHover},
+		{name: "dominated junk", junk: true, step: relicOpenSalvage},
+		{name: "tradeoff junk", junk: true, tradeoff: true, step: relicAcknowledge},
+		{name: "empty inventory"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			s := relicEquipmentFixture()
+			s.AncientLevels, s.OutsiderLevels = map[int]string{}, map[int]string{}
+			for i := range s.Items {
+				level := "1"
+				if i < 4 {
+					level = "10"
+				}
+				s.Items[i].Bonuses = []ancientcalc.RelicBonus{{Type: 2, AncientID: 19, Level: level}}
+			}
+			if tc.useful || tc.tradeoff {
+				s.Items[4].Slot = 0
+				s.Items[4].Bonuses[0].Level = "100"
+			}
+			if tc.tradeoff {
+				s.AncientLevels[19] = "1e40"
+			}
+			if !tc.junk {
+				s.Items = s.Items[:4]
+			}
+			if tc.name == "empty inventory" {
+				s.Items = nil
+			}
+			screen := loadTestImage(t, "../../testdata/relic-inventory.png")
+			p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{progression: true, export: &saveExportOptions{planOutput: filepath.Join(t.TempDir(), "plan.json")}})
+			p.startupCheck, p.startup = false, startupSave
+			p.ascension.relicsChecked = true
+			p.frame = gameFrame{id: 2, at: now, image: screen, context: gameContext{known: true, heroes: true, window: "game", bounds: screen.Bounds()}}
+			p.export = saveExporter{requested: true, active: true, initialSetup: true, step: exportReadFile, jobFrame: 2, window: "game"}
+			if err := p.accept(context.Background(), observation{kind: exportAnalysis, frame: p.frame, export: exportResult{relics: &ancientcalc.RelicPreview{Snapshot: s}}}, now); err != nil {
+				t.Fatal(err)
+			}
+			if p.relic.active != tc.junk || p.export.requested || p.ascension.relicsChecked {
+				t.Fatal("wrong startup visit decision", p.relic.active, p.export.requested, p.ascension.relicsChecked)
+			}
+			if !tc.junk {
+				if p.planRelics(now) || len(p.queue) != 0 {
+					t.Fatal("empty junk emitted relic input")
+				}
+				p.relic.notice = true
+				p.planRelics(now)
+				if !p.relic.active || !p.export.requested || !p.export.relicsOnly {
+					t.Fatal("startup skip suppressed a later notification check")
+				}
+				return
+			}
+			if p.relic.step != relicOpenTab {
+				t.Fatal("pending junk did not open Relics")
+			}
+			p.relic.step = relicInspect
+			p.frame.context.heroes, p.frame.context.relics = false, true
+			if err := p.relic.observe(relicObservation{frame: p.frame, ui: readRelicUI(screen)}, nil); err != nil {
+				t.Fatal(err)
+			}
+			if p.relic.step != tc.step {
+				t.Fatal("save policy selected wrong action", p.relic.step, tc.step)
+			}
+		})
+	}
+}
+
 func TestRelicNotificationRequiresTwoCapturesAndReadonlyDoesNotEquip(t *testing.T) {
 	now := time.Now()
 	screen := loadTestImage(t, "../../testdata/relic-notification.png")
