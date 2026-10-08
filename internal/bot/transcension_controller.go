@@ -33,7 +33,7 @@ func nativeTranscensionObservation(frame gameFrame, ui outsiderObservation, conf
 		out.QuantityKnown = outsiderQuantityControlsKnown(frame.image)
 		_, out.OpenKnown, _ = transcensionControl(frame.image, transcensionOpen)
 		out.AtTop = out.OpenKnown
-		if thumb, height, found := listScrollbarThumb(frame.image, 417); found {
+		if thumb, height, found := listScrollbarThumb(frame.image, 445); found {
 			b := frame.image.Bounds()
 			out.AtBottom = thumb.Y+height/2 >= b.Min.Y+b.Dy()*955/1000
 		}

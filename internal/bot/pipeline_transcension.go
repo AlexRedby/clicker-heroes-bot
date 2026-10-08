@@ -232,7 +232,8 @@ func (p *gamePipeline) prestigeAction(cmd transcension.Command) (gameAction, boo
 		if !f.context.outsiders {
 			return a, false
 		}
-		a.point, _, found = listScrollbarThumb(f.image, 417)
+		// Start below the up arrow; joining it to the thumb fails the height check.
+		a.point, _, found = listScrollbarThumb(f.image, 445)
 		a.target = image.Pt(a.point.X, f.context.bounds.Min.Y+f.context.bounds.Dy()*455/1000)
 		if cmd.Action == transcension.ScrollOutsidersDown {
 			a.target.Y = min(f.context.bounds.Max.Y-1, a.point.Y+f.context.bounds.Dy()*24/100)
@@ -375,6 +376,8 @@ func (p *gamePipeline) planTranscension(now time.Time) bool {
 	default:
 		if a, found := p.prestigeAction(cmd); found {
 			p.enqueue(a, now)
+		} else if cmd.Action == transcension.ScrollOutsidersTop || cmd.Action == transcension.ScrollOutsidersDown {
+			t.report("Outsider scrollbar not recognized; observing")
 		}
 	}
 	return true
