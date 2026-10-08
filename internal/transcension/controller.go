@@ -271,6 +271,12 @@ func (c *Controller) Next(now time.Time) Command {
 		c.reason = "current policy/native acceptance blocks further Transcension input"
 		return cmd
 	}
+	if (c.stage == AwaitOutsiders || c.stage == SpendOutsiders) && !fresh(now, c.snapshot.ExportedAt, 30*time.Second) {
+		if !c.exportRequested {
+			cmd.Action = FreshExport
+		}
+		return cmd
+	}
 	if !o.Known || o.Generation != c.snapshot.Generation || o.Frame == 0 || o.Frame <= c.lastFrame || !fresh(now, o.At, 5*time.Second) || !fresh(now, c.snapshot.ExportedAt, 30*time.Second) {
 		return cmd
 	}
@@ -424,7 +430,45 @@ func sameCycle(a, b ancientcalc.TranscensionState) bool {
 	return a.ProfileID == b.ProfileID && a.Build == b.Build && a.SaveVersion == b.SaveVersion && a.Transcensions == b.Transcensions && a.Transcendent == b.Transcendent && a.AncientSoulsTotal == b.AncientSoulsTotal && a.AncientSouls == b.AncientSouls
 }
 
+func unchangedOutsiderLedger(a, b ancientcalc.TranscensionState) bool {
+	return sameCycle(a, b) && slices.Equal(a.Outsiders, b.Outsiders) && slices.Equal(a.Ancients, b.Ancients) && a.HeroSouls == b.HeroSouls && a.Ascensions == b.Ascensions && a.AscensionsThisTranscension == b.AscensionsThisTranscension
+}
+
+// Refresh renews nonpending navigation ownership without replanning targets or
+// replaying a reset/FEED. An interrupted controller still uses Recover.
+func (c *Controller) Refresh(ctx context.Context, now time.Time, s Snapshot) error {
+	if (c.stage != AwaitOutsiders && c.stage != SpendOutsiders) || c.pending != (Command{}) || c.summon != nil || c.summonPlanner != nil && c.summonPlanner.active {
+		return errors.New("no nonpending Outsider navigation to refresh")
+	}
+	fail := func(err error) error { c.stop(err.Error()); return err }
+	if err := validateSnapshot(ctx, s); err != nil {
+		return fail(err)
+	}
+	if s.Generation < c.snapshot.Generation || !fresh(now, s.ExportedAt, 30*time.Second) || !s.ExportedAt.After(c.snapshot.ExportedAt) || !s.ExportedAt.After(c.inputAt) {
+		return fail(errors.New("fresh owned Outsider navigation export required"))
+	}
+	if !unchangedOutsiderLedger(c.snapshot.State, s.State) || c.snapshot.State.HighestZone != s.State.HighestZone || *c.snapshot.State.CurrentZone != *s.State.CurrentZone {
+		return fail(errors.New("unowned changes during Outsider navigation"))
+	}
+	next := *c
+	if s.Generation == c.snapshot.Generation {
+		next.lastFrame = max(c.lastFrame, c.latest.Frame)
+	} else {
+		next.lastFrame = 0
+	}
+	next.snapshot, next.latest, next.reason = cloneSnapshot(s), Observation{}, ""
+	next.exportRequested, next.deadline = false, now.Add(30*time.Second)
+	if err := next.commit(); err != nil {
+		return fail(err)
+	}
+	*c = next
+	return nil
+}
+
 func (c *Controller) AcceptExport(ctx context.Context, now time.Time, s Snapshot) error {
+	if c.stage == AwaitOutsiders || c.stage == SpendOutsiders {
+		return c.Refresh(ctx, now, s)
+	}
 	fail := func(err error) error { c.stop(err.Error()); return err }
 	if c.stage != AwaitResetReceipt && c.stage != AwaitFeedReceipt && c.stage != AwaitFirstSouls && c.stage != AwaitAncients {
 		return errors.New("no Transcension export is expected")
@@ -615,7 +659,7 @@ func (c *Controller) Recover(ctx context.Context, now time.Time, s Snapshot) err
 		}
 		next.stage, next.pending, next.targets, next.reward = Ordinary, Command{}, nil, 0
 	case SpendOutsiders, RestoreHeroes:
-		if !sameCycle(old, s.State) || !slices.Equal(old.Outsiders, s.State.Outsiders) || !slices.Equal(old.Ancients, s.State.Ancients) || old.HeroSouls != s.State.HeroSouls || old.Ascensions != s.State.Ascensions || old.AscensionsThisTranscension != s.State.AscensionsThisTranscension {
+		if !unchangedOutsiderLedger(old, s.State) {
 			return errors.New("unowned changes during Outsider restoration recovery")
 		}
 	case AwaitFirstSouls, AwaitAncients:
