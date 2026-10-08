@@ -237,6 +237,7 @@ func TestRecoveredCommandsRequireCurrentAdmissionAndJournal(t *testing.T) {
 	c, before, now := beforeReset(t)
 	c = reopenController(t, c)
 	c.native = NativeEvidence{Build: before.State.Build}
+	c.policy.Enabled = false
 	s := resetSnapshot(before, now.Add(time.Second))
 	s.Generation = 2
 	if err := c.Recover(context.Background(), s.ExportedAt, s); err != nil {
@@ -244,7 +245,7 @@ func TestRecoveredCommandsRequireCurrentAdmissionAndJournal(t *testing.T) {
 	}
 	c.Observe(outsiderObservation(s, 1, s.ExportedAt))
 	if c.Next(s.ExportedAt).Action != NoAction {
-		t.Fatal("old journal bypassed current native acceptance")
+		t.Fatal("old journal bypassed current explicit authorization")
 	}
 	s, timing, native := preparation()
 	noJournal := NewController(Policy{Enabled: true}, native)

@@ -131,14 +131,14 @@ func TestPrestigeQueueModalAndRecoveredReset(t *testing.T) {
 	quantity, frame := 1, uint64(10)
 	for attempts := 0; attempts < 100 && ctl.Stage() != transcension.AwaitFirstSouls; attempts++ {
 		at := fresh.ExportedAt.Add(time.Second)
-		ui := transcension.Observation{Frame: frame, Generation: 2, Layout: 1, At: at, Screen: transcension.OutsidersScreen, Known: true, Wallet: fresh.State.AncientSouls, Quantity: quantity}
+		ui := transcension.Observation{Frame: frame, Generation: 2, Layout: 1, At: at, Screen: transcension.OutsidersScreen, Known: true, Wallet: fresh.State.AncientSouls, Quantity: quantity, QuantityKnown: true}
 		for _, row := range fresh.State.Outsiders {
 			level, _ := strconv.Atoi(row.Level)
 			cost, err := ancientcalc.OutsiderFeedCost(row.ID, level, quantity)
 			if err != nil {
 				t.Fatal(err)
 			}
-			ui.Rows = append(ui.Rows, transcension.Row{ID: row.ID, Name: row.Name, Level: level, Cost: cost})
+			ui.Rows = append(ui.Rows, transcension.Row{ID: row.ID, Name: row.Name, Level: level, Cost: cost, FeedKnown: true})
 		}
 		ctl.Observe(ui)
 		command := ctl.Next(at)

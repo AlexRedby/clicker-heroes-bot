@@ -7,9 +7,9 @@ import (
 	"clicker-heroes-bot/internal/transcension"
 )
 
-// Confirmation and top/bottom roster frames are available. Affordable FEED,
-// reset recovery and first-run summon acceptance are still missing; these facts
-// cannot be enabled by a CLI flag or inferred from advisory calculations.
+// Installed-client acceptance remains unproven until actual receipts arrive.
+// Opt-in reset/FEED use recognized current-frame controls, not these flags.
+// Summon controls remain unsupported and cannot be inferred from the build.
 func nativeTranscensionEvidence(build string) transcension.NativeEvidence {
 	return transcension.NativeEvidence{Build: build}
 }
@@ -30,6 +30,7 @@ func nativeTranscensionObservation(frame gameFrame, ui outsiderObservation, conf
 	if ui.known && same(ui.frame) {
 		out.Screen, out.Known, out.Wallet, out.Reward = transcension.OutsidersScreen, true, ui.wallet, ui.gain
 		out.Quantity = map[string]int{"x1": 1, "x10": 10, "x100": 100, "x1000": 1000}[ui.quantity]
+		out.QuantityKnown = outsiderQuantityControlsKnown(frame.image)
 		_, out.OpenKnown, _ = transcensionControl(frame.image, transcensionOpen)
 		out.AtTop = out.OpenKnown
 		if thumb, height, found := listScrollbarThumb(frame.image, 417); found {
@@ -46,7 +47,8 @@ func nativeTranscensionObservation(frame gameFrame, ui outsiderObservation, conf
 			if id == 0 {
 				return transcension.Observation{}, fmt.Errorf("unbound Outsider row %q", row.name)
 			}
-			out.Rows = append(out.Rows, transcension.Row{ID: id, Name: row.name, Level: row.level, Cost: row.cost})
+			_, feedKnown := outsiderFeedPoint(ui, row.name)
+			out.Rows = append(out.Rows, transcension.Row{ID: id, Name: row.name, Level: row.level, Cost: row.cost, FeedKnown: feedKnown})
 		}
 		return out, nil
 	}
@@ -54,6 +56,7 @@ func nativeTranscensionObservation(frame gameFrame, ui outsiderObservation, conf
 	c := frame.context
 	if c.known && c.heroes && !c.transcension && !c.saveMenu && !c.ancientDialog && !c.ascension && !c.relicJunk && !c.questDialog && !c.mercenaryDialog && c.modal == noGildModal {
 		out.Screen, out.Known = transcension.GameScreen, true
+		_, out.EntryKnown = outsiderEntryPoint(frame.image)
 	}
 	return out, nil
 }

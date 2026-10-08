@@ -48,8 +48,9 @@ type Policy struct {
 	Beyond8k  bool
 }
 
-// NativeEvidence binds supported controls and receipt models to this build.
-// Missing summon controls block their purchase, not earlier reset/FEED steps.
+// NativeEvidence records build-bound live acceptance separately from controls.
+// Reset/FEED admission uses explicit Policy.Enabled and current observations;
+// prior live acceptance never substitutes for a recognized control or receipt.
 type NativeEvidence struct {
 	Build                              string
 	ResetRecovery, Feed, AncientSummon bool
@@ -99,6 +100,7 @@ type Row struct {
 	ID          int
 	Name        string
 	Level, Cost int
+	FeedKnown   bool
 }
 
 type Observation struct {
@@ -110,6 +112,7 @@ type Observation struct {
 	Quantity                   int // x1/x10/x100/x1000; MAX has no fixed bound.
 	Rows                       []Row
 	OpenKnown, AtTop, AtBottom bool
+	EntryKnown, QuantityKnown  bool
 	ConfirmKnown, CancelKnown  bool
 	RespecKnown, Respec        bool
 }
@@ -206,8 +209,8 @@ func (c *Controller) Begin(ctx context.Context, now time.Time, s Snapshot, timin
 			return errors.New("three completed AS-growing Ascensions required by the conservative policy")
 		}
 	}
-	if c.native.Build != state.Build || !c.native.ResetRecovery || !c.native.Feed {
-		return errors.New("supported native reset/FEED controls and receipt models required")
+	if c.native.Build != state.Build {
+		return errors.New("native controls must be bound to the source build")
 	}
 	if plans, err := ancientcalc.PlanOutsiders(ctx, state.AncientSoulsTotal, state.AncientSouls, *p.EstimatedASGain, state.Outsiders); err != nil || plans.AfterReward.Status != "ok" {
 		return errors.New("unsupported projected Outsider allocation")
@@ -263,8 +266,8 @@ func (c *Controller) Next(now time.Time) Command {
 	if c.stage != AwaitOutsiders && c.stage != AwaitConfirmation && c.stage != SpendOutsiders {
 		return cmd
 	}
-	if !c.policy.Enabled || c.native.Build != c.snapshot.State.Build || !c.native.ResetRecovery || !c.native.Feed {
-		c.reason = "current policy/native acceptance blocks further Transcension input"
+	if !c.policy.Enabled || c.native.Build != c.snapshot.State.Build {
+		c.reason = "current policy/build binding blocks further Transcension input"
 		return cmd
 	}
 	if (c.stage == AwaitOutsiders || c.stage == SpendOutsiders) && !fresh(now, c.snapshot.ExportedAt, 30*time.Second) {
@@ -283,7 +286,9 @@ func (c *Controller) Next(now time.Time) Command {
 		return cmd
 	}
 	if o.Screen == GameScreen {
-		cmd.Action = OpenOutsiders
+		if o.EntryKnown {
+			cmd.Action = OpenOutsiders
+		}
 		return cmd
 	}
 	if o.Screen != OutsidersScreen || !c.rowsMatch(o) {
@@ -313,13 +318,15 @@ func (c *Controller) Next(now time.Time) Command {
 			}
 		}
 		if o.Quantity != quantity {
-			cmd.Action, cmd.Quantity = SelectQuantity, quantity
+			if o.QuantityKnown {
+				cmd.Action, cmd.Quantity = SelectQuantity, quantity
+			}
 			return cmd
 		}
 		for _, row := range o.Rows {
 			if row.ID == target.ID {
 				cost, err := ancientcalc.OutsiderFeedCost(target.ID, current, quantity)
-				if err == nil && cost == row.Cost && cost <= o.Wallet {
+				if o.QuantityKnown && row.FeedKnown && err == nil && cost == row.Cost && cost <= o.Wallet {
 					cmd.Action, cmd.ID, cmd.Name, cmd.Quantity, cmd.Cost = FeedOutsider, target.ID, target.Name, quantity, cost
 				}
 				return cmd

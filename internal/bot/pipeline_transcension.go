@@ -193,13 +193,15 @@ func (p *gamePipeline) prestigeAction(cmd transcension.Command) (gameAction, boo
 		if !bootstrapHeroes(f.context) {
 			return a, false
 		}
-		a.point, found = outsiderTabPoint(f.image), true
+		a.point, found = outsiderEntryPoint(f.image)
 	case transcension.OpenReset:
 		a.point, found, err = transcensionControl(f.image, transcensionOpen)
 	case transcension.ConfirmReset:
 		a.point, found, err = transcensionControl(f.image, transcensionYes)
 	case transcension.SelectQuantity:
-		a.point, found = outsiderQuantityPoint(p.prestige.outsider, cmd.Quantity)
+		if p.prestige.outsider.frame.id == f.id {
+			a.point, found = outsiderQuantityPoint(p.prestige.outsider, cmd.Quantity)
+		}
 	case transcension.FeedOutsider:
 		if p.prestige.outsider.frame.id == f.id {
 			a.point, found = outsiderFeedPoint(p.prestige.outsider, cmd.Name)
@@ -228,6 +230,11 @@ func (p *gamePipeline) prestigeActionStable(a gameAction, now time.Time) bool {
 		return false
 	}
 	switch a.prestige.Action {
+	case transcension.OpenOutsiders:
+		_, found := outsiderEntryPoint(p.frame.image)
+		return found && bootstrapHeroes(p.frame.context)
+	case transcension.SelectQuantity:
+		return outsiderQuantityControlsKnown(p.frame.image) && outsiderTabSelected(p.frame.image) && relicPixelsStable(a.frame.image, p.frame.image, image.Rect(110, 253, 600, 285))
 	case transcension.ConfirmReset:
 		for _, which := range []int{transcensionYes, transcensionNo, transcensionUnchecked} {
 			if _, found, err := transcensionControl(p.frame.image, which); err != nil || !found {

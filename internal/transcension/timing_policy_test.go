@@ -85,7 +85,7 @@ func TestTimingPolicyAdmitsInitialAndRepeatedCyclesWithoutFreshLoopWait(t *testi
 			if err := c.Begin(context.Background(), s.ExportedAt, s, timing); err != nil {
 				t.Fatal("useful wall reset blocked on missing loop/summon evidence", err)
 			}
-			c.Observe(Observation{Frame: 1, Generation: s.Generation, At: s.ExportedAt, Screen: GameScreen, Known: true})
+			c.Observe(Observation{Frame: 1, Generation: s.Generation, At: s.ExportedAt, Screen: GameScreen, Known: true, EntryKnown: true})
 			if c.Next(s.ExportedAt).Action != OpenOutsiders {
 				t.Fatal("missing summon UI blocked supported reset navigation")
 			}

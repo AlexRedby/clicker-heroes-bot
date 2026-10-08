@@ -39,11 +39,11 @@ func TestNavigationRequestsFreshExportAndPreservesOwnership(t *testing.T) {
 				c.scrolls = 5
 				for i := 1; i <= 2; i++ {
 					now := start.Add(time.Duration(i) * 10 * time.Second)
-					c.Observe(Observation{Frame: uint64(i + 10), Generation: s.Generation, At: now, Known: true, Screen: GameScreen})
+					c.Observe(Observation{Frame: uint64(i + 10), Generation: s.Generation, At: now, Known: true, Screen: GameScreen, EntryKnown: true})
 					reserve(t, c, now, OpenOutsiders)
 				}
 				now := start.Add(30 * time.Second)
-				oldObservation := Observation{Frame: 13, Generation: s.Generation, At: now, Known: true, Screen: GameScreen}
+				oldObservation := Observation{Frame: 13, Generation: s.Generation, At: now, Known: true, Screen: GameScreen, EntryKnown: true}
 				c.Observe(oldObservation)
 				oldCommand := c.Next(now)
 				now = now.Add(time.Second)
@@ -73,7 +73,7 @@ func TestNavigationRequestsFreshExportAndPreservesOwnership(t *testing.T) {
 				if generation == 2 {
 					frame = 1
 				}
-				c.Observe(Observation{Frame: frame, Generation: generation, At: fresh.ExportedAt, Known: true, Screen: GameScreen})
+				c.Observe(Observation{Frame: frame, Generation: generation, At: fresh.ExportedAt, Known: true, Screen: GameScreen, EntryKnown: true})
 				reserve(t, c, fresh.ExportedAt, OpenOutsiders)
 				// The refreshed source and original fixed plan survive restart.
 				c = reopenController(t, c)
@@ -169,13 +169,14 @@ func TestNavigationRefreshDoesNotBypassNativeInactivityTimeout(t *testing.T) {
 func TestNavigationRefreshKeepsNativeAdmissionAndFailsClosedOnJournalError(t *testing.T) {
 	c, s, now := navigationController(t, SpendOutsiders)
 	c.native = NativeEvidence{Build: s.State.Build}
+	c.policy.Enabled = false
 	s.ExportedAt = now.Add(time.Second)
 	if err := c.Refresh(context.Background(), s.ExportedAt, s); err != nil {
 		t.Fatal(err)
 	}
 	c.Observe(outsiderObservation(s, 4, s.ExportedAt))
 	if c.Next(s.ExportedAt).Action != NoAction {
-		t.Fatal("refresh inferred native acceptance")
+		t.Fatal("refresh inferred explicit authorization")
 	}
 	original := journalSyncFile
 	journalSyncFile = func(*os.File) error { return errors.New("injected refresh sync failure") }

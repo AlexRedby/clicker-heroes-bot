@@ -56,10 +56,10 @@ func TestTranscensionNativeConfirmation(t *testing.T) {
 	}
 }
 
-func TestTranscensionNativeAcceptanceRemainsUnavailable(t *testing.T) {
+func TestTranscensionLiveAcceptanceIsNotInferred(t *testing.T) {
 	n := nativeTranscensionEvidence("1.0e12-6144")
 	if n.Build != "1.0e12-6144" || n.ResetRecovery || n.Feed || n.AncientSummon {
-		t.Fatal("partial screenshots enabled native reset", n)
+		t.Fatal("factory inferred live acceptance from the build", n)
 	}
 	frame := gameFrame{id: 2, generation: 2}
 	o, err := nativeTranscensionObservation(frame, outsiderObservation{}, transcensionObservation{known: true, frame: gameFrame{id: 1, generation: 1}}, ancientcalc.TranscensionState{})
@@ -74,7 +74,7 @@ func TestOutsiderNativeBottomAndUnaffordableFeed(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			screen := exportFixture(t, "outsiders-bottom.png", width)
 			ui, err := readOutsiderObservation(context.Background(), gameFrame{image: screen, context: gameContext{outsiders: true}})
-			want := []outsiderScreenRow{{"Orphalas", 3, 4}, {"Sen-Akhan", 3, 4}}
+			want := []outsiderScreenRow{{"Orphalas", 3, 4, false}, {"Sen-Akhan", 3, 4, false}}
 			if err != nil || !ui.known || ui.gain != 79 || ui.wallet != 0 || ui.power != 4.04 || ui.nextAS != "1.583e77" || ui.quantity != "x1" || !reflect.DeepEqual(ui.rows, want) {
 				t.Fatalf("native bottom: %+v %v", ui, err)
 			}

@@ -23,7 +23,7 @@ func outsiderPlanFixture(t *testing.T) (*ancientcalc.TranscensionPreview, outsid
 	if err != nil {
 		t.Fatal(err)
 	}
-	ui := outsiderObservation{known: true, wallet: 0, gain: 20, power: 4.04, quantity: "x1", rows: []outsiderScreenRow{{"Xyliqil", 0, 1}, {"Chor'gorloth", 6, 7}}}
+	ui := outsiderObservation{known: true, wallet: 0, gain: 20, power: 4.04, quantity: "x1", rows: []outsiderScreenRow{{"Xyliqil", 0, 1, false}, {"Chor'gorloth", 6, 7, false}}}
 	return &source, ui
 }
 

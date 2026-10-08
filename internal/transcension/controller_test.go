@@ -70,7 +70,7 @@ func beforeConfirmation(t *testing.T) (*Controller, Snapshot, time.Time) {
 	if err := c.Begin(context.Background(), now, s, timing); err != nil {
 		t.Fatal(err)
 	}
-	c.Observe(Observation{Frame: 1, Generation: 1, At: now, Screen: GameScreen, Known: true})
+	c.Observe(Observation{Frame: 1, Generation: 1, At: now, Screen: GameScreen, Known: true, EntryKnown: true})
 	reserve(t, c, now, OpenOutsiders)
 	c.Observe(Observation{Frame: 2, Generation: 1, At: now, Screen: OutsidersScreen, Known: true, OpenKnown: true, Reward: 20, Quantity: 1, Rows: []Row{{ID: 1, Name: "Xyliqil", Cost: 1}}})
 	reserve(t, c, now, OpenReset)
@@ -97,11 +97,11 @@ func resetSnapshot(s Snapshot, now time.Time) Snapshot {
 }
 
 func outsiderObservation(s Snapshot, frame uint64, now time.Time) Observation {
-	o := Observation{Frame: frame, Generation: s.Generation, At: now, Screen: OutsidersScreen, Known: true, Wallet: s.State.AncientSouls, Quantity: 1}
+	o := Observation{Frame: frame, Generation: s.Generation, At: now, Screen: OutsidersScreen, Known: true, Wallet: s.State.AncientSouls, Quantity: 1, QuantityKnown: true}
 	for _, row := range s.State.Outsiders {
 		level, _ := strconv.Atoi(row.Level)
 		cost, _ := ancientcalc.OutsiderFeedCost(row.ID, level, 1)
-		o.Rows = append(o.Rows, Row{ID: row.ID, Name: row.Name, Level: level, Cost: cost})
+		o.Rows = append(o.Rows, Row{ID: row.ID, Name: row.Name, Level: level, Cost: cost, FeedKnown: true})
 	}
 	return o
 }
@@ -201,8 +201,7 @@ func TestEligibilityAndUnverifiedNativeGates(t *testing.T) {
 		}},
 		{"unowned timing", func(_ *Snapshot, timing *Timing, _ *NativeEvidence, _ *Policy) { timing.Generation++ }},
 		{"no wall", func(_ *Snapshot, timing *Timing, _ *NativeEvidence, _ *Policy) { timing.WallConfirmed = false }},
-		{"no reset receipt evidence", func(_ *Snapshot, _ *Timing, n *NativeEvidence, _ *Policy) { n.ResetRecovery = false }},
-		{"no affordable FEED", func(_ *Snapshot, _ *Timing, n *NativeEvidence, _ *Policy) { n.Feed = false }},
+		{"different native build", func(_ *Snapshot, _ *Timing, n *NativeEvidence, _ *Policy) { n.Build = "other" }},
 		{"different preview", func(s *Snapshot, _ *Timing, _ *NativeEvidence, _ *Policy) { s.Preview.SaveHash = "wrong" }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -305,13 +304,13 @@ func TestRestorationCannotSkipFirstSoulsOrAcceptOlderExports(t *testing.T) {
 func TestNewCycleDoesNotReuseOldGenerationFrame(t *testing.T) {
 	s, timing, native := preparation()
 	c := newTestController(t, Policy{Enabled: true}, native)
-	c.latest = Observation{Frame: 100, Generation: 1, At: s.ExportedAt, Screen: GameScreen, Known: true}
+	c.latest = Observation{Frame: 100, Generation: 1, At: s.ExportedAt, Screen: GameScreen, Known: true, EntryKnown: true}
 	c.lastFrame = 99
 	s.Generation, timing.Generation = 2, 2
 	if err := c.Begin(context.Background(), s.ExportedAt, s, timing); err != nil || c.Next(s.ExportedAt).Action != NoAction {
 		t.Fatal("new cycle used old input state", err)
 	}
-	c.Observe(Observation{Frame: 1, Generation: 2, At: s.ExportedAt, Screen: GameScreen, Known: true})
+	c.Observe(Observation{Frame: 1, Generation: 2, At: s.ExportedAt, Screen: GameScreen, Known: true, EntryKnown: true})
 	if c.Next(s.ExportedAt).Action != OpenOutsiders {
 		t.Fatal("new generation frame was rejected")
 	}

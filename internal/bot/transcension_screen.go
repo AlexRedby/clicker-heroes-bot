@@ -92,7 +92,7 @@ func readTranscensionObservation(ctx context.Context, frame gameFrame) (transcen
 // Geometry is derived from the same complete cards consumed by the reader.
 // A clipped card, MAX mode or unaffordable row never supplies a FEED target.
 func outsiderFeedPoint(ui outsiderObservation, name string) (image.Point, bool) {
-	if !ui.known || ui.quantity != "x1" && ui.quantity != "x10" && ui.quantity != "x100" && ui.quantity != "x1000" || !outsiderTabSelected(ui.frame.image) {
+	if !ui.known || ui.quantity != "x1" && ui.quantity != "x10" && ui.quantity != "x100" && ui.quantity != "x1000" || !outsiderTabSelected(ui.frame.image) || !outsiderQuantityControlsKnown(ui.frame.image) {
 		return image.Point{}, false
 	}
 	tops := outsiderCardTops(ui.frame.image)
@@ -100,7 +100,7 @@ func outsiderFeedPoint(ui outsiderObservation, name string) (image.Point, bool) 
 		return image.Point{}, false
 	}
 	for i, row := range ui.rows {
-		if row.name == name && row.cost > 0 && ui.wallet >= row.cost {
+		if row.name == name && row.feed && row.cost > 0 && ui.wallet >= row.cost {
 			r := vision.Rect(ui.frame.image, image.Rect(430, tops[i]+61, 539, tops[i]+131))
 			return r.Min.Add(r.Size().Div(2)), true
 		}
@@ -109,7 +109,7 @@ func outsiderFeedPoint(ui outsiderObservation, name string) (image.Point, bool) 
 }
 
 func outsiderQuantityPoint(ui outsiderObservation, quantity int) (image.Point, bool) {
-	if !ui.known || !outsiderTabSelected(ui.frame.image) {
+	if !ui.known || !outsiderTabSelected(ui.frame.image) || !outsiderQuantityControlsKnown(ui.frame.image) {
 		return image.Point{}, false
 	}
 	for i, value := range []int{1, 10, 100, 1000} {
@@ -123,4 +123,33 @@ func outsiderQuantityPoint(ui outsiderObservation, quantity int) (image.Point, b
 
 func outsiderTabPoint(screen image.Image) image.Point {
 	return vision.Rect(screen, image.Rect(555, 145, 556, 146)).Min
+}
+
+func outsiderEntryPoint(screen image.Image) (image.Point, bool) {
+	if screen == nil {
+		return image.Point{}, false
+	}
+	for _, name := range []string{"outsiders/tab-unselected.png", "outsiders/tab.png"} {
+		found, err := vision.MatchControl(screen, image.Rect(539, 130, 576, 159), name)
+		if err != nil {
+			return image.Point{}, false
+		}
+		if found {
+			return outsiderTabPoint(screen), true
+		}
+	}
+	return image.Point{}, false
+}
+
+func outsiderQuantityControlsKnown(screen image.Image) bool {
+	if screen == nil {
+		return false
+	}
+	for i, r := range []image.Rectangle{image.Rect(140, 259, 168, 284), image.Rect(234, 259, 274, 284), image.Rect(329, 259, 379, 284), image.Rect(425, 259, 485, 284)} {
+		found, err := vision.MatchControl(screen, r, fmt.Sprintf("outsiders/quantity-%d.png", i))
+		if err != nil || !found {
+			return false
+		}
+	}
+	return true
 }

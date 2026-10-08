@@ -28,7 +28,7 @@ func TestOutsiderRealScreen(t *testing.T) {
 			if !out.known || out.wallet != 0 || out.gain != 20 || out.power != 4.04 || out.sacrificed != "1.227e62" || out.nextAS != "9.291e65" || out.quantity != "x1" {
 				t.Fatalf("header: %+v", out)
 			}
-			want := []outsiderScreenRow{{"Xyliqil", 0, 1}, {"Chor'gorloth", 6, 7}}
+			want := []outsiderScreenRow{{"Xyliqil", 0, 1, false}, {"Chor'gorloth", 6, 7, false}}
 			if !reflect.DeepEqual(out.rows, want) {
 				t.Fatalf("rows: %+v want %+v", out.rows, want)
 			}
@@ -103,7 +103,7 @@ func TestOutsiderScrolledAndClippedCards(t *testing.T) {
 	// second remains readable at its new position; the fixed header is unchanged.
 	draw.Draw(screen, image.Rect(35, 380, 562, 713), source, image.Pt(35, 460), draw.Src)
 	out, err := readOutsiderObservation(context.Background(), gameFrame{image: screen, context: gameContext{outsiders: true}})
-	if err != nil || !out.known || !reflect.DeepEqual(out.rows, []outsiderScreenRow{{"Chor'gorloth", 6, 7}}) {
+	if err != nil || !out.known || !reflect.DeepEqual(out.rows, []outsiderScreenRow{{"Chor'gorloth", 6, 7, false}}) {
 		t.Fatalf("scrolled/clipped: %+v %v", out, err)
 	}
 }

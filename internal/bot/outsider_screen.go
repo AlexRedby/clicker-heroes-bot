@@ -19,6 +19,7 @@ import (
 type outsiderScreenRow struct {
 	name        string
 	level, cost int
+	feed        bool
 }
 
 type outsiderObservation struct {
@@ -278,6 +279,29 @@ func readOutsiderObservation(ctx context.Context, frame gameFrame) (outsiderObse
 				row.level = value
 			} else {
 				row.cost = value
+			}
+		}
+		if out.wallet >= row.cost {
+			// A readable cost also exists on disabled buttons. Require the
+			// bright FEED caption itself; unknown/dim controls remain inert.
+			r := vision.Rect(screen, image.Rect(449, top+73, 513, top+94))
+			bright := 0
+			for y := r.Min.Y; y < r.Max.Y; y++ {
+				for x := r.Min.X; x < r.Max.X; x++ {
+					red, green, blue := rgb(screen.At(x, y))
+					if min(red, green) >= 180 && (blue < 120 || min(red, green, blue) >= 200) {
+						bright++
+					}
+				}
+			}
+			if bright*20 >= r.Dx()*r.Dy() {
+				// FEED is fixed artwork. Match its complete caption rather
+				// than accepting a price at an assumed button coordinate.
+				found, err := vision.MatchControl(screen, image.Rect(449, top+73, 513, top+94), "outsiders/feed.png")
+				if err != nil {
+					return out, err
+				}
+				row.feed = found
 			}
 		}
 		out.rows = append(out.rows, row)
