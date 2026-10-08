@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,6 +12,20 @@ import (
 
 	"clicker-heroes-bot/internal/ancientcalc"
 )
+
+func newTestController(t *testing.T, policy Policy, native NativeEvidence) *Controller {
+	t.Helper()
+	c := NewController(policy, native)
+	j, err := OpenJournal(filepath.Join(t.TempDir(), "transcension.json"), strings.Repeat("b", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { j.Close() })
+	if err := c.BindJournal(j); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
 
 func preparation() (Snapshot, Timing, NativeEvidence) {
 	now := time.Unix(1000, 0)
@@ -48,10 +63,10 @@ func reserve(t *testing.T, c *Controller, now time.Time, action Action) Command 
 	return cmd
 }
 
-func beforeReset(t *testing.T) (*Controller, Snapshot, time.Time) {
+func beforeConfirmation(t *testing.T) (*Controller, Snapshot, time.Time) {
 	t.Helper()
 	s, timing, native := preparation()
-	c := NewController(Policy{Enabled: true, SkillRate: 1}, native)
+	c := newTestController(t, Policy{Enabled: true, SkillRate: 1}, native)
 	now := s.ExportedAt
 	if err := c.Begin(context.Background(), now, s, timing); err != nil {
 		t.Fatal(err)
@@ -61,6 +76,12 @@ func beforeReset(t *testing.T) (*Controller, Snapshot, time.Time) {
 	c.Observe(Observation{Frame: 2, Generation: 1, At: now, Screen: OutsidersScreen, Known: true, OpenKnown: true, Reward: 20, Quantity: 1, Rows: []Row{{ID: 1, Name: "Xyliqil", Cost: 1}}})
 	reserve(t, c, now, OpenReset)
 	c.Observe(Observation{Frame: 3, Generation: 1, At: now, Screen: ConfirmationScreen, Known: true, ConfirmKnown: true, CancelKnown: true, RespecKnown: true, Reward: 20})
+	return c, s, now
+}
+
+func beforeReset(t *testing.T) (*Controller, Snapshot, time.Time) {
+	t.Helper()
+	c, s, now := beforeConfirmation(t)
 	reserve(t, c, now, ConfirmReset)
 	return c, s, now
 }
@@ -191,7 +212,7 @@ func TestEligibilityAndUnverifiedNativeGates(t *testing.T) {
 			s, timing, native := preparation()
 			now, policy := s.ExportedAt, Policy{Enabled: true}
 			test.edit(&s, &timing, &native, &policy)
-			c := NewController(policy, native)
+			c := newTestController(t, policy, native)
 			if c.Begin(context.Background(), now, s, timing) == nil || c.Stage() != Ordinary || c.Next(now).Action != NoAction {
 				t.Fatal("ineligible reset started")
 			}
@@ -262,7 +283,7 @@ func TestRestorationCannotSkipFirstSoulsOrAcceptOlderExports(t *testing.T) {
 	_, before, now := beforeReset(t)
 	s := resetSnapshot(before, now.Add(time.Second))
 	_, _, native := preparation()
-	c := NewController(Policy{Enabled: true, SkillRate: 1}, native)
+	c := newTestController(t, Policy{Enabled: true, SkillRate: 1}, native)
 	c.snapshot, c.stage, c.inputAt = cloneSnapshot(s), AwaitFirstSouls, now
 	missing, _ := c.MissingAncients(context.Background())
 	for _, row := range missing {
@@ -286,7 +307,7 @@ func TestRestorationCannotSkipFirstSoulsOrAcceptOlderExports(t *testing.T) {
 
 func TestNewCycleDoesNotReuseOldGenerationFrame(t *testing.T) {
 	s, timing, native := preparation()
-	c := NewController(Policy{Enabled: true}, native)
+	c := newTestController(t, Policy{Enabled: true}, native)
 	c.latest = Observation{Frame: 100, Generation: 1, At: s.ExportedAt, Screen: GameScreen, Known: true}
 	c.lastFrame = 99
 	s.Generation, timing.Generation = 2, 2
@@ -317,7 +338,7 @@ func TestRepeatResetNeedsGrowingHistoryAndDecliningMeasuredRate(t *testing.T) {
 			case "invalid active rate":
 				timing.ASPerHour = math.NaN()
 			}
-			c := NewController(Policy{Enabled: true}, native)
+			c := newTestController(t, Policy{Enabled: true}, native)
 			err := c.Begin(context.Background(), s.ExportedAt, s, timing)
 			if (err == nil) != (name == "ready") {
 				t.Fatal("repeat timing decision", err)

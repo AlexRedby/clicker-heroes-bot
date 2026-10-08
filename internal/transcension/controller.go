@@ -128,6 +128,10 @@ type Command struct {
 // input, after rechecking the command against the latest shared frame. An input
 // error or F8 calls Interrupt; neither reset nor FEED is replayed automatically.
 type Controller struct {
+	journal           *Journal
+	recoveryStage     Stage
+	earningAfter      int
+	earningSouls      string
 	policy            Policy
 	native            NativeEvidence
 	stage             Stage
@@ -210,8 +214,11 @@ func (c *Controller) Begin(ctx context.Context, now time.Time, s Snapshot, timin
 	if plans, err := ancientcalc.PlanOutsiders(ctx, state.AncientSoulsTotal, state.AncientSouls, *p.EstimatedASGain, state.Outsiders); err != nil || plans.AfterReward.Status != "ok" {
 		return errors.New("unsupported projected Outsider allocation")
 	}
-	*c = Controller{policy: c.policy, native: c.native, snapshot: cloneSnapshot(s), stage: AwaitOutsiders, deadline: now.Add(30 * time.Second)}
-	return nil
+	if c.journal == nil || c.journal.profile != state.ProfileID {
+		return errors.New("durable journal bound to this profile required")
+	}
+	*c = Controller{policy: c.policy, native: c.native, journal: c.journal, snapshot: cloneSnapshot(s), stage: AwaitOutsiders, deadline: now.Add(30 * time.Second)}
+	return c.commit()
 }
 
 func (c *Controller) Observe(o Observation) {
@@ -223,11 +230,14 @@ func (c *Controller) Observe(o Observation) {
 }
 
 func (c *Controller) stop(reason string) {
+	if c.stage != Uncertain {
+		c.recoveryStage = c.stage
+	}
 	c.stage, c.reason = Uncertain, reason
 }
 
 func (c *Controller) Interrupt() {
-	if c.stage != Ordinary && c.stage != ReadyForAllocation {
+	if c.stage != Ordinary {
 		c.stop("Transcension interrupted; reconcile a fresh export before any further input")
 	}
 }
@@ -250,6 +260,10 @@ func (c *Controller) Next(now time.Time) Command {
 		return cmd
 	}
 	if c.stage != AwaitOutsiders && c.stage != AwaitConfirmation && c.stage != SpendOutsiders {
+		return cmd
+	}
+	if !c.policy.Enabled || c.native.Build != c.snapshot.State.Build || !c.native.ResetRecovery || !c.native.Feed || !c.native.AncientSummon {
+		c.reason = "current policy/native acceptance blocks further Transcension input"
 		return cmd
 	}
 	if !o.Known || o.Generation != c.snapshot.Generation || o.Frame == 0 || o.Frame <= c.lastFrame || !fresh(now, o.At, 5*time.Second) || !fresh(now, c.snapshot.ExportedAt, 30*time.Second) {
@@ -385,6 +399,8 @@ func (c *Controller) Reserve(now time.Time, cmd Command) error {
 		c.exportRequested = true
 	case BootstrapHeroes:
 		c.stage = AwaitFirstSouls
+		c.targets = nil
+		c.earningAfter, c.earningSouls = c.snapshot.State.AscensionsThisTranscension, c.snapshot.State.HeroSouls
 	case ScrollOutsidersTop, ScrollOutsidersDown:
 		c.scrolls++
 	}
@@ -393,7 +409,10 @@ func (c *Controller) Reserve(now time.Time, cmd Command) error {
 		c.inputAt = now
 		c.deadline = now.Add(30 * time.Second)
 	}
-	return nil
+	if cmd.Action == FreshExport {
+		return nil
+	}
+	return c.commit()
 }
 
 func sameCycle(a, b ancientcalc.TranscensionState) bool {
@@ -408,7 +427,8 @@ func (c *Controller) AcceptExport(ctx context.Context, now time.Time, s Snapshot
 	if err := validateSnapshot(ctx, s); err != nil {
 		return fail(err)
 	}
-	if s.Generation != c.snapshot.Generation || !fresh(now, s.ExportedAt, 30*time.Second) || !s.ExportedAt.After(c.inputAt) || !s.ExportedAt.After(c.snapshot.ExportedAt) || s.State.SaveHash == c.snapshot.State.SaveHash {
+	needsReceipt := c.stage == AwaitResetReceipt || c.stage == AwaitFeedReceipt
+	if s.Generation != c.snapshot.Generation || !fresh(now, s.ExportedAt, 30*time.Second) || !s.ExportedAt.After(c.inputAt) || !s.ExportedAt.After(c.snapshot.ExportedAt) || needsReceipt && s.State.SaveHash == c.snapshot.State.SaveHash {
 		return fail(errors.New("stale Transcension receipt/export"))
 	}
 	switch c.stage {
@@ -434,8 +454,14 @@ func (c *Controller) AcceptExport(ctx context.Context, now time.Time, s Snapshot
 		if !ok {
 			return fail(errors.New("invalid restored Hero Souls"))
 		}
-		if c.stage == AwaitFirstSouls && (wallet.Sign() <= 0 || s.State.AscensionsThisTranscension == 0) {
-			break
+		if c.stage == AwaitFirstSouls {
+			baseline := new(big.Rat)
+			if c.earningSouls != "" {
+				baseline.SetString(c.earningSouls)
+			}
+			if wallet.Cmp(baseline) <= 0 || s.State.AscensionsThisTranscension <= c.earningAfter {
+				break
+			}
 		}
 		missing, err := ancientcalc.MissingActiveAncients(ctx, s.State, c.policy.SkillRate, c.policy.Beyond8k)
 		if err != nil {
@@ -449,7 +475,7 @@ func (c *Controller) AcceptExport(ctx context.Context, now time.Time, s Snapshot
 	}
 	c.snapshot, c.pending, c.exportRequested = cloneSnapshot(s), Command{}, false
 	c.scrolls, c.deadline = 0, now.Add(30*time.Second)
-	return nil
+	return c.commit()
 }
 
 func (c *Controller) MissingAncients(ctx context.Context) ([]ancientcalc.AncientRequirement, error) {
@@ -478,6 +504,121 @@ func (c *Controller) Reconcile(ctx context.Context, now time.Time, s Snapshot) e
 	return nil
 }
 
+func (c *Controller) BindJournal(journal *Journal) error {
+	if c.journal != nil || c.stage != Ordinary || journal == nil {
+		return errors.New("journal must be bound once before starting Transcension")
+	}
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+	if err := journal.ensure(); err != nil {
+		return err
+	}
+	if journal.bound {
+		return errors.New("journal already belongs to another controller")
+	}
+	journal.bound = true
+	c.journal = journal
+	s := journal.state
+	if s.Stage != Ordinary {
+		c.snapshot, c.targets, c.pending = cloneSnapshot(s.Snapshot), append([]ancientcalc.OutsiderTarget(nil), s.Targets...), s.Pending
+		c.inputAt, c.reward, c.recoveryStage = s.InputAt, s.Reward, s.Stage
+		c.earningAfter, c.earningSouls = s.EarningAfter, s.EarningSouls
+		c.stage, c.reason = Uncertain, "durable Transcension ownership requires fresh-export recovery"
+	}
+	return nil
+}
+
+func (c *Controller) commit() error {
+	if c.journal == nil {
+		c.stop("durable Transcension journal required")
+		return errors.New(c.reason)
+	}
+	stage := c.stage
+	if stage == Uncertain {
+		stage = c.recoveryStage
+	}
+	s := journalState{ProfileID: c.journal.profile, Stage: stage}
+	if stage != Ordinary {
+		s.Snapshot = cloneSnapshot(c.snapshot)
+		s.Snapshot.Preview = ancientcalc.TranscensionPreview{}
+		s.Targets, s.Pending, s.InputAt, s.Reward = append([]ancientcalc.OutsiderTarget(nil), c.targets...), c.pending, c.inputAt, c.reward
+		s.EarningAfter, s.EarningSouls = c.earningAfter, c.earningSouls
+	}
+	if err := c.journal.save(s); err != nil {
+		c.stop("Transcension journal persistence failed: " + err.Error())
+		return err
+	}
+	return nil
+}
+
+// Recover handles both submitted inputs and interruptions between inputs. It
+// never replays a pending reset/FEED, and clears all old capture ownership.
+func (c *Controller) Recover(ctx context.Context, now time.Time, s Snapshot) error {
+	if c.stage != Uncertain {
+		return errors.New("no uncertain Transcension state to recover")
+	}
+	if c.pending.Action == ConfirmReset || c.pending.Action == FeedOutsider {
+		return c.Reconcile(ctx, now, s)
+	}
+	if err := validateSnapshot(ctx, s); err != nil {
+		return err
+	}
+	old := c.snapshot.State
+	if !fresh(now, s.ExportedAt, 30*time.Second) || !s.ExportedAt.After(c.snapshot.ExportedAt) || !s.ExportedAt.After(c.inputAt) || s.State.ProfileID != old.ProfileID || s.State.Build != old.Build || s.State.SaveVersion != old.SaveVersion {
+		return errors.New("fresh export for the owned profile/build required")
+	}
+	next := *c
+	next.snapshot = cloneSnapshot(c.snapshot)
+	next.snapshot.Generation = s.Generation
+	next.stage = c.recoveryStage
+	switch next.stage {
+	case AwaitOutsiders, AwaitConfirmation:
+		// No reset was submitted. Abandon the old decision; root cancels an
+		// orphaned modal and performs a fresh live assessment before Begin.
+		if s.State.Transcensions != old.Transcensions {
+			return errors.New("unexpected manual reset during pre-reset recovery")
+		}
+		next.stage, next.pending, next.targets, next.reward = Ordinary, Command{}, nil, 0
+	case SpendOutsiders, RestoreHeroes:
+		if !sameCycle(old, s.State) || !slices.Equal(old.Outsiders, s.State.Outsiders) || !slices.Equal(old.Ancients, s.State.Ancients) || old.HeroSouls != s.State.HeroSouls || old.Ascensions != s.State.Ascensions || old.AscensionsThisTranscension != s.State.AscensionsThisTranscension {
+			return errors.New("unowned changes during Outsider restoration recovery")
+		}
+	case AwaitFirstSouls, AwaitAncients:
+		if err := next.AcceptExport(ctx, now, s); err != nil {
+			return err
+		}
+	case ReadyForAllocation:
+		if !sameCycle(old, s.State) || !slices.Equal(old.Outsiders, s.State.Outsiders) {
+			return errors.New("unowned changes before Ancient allocation recovery")
+		}
+		missing, err := ancientcalc.MissingActiveAncients(ctx, s.State, c.policy.SkillRate, c.policy.Beyond8k)
+		if err != nil || len(missing) != 0 {
+			return errors.New("Ancient restoration lost during recovery")
+		}
+	default:
+		return errors.New("unsupported Transcension recovery stage")
+	}
+	next.snapshot, next.latest, next.lastFrame, next.reason = cloneSnapshot(s), Observation{}, 0, ""
+	next.deadline = now.Add(30 * time.Second)
+	if err := next.commit(); err != nil {
+		return err
+	}
+	*c = next
+	return nil
+}
+
+// ContinueEarning is a handoff from verified summon prices: if the available
+// required offers are unaffordable, keep ordinary earning/Ascension running.
+// The caller must first end its owned summon visit without a pending purchase.
+func (c *Controller) ContinueEarning() error {
+	if c.stage != AwaitAncients || c.pending != (Command{}) {
+		return errors.New("cannot continue earning with unresolved restoration input")
+	}
+	c.stage, c.reason = AwaitFirstSouls, "earn more Hero Souls before the next summon visit"
+	c.earningAfter, c.earningSouls = c.snapshot.State.AscensionsThisTranscension, c.snapshot.State.HeroSouls
+	return c.commit()
+}
+
 // CompleteAllocation is called only after the ordinary fresh-save Ancient
 // allocator and its purchase/return handoff finish; it does not grant summoning.
 func (c *Controller) CompleteAllocation(saveHash string) error {
@@ -485,7 +626,7 @@ func (c *Controller) CompleteAllocation(saveHash string) error {
 		return errors.New("Ancient restoration is incomplete")
 	}
 	c.stage, c.reason = Ordinary, ""
-	return nil
+	return c.commit()
 }
 
 func cloneSnapshot(s Snapshot) Snapshot {
