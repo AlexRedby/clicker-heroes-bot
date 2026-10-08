@@ -825,6 +825,14 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		if p.startupCheck {
 			return nil
 		}
+		if p.options.export != nil && p.export.requested {
+			if p.export.active && p.export.step == exportReadFile && p.export.jobFrame == 0 && c.window == p.export.window && c.known && !c.saveMenu {
+				jobCtx, cancel := context.WithDeadline(ctx, p.export.deadline)
+				p.export.cancel, p.export.jobFrame = cancel, p.frame.id
+				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before, relicsOnly: p.export.relicsOnly, goalsOnly: p.export.goalsOnly, gildsOnly: p.export.gildsOnly, achievements: p.options.achievements != nil, initialSetup: p.export.initialSetup, prestige: p.options.transcension, prestigeOnly: p.export.prestigeOnly || p.prestige.holdAncients(), restoreAllocation: p.prestige.stage() != transcension.Ordinary, generation: p.generation}})
+			}
+			return nil
+		}
 		if !p.relic.active && p.startup != noStartup && p.startup != startupSave {
 			if bootstrapHeroes(c) {
 				if p.startup != startupProgression && p.hero.due(now) && p.heroJobFrame == 0 && (p.hero.latest.frame.id == 0 || p.hero.pending != nil) {
@@ -835,14 +843,6 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 					replaceJob(jobs[progressionAnalysis], analysisJob{frame: p.frame, modeOnly: true})
 					p.nextProgression = now.Add(300 * time.Millisecond)
 				}
-			}
-			return nil
-		}
-		if p.options.export != nil && p.export.requested {
-			if p.export.active && p.export.step == exportReadFile && p.export.jobFrame == 0 && c.window == p.export.window && c.known && !c.saveMenu {
-				jobCtx, cancel := context.WithDeadline(ctx, p.export.deadline)
-				p.export.cancel, p.export.jobFrame = cancel, p.frame.id
-				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before, relicsOnly: p.export.relicsOnly, goalsOnly: p.export.goalsOnly, gildsOnly: p.export.gildsOnly, achievements: p.options.achievements != nil, initialSetup: p.export.initialSetup, prestige: p.options.transcension, prestigeOnly: p.export.prestigeOnly || p.prestige.holdAncients(), restoreAllocation: p.prestige.stage() != transcension.Ordinary, generation: p.generation}})
 			}
 			return nil
 		}
