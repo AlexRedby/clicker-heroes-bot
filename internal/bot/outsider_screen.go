@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"image/color"
 	"image/draw"
 	"regexp"
 	"strconv"
@@ -123,23 +124,14 @@ func outsiderCardTops(screen image.Image) []int {
 	return tops
 }
 
-func readOutsiderCost(ctx context.Context, screen image.Image, region image.Rectangle) (string, error) {
-	// Disabled FEED text is cream with a gray outline. A luminance mask keeps
-	// its thin digits, which the shared white/yellow masks remove at small sizes.
-	crop := image.NewGray(image.Rect(0, 0, region.Dx(), region.Dy()))
+func readOutsiderText(ctx context.Context, screen image.Image, region image.Rectangle, scale int, characters string) (string, error) {
+	// Keep antialiased outlines and let Tesseract binarize the native artwork.
+	crop := image.NewRGBA(image.Rect(0, 0, region.Dx(), region.Dy()))
 	draw.Draw(crop, crop.Bounds(), screen, region.Min, draw.Src)
-	for i, v := range crop.Pix {
-		if v > 120 {
-			crop.Pix[i] = 255
-		} else {
-			crop.Pix[i] = 0
-		}
-	}
-	w := screen.Bounds().Dx()
-	scale := max(1, (5120+w-1)/w)
-	up := image.NewGray(image.Rect(0, 0, crop.Bounds().Dx()*scale+20, crop.Bounds().Dy()*scale+20))
+	up := image.NewRGBA(image.Rect(0, 0, crop.Bounds().Dx()*scale+20, crop.Bounds().Dy()*scale+20))
+	draw.Draw(up, up.Bounds(), image.NewUniform(color.Black), image.Point{}, draw.Src)
 	xdraw.ApproxBiLinear.Scale(up, image.Rect(10, 10, up.Bounds().Max.X-10, up.Bounds().Max.Y-10), crop, crop.Bounds(), draw.Src, nil)
-	raw, err := readTextImage(ctx, up, 7, "0123456789,xX")
+	raw, err := readTextImage(ctx, up, 7, characters)
 	return strings.TrimSpace(raw), err
 }
 
@@ -203,7 +195,7 @@ func readOutsiderObservation(ctx context.Context, frame gameFrame) (outsiderObse
 		{image.Rect(268, 216, 355, 235), &out.sacrificed},
 		{image.Rect(516, 225, 605, 244), &out.nextAS},
 	} {
-		raw, err := read(field.r, 230, "0123456789.eE")
+		raw, err := readOutsiderText(ctx, screen, vision.Rect(screen, field.r), max(1, 5120/screen.Bounds().Dx()), "0123456789.eE")
 		if err != nil {
 			return out, err
 		}
@@ -254,7 +246,16 @@ func readOutsiderObservation(ctx context.Context, frame gameFrame) (outsiderObse
 			if i == 0 {
 				raw, err = read(r, 0, "0123456789,lLvViIO ")
 			} else {
-				raw, err = readOutsiderCost(ctx, screen, vision.Rect(screen, r))
+				// Tesseract loses the outlined FEED line when its glyphs are oversized.
+				scale := 6
+				if screen.Bounds().Dx() >= 2048 {
+					scale = 3
+				}
+				raw, err = readOutsiderText(ctx, screen, vision.Rect(screen, r), scale, "0123456789,xX")
+				if err == nil && raw == "" && scale == 6 {
+					// Thin disabled captions can disappear at the larger text size.
+					raw, err = readOutsiderText(ctx, screen, vision.Rect(screen, r), 3, "0123456789,xX")
+				}
 			}
 			if err != nil {
 				return out, err
@@ -267,7 +268,7 @@ func readOutsiderObservation(ctx context.Context, frame gameFrame) (outsiderObse
 				raw = strings.ReplaceAll(raw, "O", "0")
 			} else {
 				if !strings.HasPrefix(strings.ToLower(raw), "x") {
-					return out, fmt.Errorf("unreadable Outsider cost %q", raw)
+					return out, fmt.Errorf("unreadable %s FEED cost %q", row.name, raw)
 				}
 				raw = raw[1:]
 			}

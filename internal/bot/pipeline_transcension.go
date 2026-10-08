@@ -22,6 +22,7 @@ type prestigePipeline struct {
 	jobFrame            uint64
 	nextRead, nextCheck time.Time
 	message             string
+	exportsWithoutInput int
 }
 
 func (t *prestigePipeline) report(message string) {
@@ -129,6 +130,25 @@ func (p *gamePipeline) acceptPrestigeSave(ctx context.Context, out exportResult,
 }
 
 func (p *gamePipeline) requestPrestigeExport() {
+	if p.export.requested {
+		return
+	}
+	t := &p.prestige
+	if t.stage() != transcension.Ordinary && t.exportsWithoutInput >= 3 {
+		path := fmt.Sprintf("artifacts/transcension-stalled-%s.png", time.Now().Format("20060102-150405.000"))
+		if p.frame.image != nil {
+			if err := saveImage(path, p.frame.image); err != nil {
+				t.report("stalled diagnostic failed: " + err.Error())
+			} else {
+				fmt.Println("saved Transcension stalled screenshot:", path)
+			}
+		}
+		p.controls.pause(fmt.Sprintf("Transcension made no input progress after 3 exports (stage=%d, last observation=%s); focus the game and press F8 to retry", t.stage(), t.message))
+		return
+	}
+	if t.stage() != transcension.Ordinary {
+		t.exportsWithoutInput++
+	}
 	p.export.requested, p.export.prestigeOnly = true, true
 	p.export.relicsOnly, p.export.goalsOnly, p.export.gildsOnly = false, false, false
 	p.queue = make(map[actionKind]gameAction)

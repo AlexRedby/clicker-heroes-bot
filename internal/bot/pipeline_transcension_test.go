@@ -28,6 +28,63 @@ func TestRunTranscensionIsExplicit(t *testing.T) {
 	}
 }
 
+func TestPrestigeExportLoopStopsUntilInputOrExplicitResume(t *testing.T) {
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
+	for i := 0; i < 4; i++ {
+		p.requestPrestigeExport()
+		if p.controls.isPaused() || p.prestige.exportsWithoutInput != 0 {
+			t.Fatal("ordinary wall assessments consumed the restoration budget")
+		}
+		p.export.requested = false
+	}
+	s := optInPrestigeSave(t, 1, 4, 0, 33, "3e22", 0)
+	journal, err := transcension.OpenJournal(filepath.Join(t.TempDir(), "journal.json"), s.State.ProfileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	p.prestige.controller = transcension.NewController(transcension.Policy{Enabled: true, SkillRate: 1}, nativeTranscensionEvidence(s.State.Build))
+	if err := p.prestige.controller.BindJournal(journal); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if err := p.prestige.controller.Begin(context.Background(), now, s, transcension.Timing{At: now, Generation: s.Generation, SaveHash: s.State.SaveHash, WallConfirmed: true}); err != nil {
+		t.Fatal(err)
+	}
+	owner := p.prestige.controller
+	p.prestige.message = "unreadable FEED cost"
+	for i := 1; i <= 3; i++ {
+		p.requestPrestigeExport()
+		p.requestPrestigeExport() // The same in-flight request is counted once.
+		if p.prestige.exportsWithoutInput != i || !p.export.requested || p.controls.isPaused() {
+			t.Fatal("wrong export budget", i, p.prestige.exportsWithoutInput)
+		}
+		p.export.requested = false // Accepting a save does not count as native progress.
+	}
+	p.requestPrestigeExport()
+	if !p.controls.isPaused() || p.export.requested || p.prestige.controller != owner {
+		t.Fatal("nonprogressing exports continued or lost transaction ownership")
+	}
+	p.prestige.interrupt()
+	if p.prestige.exportsWithoutInput != 3 {
+		t.Fatal("automatic interruption renewed the export budget")
+	}
+	p.controls.toggle()
+	p.reset(p.controls.generation)
+	p.requestPrestigeExport()
+	if p.prestige.exportsWithoutInput != 1 || !p.export.requested {
+		t.Fatal("explicit resume did not allow recovery")
+	}
+	p.actionCompleted(actionResult{action: gameAction{kind: handleTranscension}}, time.Now())
+	if p.prestige.exportsWithoutInput != 1 {
+		t.Fatal("missed input renewed export budget")
+	}
+	p.actionCompleted(actionResult{action: gameAction{kind: handleSummon}, acted: true}, time.Now())
+	if p.prestige.exportsWithoutInput != 0 {
+		t.Fatal("completed native input did not renew export budget")
+	}
+}
+
 func TestPrestigeQueueModalAndRecoveredReset(t *testing.T) {
 	now := time.Now()
 	zone, cycle, asc, gain := 300, 0, 6, 79

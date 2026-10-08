@@ -429,6 +429,7 @@ func replaceJob(ch chan analysisJob, job analysisJob) {
 func (p *gamePipeline) reset(generation uint64) {
 	if generation != p.generation {
 		p.prestige.interrupt()
+		p.prestige.exportsWithoutInput = 0
 		p.gildMove.interrupt()
 		p.invalidateAchievementGoals()
 	}
@@ -1926,6 +1927,9 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.queue = make(map[actionKind]gameAction)
 		p.state = [analysisCount]observation{}
 	case handleTranscension, handleSummon:
+		if done.acted {
+			p.prestige.exportsWithoutInput = 0
+		}
 		p.queue = make(map[actionKind]gameAction)
 		p.prestige.jobFrame, p.prestige.nextRead = 0, time.Time{}
 		p.prestige.outsider, p.prestige.confirmation = outsiderObservation{}, transcensionObservation{}

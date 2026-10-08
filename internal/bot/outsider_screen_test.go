@@ -36,6 +36,27 @@ func TestOutsiderRealScreen(t *testing.T) {
 	}
 }
 
+func TestOutsiderPostTranscensionScreen(t *testing.T) {
+	requireAncientOCR(t)
+	for _, width := range []int{1280, 1920, 2560} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			screen := exportFixture(t, "outsiders-post-transcension.png", width)
+			c, err := recognizedGame(screen)
+			if err != nil || !c.known || !c.outsiders || c.transcension {
+				t.Fatalf("post-reset classification: %+v %v", c, err)
+			}
+			out, err := readOutsiderObservation(context.Background(), gameFrame{image: screen, context: c})
+			if err != nil || !out.known || out.wallet != 75 || out.gain != 0 || out.power != 4.55 || out.quantity != "x1" || out.sacrificed != "2.789e78" || out.nextAS != "1.191e78" {
+				t.Fatalf("post-reset header: %+v %v", out, err)
+			}
+			want := []outsiderScreenRow{{"Xyliqil", 0, 1, true}, {"Chor'gorloth", 7, 8, true}}
+			if !reflect.DeepEqual(out.rows, want) {
+				t.Fatalf("post-reset rows: %+v want %+v", out.rows, want)
+			}
+		})
+	}
+}
+
 func TestOutsiderRejectsOtherTabsAndUnreadableFields(t *testing.T) {
 	requireAncientOCR(t)
 	for _, name := range []string{"hero-economy-x1.png", "ascension-ancients.png", "save-menu.png", "ancient-quantity-filled.png"} {
