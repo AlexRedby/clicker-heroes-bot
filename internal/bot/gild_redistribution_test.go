@@ -85,6 +85,37 @@ func fmtError(err error) string {
 	return "uncertain input"
 }
 
+func TestGildRedistributionReleasesUnclosedRoster(t *testing.T) {
+	now := time.Now()
+	var g gildRedistribution
+	if err := g.install(gildMovePlan(), gildMoveFrame(t, now, 1, 1, false)); err != nil {
+		t.Fatal(err)
+	}
+	roster := gildMoveFrame(t, now.Add(time.Second), 2, 2, true)
+	g.observe(gildRedistributionObservation{frame: roster, roster: true, targetFound: true, targetID: 28, target: image.Pt(260, 150), close: image.Pt(1149, 39)})
+	cmd, ok := g.next(roster.at)
+	if !ok || cmd.action != gildTransferAll {
+		t.Fatal("missing transfer")
+	}
+	g.submitted(cmd, roster.at, nil)
+	for i := 0; i < 4; i++ {
+		roster.id++
+		roster.at = roster.at.Add(time.Second)
+		g.observe(gildRedistributionObservation{frame: roster, roster: true, close: image.Pt(1149, 39)})
+		cmd, ok = g.next(roster.at)
+		if i == 3 {
+			if ok || g.active || !g.blocked {
+				t.Fatal("unclosed roster retained exclusive ownership")
+			}
+		} else {
+			if !ok || cmd.action != gildCloseRoster {
+				t.Fatal("missing bounded close")
+			}
+			g.submitted(cmd, roster.at, nil)
+		}
+	}
+}
+
 func TestGildRedistributionBoundsRetriesAndFailedSearch(t *testing.T) {
 	now := time.Now()
 	source := gildMoveFrame(t, now, 1, 1, false)

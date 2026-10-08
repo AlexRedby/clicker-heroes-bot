@@ -69,15 +69,19 @@ type exportJob struct {
 	goalsOnly, achievements bool
 	initialSetup            bool
 	prestige, prestigeOnly  bool
+	gildsOnly               bool
 	restoreAllocation       bool
 	generation              uint64
 }
 type exportResult struct {
+	at                  time.Time
 	transcension        *transcension.Snapshot
 	transcensionErr     error
 	achievements        *ancientcalc.AchievementState
 	achievementErr      error
 	plan                *ancientPlan
+	gilds               *ancientcalc.GildPlan
+	gildErr             error
 	prestige            *ancientcalc.TranscensionPreview
 	relics              *ancientcalc.RelicPreview
 	relicErr            error
@@ -97,6 +101,7 @@ type saveExporter struct {
 	requested, active, waiting bool
 	relicsOnly                 bool
 	prestigeOnly               bool
+	gildsOnly                  bool
 	goalsOnly                  bool
 	initialSetup               bool
 	step                       exportStep
@@ -271,7 +276,7 @@ func readExport(job exportJob) (exportResult, error) {
 			}
 			return exportResult{}, fmt.Errorf("waiting for new or changed clickerHeroSave*.txt in %q: %w", job.options.dir, err)
 		}
-		var result exportResult
+		result := exportResult{at: time.Now()}
 		prestige := job.prestige || job.prestigeOnly || job.restoreAllocation
 		if prestige {
 			value, err := transcension.ReadSnapshot(job.ctx, data, time.Now().UTC(), job.generation)
@@ -311,7 +316,7 @@ func readExport(job exportJob) (exportResult, error) {
 			result.ancientErr = err
 			allocate = err == nil && len(missing) == 0
 		}
-		if !job.relicsOnly && !job.goalsOnly && allocate {
+		if !job.relicsOnly && !job.goalsOnly && !job.gildsOnly && allocate {
 			value, err := calculateAncientData(job.ctx, data, path, job.options.reserve, job.options.skillRate, job.options.beyond8k)
 			if err != nil {
 				if !job.initialSetup && !prestige {
@@ -334,6 +339,15 @@ func readExport(job exportJob) (exportResult, error) {
 			}
 			if err == nil {
 				result.prestige = &value
+			}
+		}
+		if result.plan != nil {
+			result.gilds = result.plan.Gilds
+		} else if !job.goalsOnly && !job.prestigeOnly {
+			value, err := ancientcalc.CalculateGilds(job.ctx, data, job.options.reserve)
+			result.gildErr = err
+			if err == nil {
+				result.gilds = &value
 			}
 		}
 		if !job.goalsOnly {

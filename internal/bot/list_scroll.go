@@ -28,6 +28,12 @@ type listScrollCommand struct {
 func listScrollAction(a gameAction) (listScrollCommand, bool) {
 	s := listScrollCommand{from: a.point, to: a.target, park: parkPoint(a.frame.context.bounds)}
 	switch {
+	case a.kind == handleGildRedistribution && a.gildMove.action == gildScrollHeroes:
+		if a.target == (image.Point{}) {
+			s.mode, s.direction = listScrollRecord, 5
+		}
+	case a.kind == handleGildRedistribution && a.gildMove.action == gildScrollRoster:
+		s.mode = listScrollFine
 	case a.kind == scrollHeroes:
 		if a.hero.startup && a.hero.sweep.top && a.hero.startupScroll != (image.Point{}) {
 			s.mode = listScrollPage

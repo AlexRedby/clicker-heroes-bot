@@ -38,6 +38,7 @@ type gildRedistribution struct {
 	active, awaitingExport          bool
 	nextAction, attemptedAt         time.Time
 	scrolls, attempts, preparations int
+	closeAttempts                   int
 	lastRoster                      [32]byte
 	waitFrame                       uint64
 	reason                          string
@@ -125,6 +126,11 @@ func (g *gildRedistribution) next(now time.Time) (gildRedistributionCommand, boo
 		g.reason = "gild preparation export expired"
 	}
 	if g.awaitingExport {
+		if u.roster && g.closeAttempts >= 3 {
+			g.active, g.blocked = false, true
+			g.reason = "roster did not close after three inputs; returning to ordinary navigation"
+			return c, false
+		}
 		if u.roster && u.close == (image.Point{}) {
 			g.active, g.blocked = false, true
 			g.reason = "roster close control unavailable; fresh distribution still required"
@@ -186,6 +192,7 @@ func (g *gildRedistribution) submitted(cmd gildRedistributionCommand, now time.T
 	case gildOpenRoster:
 		g.scrolls = 0
 	case gildCloseRoster:
+		g.closeAttempts++
 		if g.stopAfterClose {
 			g.active = false
 		}

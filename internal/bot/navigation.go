@@ -191,6 +191,9 @@ func (p *gamePipeline) planNavigation(now time.Time) (recovering bool) {
 			step = navigationRecovery
 		}
 	case c.modal != noGildModal:
+		if p.gildMoving && p.gildMove.active && c.modal == gildRosterModal {
+			return false
+		}
 		if p.options.gilds && (p.gild.active || c.modal == gildChestModal || c.modal == gildRewardModal) && (p.gild.deadline.IsZero() || now.Before(p.gild.deadline)) && p.gild.attempts < 3 {
 			return false
 		}

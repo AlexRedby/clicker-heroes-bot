@@ -29,6 +29,7 @@ const (
 	autoClickerAnalysis
 	relicAnalysis
 	transcensionAnalysis
+	gildRedistributionAnalysis
 	analysisCount
 )
 
@@ -38,6 +39,7 @@ const (
 	collectFish actionKind = iota
 	navigateGame
 	collectGilds
+	handleGildRedistribution
 	castSkill
 	enableProgression
 	placeOwnedClicker
@@ -86,6 +88,7 @@ type analysisJob struct {
 	outsiderBase  *ancientcalc.TranscensionPreview
 	relicSnapshot *ancientcalc.RelicSnapshot
 	relicHover    bool
+	gildTarget    ancientcalc.GildHero
 }
 type observation struct {
 	kind          analysisKind
@@ -108,6 +111,7 @@ type observation struct {
 	outsiderPlan  outsiderAdvice
 	clickerPool   autoClickerPool
 	relic         relicObservation
+	gildMove      gildRedistributionObservation
 	err           error
 }
 type gameAction struct {
@@ -127,6 +131,7 @@ type gameAction struct {
 	export        *exportCommand
 	clicker       autoClickerCommand
 	relic         relicCommand
+	gildMove      gildRedistributionCommand
 	queuedAt      time.Time
 }
 type actionResult struct {
@@ -216,6 +221,12 @@ type gamePipeline struct {
 	mercenary                                           mercenaryPlanner
 	fish                                                fishClickTracker
 	gild                                                gildCollector
+	gildMove                                            gildRedistribution
+	gildMoving                                          bool
+	gildJobFrame                                        uint64
+	nextGildRead                                        time.Time
+	gildMoveMessage                                     string
+	gildRefreshDue                                      time.Time
 	metrics                                             pipelineMetrics
 	generation, layout                                  uint64
 	nextCapture, nextFish, nextProgression, nextMonster time.Time
@@ -332,6 +343,8 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 		out.clickerPool, out.err = p.readers.autoClickers(ctx, job.frame)
 	case relicAnalysis:
 		out.relic, out.err = readRelicObservation(ctx, job.frame, job.relicSnapshot, job.relicHover)
+	case gildRedistributionAnalysis:
+		out.gildMove, out.err = readGildRedistribution(ctx, job.frame, job.gildTarget)
 	case fishAnalysis:
 		out.point, out.found, out.err = p.readers.fish(job.frame.image)
 	case skillAnalysis:
@@ -415,6 +428,7 @@ func replaceJob(ch chan analysisJob, job analysisJob) {
 func (p *gamePipeline) reset(generation uint64) {
 	if generation != p.generation {
 		p.prestige.interrupt()
+		p.gildMove.interrupt()
 		p.invalidateAchievementGoals()
 	}
 	relicExport := p.relic.active && p.export.relicsOnly && p.export.requested
@@ -445,6 +459,7 @@ func (p *gamePipeline) reset(generation uint64) {
 		p.hero.enabled, p.hero.failures = p.options.heroes, 0
 	}
 	p.gild.interrupt()
+	p.gildJobFrame, p.nextGildRead = 0, time.Time{}
 	p.heroJobFrame = 0
 	p.clickerJobFrame = 0
 	p.nextClickerRead = time.Time{}
@@ -541,6 +556,11 @@ func (p *gamePipeline) run(ctx context.Context) error {
 			p.busy = false
 			p.rememberCompletedSave(done)
 			if done.err != nil {
+				if done.action.kind == handleGildRedistribution {
+					p.gildMove.interrupt()
+					p.reportGildMove("input interrupted; checking current distribution")
+					continue
+				}
 				if done.action.kind == handleTranscension || done.action.kind == handleSummon {
 					p.prestige.interrupt()
 					p.prestige.report("input failed; fresh receipt required: " + done.err.Error())
@@ -708,6 +728,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.relic.latest = relicObservation{}
 			p.ancient.jobFrame = 0
 			p.prestige.jobFrame, p.prestige.nextRead = 0, time.Time{}
+			p.gildJobFrame, p.nextGildRead = 0, time.Time{}
 			p.outsiderJobFrame = 0
 			p.nextOutsider = time.Time{}
 			p.outsiderMessage = ""
@@ -768,6 +789,14 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			}
 			return nil
 		}
+		if p.gildMoving && !p.export.requested {
+			if p.gildJobFrame == 0 && !now.Before(p.nextGildRead) {
+				p.gildJobFrame = p.frame.id
+				replaceJob(jobs[gildRedistributionAnalysis], analysisJob{frame: p.frame, gildTarget: p.gildMove.plan.Target})
+				p.nextGildRead = now.Add(300 * time.Millisecond)
+			}
+			return nil
+		}
 		if c.transcension {
 			return nil
 		}
@@ -811,7 +840,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			if p.export.active && p.export.step == exportReadFile && p.export.jobFrame == 0 && c.window == p.export.window && c.known && !c.saveMenu {
 				jobCtx, cancel := context.WithDeadline(ctx, p.export.deadline)
 				p.export.cancel, p.export.jobFrame = cancel, p.frame.id
-				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before, relicsOnly: p.export.relicsOnly, goalsOnly: p.export.goalsOnly, achievements: p.options.achievements != nil, initialSetup: p.export.initialSetup, prestige: p.options.transcension, prestigeOnly: p.export.prestigeOnly || p.prestige.holdAncients(), restoreAllocation: p.prestige.stage() != transcension.Ordinary, generation: p.generation}})
+				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before, relicsOnly: p.export.relicsOnly, goalsOnly: p.export.goalsOnly, gildsOnly: p.export.gildsOnly, achievements: p.options.achievements != nil, initialSetup: p.export.initialSetup, prestige: p.options.transcension, prestigeOnly: p.export.prestigeOnly || p.prestige.holdAncients(), restoreAllocation: p.prestige.stage() != transcension.Ordinary, generation: p.generation}})
 			}
 			return nil
 		}
@@ -883,6 +912,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 }
 
 func (p *gamePipeline) accept(ctx context.Context, out observation, now time.Time) error {
+	if out.kind == gildRedistributionAnalysis && out.frame.id == p.gildJobFrame {
+		p.gildJobFrame = 0
+	}
 	if out.kind == transcensionAnalysis && out.frame.id == p.prestige.jobFrame {
 		p.prestige.jobFrame = 0
 	}
@@ -950,11 +982,21 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.controls.pauseLocked("Transcension receipt rejected: "+err.Error(), false)
 			return nil
 		}
+		if p.export.gildsOnly {
+			p.acceptGildSave(out.export, out.frame, now)
+			p.export.interrupt()
+			p.export.requested, p.export.gildsOnly = false, false
+			p.queue = make(map[actionKind]gameAction)
+			return nil
+		}
 		if (p.export.prestigeOnly && p.prestige.stage() != transcension.ReadyForAllocation) || p.prestige.holdAncients() && !p.export.initialSetup && !p.export.relicsOnly && !p.export.goalsOnly {
 			p.export.interrupt()
 			p.export.requested, p.export.prestigeOnly = false, false
 			p.queue = make(map[actionKind]gameAction)
 			return nil
+		}
+		if !p.prestige.exclusive() && !p.prestige.holdAncients() {
+			p.acceptGildSave(out.export, out.frame, now)
 		}
 		if goals := p.options.achievements; goals != nil {
 			delete(p.queue, handleMercenary)
@@ -1050,6 +1092,18 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		} else {
 			fmt.Println("save export: fresh plan ready")
 		}
+		return nil
+	}
+	if out.kind == gildRedistributionAnalysis {
+		if !p.gildMoving || out.frame.layout != p.layout || out.frame.generation != p.generation || out.frame.context != p.frame.context {
+			return nil
+		}
+		if out.err != nil {
+			p.gildMove.active, p.gildMoving = false, false
+			p.reportGildMove("controls unreadable; continuing ordinary play: " + out.err.Error())
+			return nil
+		}
+		p.gildMove.observe(out.gildMove)
 		return nil
 	}
 	if out.kind == transcensionAnalysis {
@@ -1163,6 +1217,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 				}
 			}
 			p.progression = progressionPlanner{}
+			p.gildMove, p.gildMoving, p.gildRefreshDue = gildRedistribution{}, false, time.Time{}
 			p.skill.reset()
 			p.clickers = autoClickerPlanner{footerAttempted: !p.options.heroes}
 			p.nextClickerRead = time.Time{}
@@ -1373,6 +1428,9 @@ func (p *gamePipeline) plan(now time.Time) {
 	if p.prestige.exclusive() && p.frame.context.known && !p.frame.context.saveMenu && (p.prestige.stage() != transcension.Uncertain || gameScreenVisible(p.frame.context)) && p.planTranscension(now) {
 		return
 	}
+	if p.gildMoving && !p.export.requested && p.planGildRedistribution(now) {
+		return
+	}
 	if p.planNavigation(now) {
 		return
 	}
@@ -1409,7 +1467,7 @@ func (p *gamePipeline) plan(now time.Time) {
 		p.planAutoClickers(now)
 	}
 	p.planAchievementRefresh()
-	if p.planTranscension(now) || p.planStartup(now) || p.planExport(now) || p.planAncients(now) || p.planRelics(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
+	if p.planTranscension(now) || p.planStartup(now) || p.planExport(now) || p.planAncients(now) || p.planRelics(now) || p.planAscension(now) || p.planGilds(now) || p.planGildRedistribution(now) || !p.frame.context.known {
 		return
 	}
 	if p.options.mercenaries {
@@ -1460,6 +1518,17 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			}
 			delete(p.queue, kind)
 			return action, true
+		}
+		if kind == handleGildRedistribution {
+			delete(p.queue, kind)
+			if p.gildMoving && !p.export.requested && p.gildMove.active && action.frame.generation == p.generation && action.frame.layout == p.layout && action.frame.context == p.frame.context && action.gildMove.saveHash == p.gildMove.plan.SaveHash && gildRedistributionCommandValid(action.gildMove, p.frame) && now.Sub(action.frame.at) <= 2*time.Second {
+				return action, true
+			}
+			continue
+		}
+		if p.gildMoving && kind != collectFish && kind != handleExport {
+			delete(p.queue, kind)
+			continue
 		}
 		if kind == handleTranscension || kind == handleSummon {
 			stable := false
@@ -1671,6 +1740,9 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 		if a.kind == handleRelic && !relicActionStable(a, p.frame) {
 			return errInputContext
 		}
+		if a.kind == handleGildRedistribution && (!p.gildMoving || !p.gildMove.active || a.frame.layout != p.layout || a.frame.context != p.frame.context || a.gildMove.saveHash != p.gildMove.plan.SaveHash || !gildRedistributionCommandValid(a.gildMove, p.frame)) {
+			return errInputContext
+		}
 		if a.kind == handleTranscension {
 			if !p.prestigeActionStable(a, time.Now()) {
 				return errInputContext
@@ -1693,6 +1765,12 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			return scrollList(ctx, input, scroll)
 		}
 		switch a.kind {
+		case handleGildRedistribution:
+			err := executeGildRedistribution(ctx, input, a.gildMove)
+			if err != nil {
+				p.gildMove.submitted(a.gildMove, time.Now(), err)
+			}
+			return err
 		case navigateGame:
 			if a.navigation == navigationFocus {
 				return input.focus(p.navigation.window)
@@ -1834,6 +1912,11 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 	p.fishAfter = p.frame.id
 	invalidate := func(kind analysisKind) { p.barriers[kind] = p.frame.id + 1; p.state[kind] = observation{} }
 	switch a.kind {
+	case handleGildRedistribution:
+		p.gildMove.submitted(a.gildMove, now, nil)
+		p.gildJobFrame, p.nextGildRead = 0, time.Time{}
+		p.queue = make(map[actionKind]gameAction)
+		fmt.Printf("Gild action: %s for %s\n", gildActionLabel(a.gildMove.action), p.gildMove.plan.Target.Name)
 	case navigateGame:
 		p.navigation.nextAction = now.Add(time.Second)
 		p.navigation.report(a.navigation.String())
@@ -1854,6 +1937,11 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.queue = make(map[actionKind]gameAction)
 		p.state = [analysisCount]observation{}
 	case handleAncient:
+		if a.ancient.step == confirmAncientQuantity && p.gildMove.active {
+			// Ancient spending invalidates the saved gild-transfer wallet.
+			p.gildMove.interrupt()
+			p.gildRefreshDue = now
+		}
 		p.ancient.sent(a, now)
 		p.barriers[ancientAnalysis] = p.frame.id + 1
 		p.queue = make(map[actionKind]gameAction)
@@ -1949,6 +2037,9 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		invalidate(heroAnalysis)
 	case buyHeroUpgrades:
 		if p.startup == noStartup {
+			if len(p.gildMove.plan.MissingUpgrades) > 0 {
+				p.gildRefreshDue = now.Add(30 * time.Second)
+			}
 			p.hero.interrupt()
 			invalidate(heroAnalysis)
 			fmt.Println("bought available hero upgrades")
@@ -1959,6 +2050,9 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		invalidate(heroAnalysis)
 
 	case buyHero, scrollHeroes, selectQuantity, parkPointer:
+		if a.kind == buyHero && !a.hero.startup && (!a.hero.owned || p.gildRefreshDue.IsZero() && p.gildMove.plan.Target.ID >= 28 && p.gildMove.plan.Target.ID <= 46 && p.gildMove.plan.Target.Level < 1000 && a.hero.level >= 1000) {
+			p.gildRefreshDue = now.Add(30 * time.Second)
+		}
 		p.hero.sent(a, now)
 		if a.kind == buyHero && a.hero.startup {
 			fmt.Printf("startup: submitted Q/MAX at (%d, %d), attempt %d/2\n", a.point.X, a.point.Y, p.hero.sweep.attempts)
@@ -1994,12 +2088,12 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 func (m *pipelineMetrics) String() string {
 	parts := []string{fmt.Sprintf("captures=%d capture=%s actions=%d input=%s queue=%s stale=%d", m.captures, m.captureTime, m.actions, m.inputTime, m.queueTime, m.dropped)}
 	parts = append(parts, fmt.Sprintf("timings=capture=%s context=%s action-queue=%s ocr-wait=%s ocr-exec=%s wait-polls={%s}", m.captureSamples.Snapshot(), m.contextTime.Snapshot(), m.actionQueueTime.Snapshot(), m.ocrWaitTime.Snapshot(), m.ocrExecutionTime.Snapshot(), m.waitReasons.String()))
-	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers", "relics", "transcension"} {
+	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers", "relics", "transcension", "gild-transfer"} {
 		if summary := m.analysisTime[i].Snapshot(); summary.Window > 0 {
 			parts = append(parts, fmt.Sprintf("%s-time=%s analyzer-queue=%s", name, summary, m.analyzerQueueTime[i].Snapshot()))
 		}
 	}
-	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers", "relics", "transcension"} {
+	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers", "relics", "transcension", "gild-transfer"} {
 		parts = append(parts, fmt.Sprintf("%s=%d/%s", name, m.counts[i], m.elapsed[i]))
 	}
 	return strings.Join(parts, " ")
