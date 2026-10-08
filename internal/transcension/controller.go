@@ -129,6 +129,8 @@ type Command struct {
 // error or F8 calls Interrupt; neither reset nor FEED is replayed automatically.
 type Controller struct {
 	journal           *Journal
+	summonPlanner     *SummonPlanner
+	summon            *summonReservation
 	recoveryStage     Stage
 	earningAfter      int
 	earningSouls      string
@@ -217,7 +219,7 @@ func (c *Controller) Begin(ctx context.Context, now time.Time, s Snapshot, timin
 	if c.journal == nil || c.journal.profile != state.ProfileID {
 		return errors.New("durable journal bound to this profile required")
 	}
-	*c = Controller{policy: c.policy, native: c.native, journal: c.journal, snapshot: cloneSnapshot(s), stage: AwaitOutsiders, deadline: now.Add(30 * time.Second)}
+	*c = Controller{policy: c.policy, native: c.native, journal: c.journal, summonPlanner: c.summonPlanner, snapshot: cloneSnapshot(s), stage: AwaitOutsiders, deadline: now.Add(30 * time.Second)}
 	return c.commit()
 }
 
@@ -234,6 +236,9 @@ func (c *Controller) stop(reason string) {
 		c.recoveryStage = c.stage
 	}
 	c.stage, c.reason = Uncertain, reason
+	if c.summonPlanner != nil && c.summonPlanner.active {
+		c.summonPlanner.uncertain, c.summonPlanner.reason = true, reason
+	}
 }
 
 func (c *Controller) Interrupt() {
@@ -427,10 +432,19 @@ func (c *Controller) AcceptExport(ctx context.Context, now time.Time, s Snapshot
 	if err := validateSnapshot(ctx, s); err != nil {
 		return fail(err)
 	}
-	needsReceipt := c.stage == AwaitResetReceipt || c.stage == AwaitFeedReceipt
+	needsReceipt := c.stage == AwaitResetReceipt || c.stage == AwaitFeedReceipt || c.summon != nil
 	if s.Generation != c.snapshot.Generation || !fresh(now, s.ExportedAt, 30*time.Second) || !s.ExportedAt.After(c.inputAt) || !s.ExportedAt.After(c.snapshot.ExportedAt) || needsReceipt && s.State.SaveHash == c.snapshot.State.SaveHash {
 		return fail(errors.New("stale Transcension receipt/export"))
 	}
+	if c.summon == nil && c.summonPlanner != nil && c.summonPlanner.active && !c.summonPlanner.Complete() {
+		if c.summonPlanner.pending != (SummonCommand{}) {
+			return fail(errors.New("pending Ancient summon lost durable ownership"))
+		}
+		if err := c.summonPlanner.verifyUnchanged(ctx, now, s); err != nil {
+			return fail(err)
+		}
+	}
+	var restoredMissing []ancientcalc.AncientRequirement
 	switch c.stage {
 	case AwaitResetReceipt:
 		if err := ancientcalc.VerifyTranscensionReceipt(ctx, c.snapshot.State, s.State, c.reward); err != nil {
@@ -447,6 +461,14 @@ func (c *Controller) AcceptExport(ctx context.Context, now time.Time, s Snapshot
 		}
 		c.stage = SpendOutsiders
 	case AwaitFirstSouls, AwaitAncients:
+		if c.summon != nil {
+			if c.stage != AwaitAncients || !s.ExportedAt.After(c.summon.InputAt) {
+				return fail(errors.New("fresh pending Ancient summon receipt required"))
+			}
+			if err := VerifyAncientSummonReceipt(ctx, c.snapshot.State, s.State, c.summon.Pending.Offer); err != nil {
+				return fail(err)
+			}
+		}
 		if !sameCycle(c.snapshot.State, s.State) || !slices.Equal(c.snapshot.State.Outsiders, s.State.Outsiders) || s.State.Ascensions < c.snapshot.State.Ascensions || s.State.AscensionsThisTranscension < c.snapshot.State.AscensionsThisTranscension || s.State.HighestZone < c.snapshot.State.HighestZone {
 			return fail(errors.New("profile/cycle or Outsider ledger changed during restoration"))
 		}
@@ -467,6 +489,7 @@ func (c *Controller) AcceptExport(ctx context.Context, now time.Time, s Snapshot
 		if err != nil {
 			return fail(err)
 		}
+		restoredMissing = missing
 		if len(missing) == 0 {
 			c.stage = ReadyForAllocation
 		} else {
@@ -474,8 +497,15 @@ func (c *Controller) AcceptExport(ctx context.Context, now time.Time, s Snapshot
 		}
 	}
 	c.snapshot, c.pending, c.exportRequested = cloneSnapshot(s), Command{}, false
+	c.summon = nil
 	c.scrolls, c.deadline = 0, now.Add(30*time.Second)
-	return c.commit()
+	if err := c.commit(); err != nil {
+		return err
+	}
+	if c.summonPlanner != nil && c.summonPlanner.active {
+		c.summonPlanner.refresh(s, restoredMissing)
+	}
+	return nil
 }
 
 func (c *Controller) MissingAncients(ctx context.Context) ([]ancientcalc.AncientRequirement, error) {
@@ -485,13 +515,15 @@ func (c *Controller) MissingAncients(ctx context.Context) ([]ancientcalc.Ancient
 // Reconcile never retries a pending destructive input. It only accepts its exact
 // fresh receipt, including after F8 changes the capture generation.
 func (c *Controller) Reconcile(ctx context.Context, now time.Time, s Snapshot) error {
-	if c.stage != Uncertain || c.pending.Action != ConfirmReset && c.pending.Action != FeedOutsider {
-		return errors.New("no pending reset/FEED receipt to reconcile")
+	if c.stage != Uncertain || c.pending.Action != ConfirmReset && c.pending.Action != FeedOutsider && c.summon == nil {
+		return errors.New("no pending reset/FEED/summon receipt to reconcile")
 	}
 	next := *c
 	next.snapshot = cloneSnapshot(c.snapshot)
 	next.snapshot.Generation = s.Generation
-	if c.pending.Action == ConfirmReset {
+	if c.summon != nil {
+		next.stage = AwaitAncients
+	} else if c.pending.Action == ConfirmReset {
 		next.stage = AwaitResetReceipt
 	} else {
 		next.stage = AwaitFeedReceipt
@@ -523,6 +555,7 @@ func (c *Controller) BindJournal(journal *Journal) error {
 		c.snapshot, c.targets, c.pending = cloneSnapshot(s.Snapshot), append([]ancientcalc.OutsiderTarget(nil), s.Targets...), s.Pending
 		c.inputAt, c.reward, c.recoveryStage = s.InputAt, s.Reward, s.Stage
 		c.earningAfter, c.earningSouls = s.EarningAfter, s.EarningSouls
+		c.summon = cloneSummonReservation(s.Summon)
 		c.stage, c.reason = Uncertain, "durable Transcension ownership requires fresh-export recovery"
 	}
 	return nil
@@ -543,6 +576,7 @@ func (c *Controller) commit() error {
 		s.Snapshot.Preview = ancientcalc.TranscensionPreview{}
 		s.Targets, s.Pending, s.InputAt, s.Reward = append([]ancientcalc.OutsiderTarget(nil), c.targets...), c.pending, c.inputAt, c.reward
 		s.EarningAfter, s.EarningSouls = c.earningAfter, c.earningSouls
+		s.Summon = cloneSummonReservation(c.summon)
 	}
 	if err := c.journal.save(s); err != nil {
 		c.stop("Transcension journal persistence failed: " + err.Error())
@@ -552,12 +586,12 @@ func (c *Controller) commit() error {
 }
 
 // Recover handles both submitted inputs and interruptions between inputs. It
-// never replays a pending reset/FEED, and clears all old capture ownership.
+// never replays a pending reset/FEED/summon, and clears old capture ownership.
 func (c *Controller) Recover(ctx context.Context, now time.Time, s Snapshot) error {
 	if c.stage != Uncertain {
 		return errors.New("no uncertain Transcension state to recover")
 	}
-	if c.pending.Action == ConfirmReset || c.pending.Action == FeedOutsider {
+	if c.pending.Action == ConfirmReset || c.pending.Action == FeedOutsider || c.summon != nil {
 		return c.Reconcile(ctx, now, s)
 	}
 	if err := validateSnapshot(ctx, s); err != nil {
@@ -571,6 +605,7 @@ func (c *Controller) Recover(ctx context.Context, now time.Time, s Snapshot) err
 	next.snapshot = cloneSnapshot(c.snapshot)
 	next.snapshot.Generation = s.Generation
 	next.stage = c.recoveryStage
+	persisted := false
 	switch next.stage {
 	case AwaitOutsiders, AwaitConfirmation:
 		// No reset was submitted. Abandon the old decision; root cancels an
@@ -587,6 +622,7 @@ func (c *Controller) Recover(ctx context.Context, now time.Time, s Snapshot) err
 		if err := next.AcceptExport(ctx, now, s); err != nil {
 			return err
 		}
+		persisted = true
 	case ReadyForAllocation:
 		if !sameCycle(old, s.State) || !slices.Equal(old.Outsiders, s.State.Outsiders) {
 			return errors.New("unowned changes before Ancient allocation recovery")
@@ -600,10 +636,15 @@ func (c *Controller) Recover(ctx context.Context, now time.Time, s Snapshot) err
 	}
 	next.snapshot, next.latest, next.lastFrame, next.reason = cloneSnapshot(s), Observation{}, 0, ""
 	next.deadline = now.Add(30 * time.Second)
-	if err := next.commit(); err != nil {
-		return err
+	if !persisted {
+		if err := next.commit(); err != nil {
+			return err
+		}
 	}
 	*c = next
+	if !persisted && c.stage == ReadyForAllocation && c.summonPlanner != nil && c.summonPlanner.active {
+		c.summonPlanner.refresh(s, nil)
+	}
 	return nil
 }
 
@@ -611,7 +652,7 @@ func (c *Controller) Recover(ctx context.Context, now time.Time, s Snapshot) err
 // required offers are unaffordable, keep ordinary earning/Ascension running.
 // The caller must first end its owned summon visit without a pending purchase.
 func (c *Controller) ContinueEarning() error {
-	if c.stage != AwaitAncients || c.pending != (Command{}) {
+	if c.stage != AwaitAncients || c.pending != (Command{}) || c.summon != nil || c.summonPlanner != nil && c.summonPlanner.active {
 		return errors.New("cannot continue earning with unresolved restoration input")
 	}
 	c.stage, c.reason = AwaitFirstSouls, "earn more Hero Souls before the next summon visit"
@@ -622,11 +663,17 @@ func (c *Controller) ContinueEarning() error {
 // CompleteAllocation is called only after the ordinary fresh-save Ancient
 // allocator and its purchase/return handoff finish; it does not grant summoning.
 func (c *Controller) CompleteAllocation(saveHash string) error {
-	if c.stage != ReadyForAllocation || saveHash != c.snapshot.State.SaveHash {
+	if c.stage != ReadyForAllocation || c.summon != nil || saveHash != c.snapshot.State.SaveHash {
 		return errors.New("Ancient restoration is incomplete")
 	}
 	c.stage, c.reason = Ordinary, ""
-	return c.commit()
+	if err := c.commit(); err != nil {
+		return err
+	}
+	if c.summonPlanner != nil {
+		c.summonPlanner.active = false
+	}
+	return nil
 }
 
 func cloneSnapshot(s Snapshot) Snapshot {

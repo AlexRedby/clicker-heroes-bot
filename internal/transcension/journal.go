@@ -35,6 +35,7 @@ type journalState struct {
 	Reward       int
 	EarningAfter int
 	EarningSouls string
+	Summon       *summonReservation `json:",omitempty"`
 }
 
 type journalEnvelope struct {
@@ -169,7 +170,7 @@ func validateJournalState(s journalState, profile string) error {
 		return errors.New("journal profile or stage mismatch")
 	}
 	if s.Stage == Ordinary {
-		if s.Pending != (Command{}) || s.Reward != 0 || len(s.Targets) != 0 || s.Snapshot.State.SaveHash != "" {
+		if s.Pending != (Command{}) || s.Summon != nil || s.Reward != 0 || len(s.Targets) != 0 || s.Snapshot.State.SaveHash != "" {
 			return errors.New("ordinary journal contains unfinished ownership")
 		}
 		return nil
@@ -179,6 +180,14 @@ func validateJournalState(s journalState, profile string) error {
 	}
 	if s.Snapshot.State.ProfileID != profile || s.Snapshot.ExportedAt.IsZero() {
 		return errors.New("journal source identity/time missing")
+	}
+	if s.Summon != nil {
+		if s.Stage != AwaitAncients || s.Pending != (Command{}) || !s.InputAt.Equal(s.Summon.InputAt) {
+			return errors.New("journal summon has conflicting stage/input ownership")
+		}
+		if err := validateSummonReservation(s.Snapshot, *s.Summon); err != nil {
+			return err
+		}
 	}
 	if s.EarningAfter < 0 || s.EarningAfter > s.Snapshot.State.AscensionsThisTranscension {
 		return errors.New("invalid journal earning cycle")

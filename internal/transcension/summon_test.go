@@ -2,6 +2,8 @@ package transcension
 
 import (
 	"context"
+	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +23,14 @@ func summonFixture() (Snapshot, SummonOffer) {
 func newSummon(t *testing.T, s Snapshot, accepted bool) *SummonPlanner {
 	t.Helper()
 	p := NewSummonPlanner(Policy{Enabled: true, SkillRate: 1}, NativeEvidence{Build: s.State.Build, AncientSummon: accepted})
+	c := newTestController(t, p.policy, p.native)
+	c.snapshot, c.stage = cloneSnapshot(s), AwaitAncients
+	if err := c.commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.BindController(c); err != nil {
+		t.Fatal(err)
+	}
 	if err := p.Begin(context.Background(), s.ExportedAt, s); err != nil {
 		t.Fatal(err)
 	}
@@ -164,6 +174,9 @@ func TestSummonShortfallHandsBackToOrdinaryEarning(t *testing.T) {
 	}
 	s.ExportedAt = s.ExportedAt.Add(time.Second)
 	s.State.SaveHash, s.State.HeroSouls = strings.Repeat("d", 64), "3"
+	if err := p.owner.AcceptExport(context.Background(), s.ExportedAt, s); err != nil {
+		t.Fatal(err)
+	}
 	if err := p.Begin(context.Background(), s.ExportedAt, s); err != nil {
 		t.Fatal("fresh earning export could not resume restoration", err)
 	}
@@ -263,5 +276,197 @@ func TestSummonReceiptPreservesPreviouslyOwnedAncients(t *testing.T) {
 	after.State.Ancients[0].Level = "3"
 	if err := VerifyAncientSummonReceipt(context.Background(), before.State, after.State, offer); err == nil {
 		t.Fatal("leveling an old Ancient shared the summon receipt")
+	}
+}
+
+func TestSummonNonpendingF8RecoveryClearsOldSelection(t *testing.T) {
+	for _, screen := range []SummonScreen{SummonGameScreen, SummonAncientsScreen, SummonOffersScreen, SummonConfirmationScreen} {
+		for _, controllerFirst := range []bool{false, true} {
+			s, offer := summonFixture()
+			p := newSummon(t, s, true)
+			var old SummonCommand
+			if screen == SummonConfirmationScreen {
+				p.Observe(offerObservation(s, offer))
+				old = reserveSummon(t, p, s.ExportedAt, ChooseAncientOffer)
+			}
+			p.Observe(SummonObservation{Frame: 2, Generation: s.Generation, At: s.ExportedAt, Screen: screen, Known: true})
+			p.Interrupt()
+			after := cloneSnapshot(s)
+			after.Generation++
+			after.ExportedAt = after.ExportedAt.Add(time.Second)
+			var err error
+			if controllerFirst {
+				err = p.owner.Recover(context.Background(), after.ExportedAt, after)
+			} else {
+				err = p.Recover(context.Background(), after.ExportedAt, after)
+			}
+			if err != nil || p.uncertain || p.pending != (SummonCommand{}) || p.selected != (SummonOffer{}) || p.latest.Frame != 0 || p.Allowed(after.ExportedAt, old) {
+				t.Fatal("nonpending recovery", screen, controllerFirst, err)
+			}
+			// The old confirmation has no selection authority. Its free cancel
+			// belongs to shared navigation, then a fresh offer can be selected.
+			o := offerObservation(after, offer)
+			o.Screen, o.ConfirmKnown, o.CancelKnown = SummonConfirmationScreen, true, true
+			p.Observe(o)
+			if p.Next(after.ExportedAt).Action != NoSummonAction {
+				t.Fatal("orphaned confirmation was purchased")
+			}
+			o.Frame, o.Screen = 2, SummonOffersScreen
+			p.Observe(o)
+			reserveSummon(t, p, after.ExportedAt, ChooseAncientOffer)
+		}
+	}
+}
+
+func TestControllerRecoveryCannotBypassInterruptedSummonOwnership(t *testing.T) {
+	for _, change := range []func(*Snapshot){
+		func(s *Snapshot) { s.State.HeroSouls = "99" },
+		func(s *Snapshot) { s.State.Ancients = []ancientcalc.Level{{ID: 19, Name: "Fragsworth", Level: "1"}} },
+	} {
+		s, offer := summonFixture()
+		p := newSummon(t, s, true)
+		p.Observe(offerObservation(s, offer))
+		reserveSummon(t, p, s.ExportedAt, ChooseAncientOffer)
+		p.Interrupt()
+		after := cloneSnapshot(s)
+		after.Generation++
+		after.ExportedAt = after.ExportedAt.Add(time.Second)
+		change(&after)
+		if p.owner.Recover(context.Background(), after.ExportedAt, after) == nil || !p.uncertain || p.Next(after.ExportedAt).Action != NoSummonAction {
+			t.Fatal("generic recovery accepted interference during summon selection")
+		}
+	}
+}
+
+func reopenedSummon(t *testing.T, p *SummonPlanner) *SummonPlanner {
+	t.Helper()
+	c := reopenController(t, p.owner)
+	next := NewSummonPlanner(p.policy, p.native)
+	if err := next.BindController(c); err != nil {
+		t.Fatal(err)
+	}
+	return next
+}
+
+func TestSummonRestartRequiresExactReceiptThroughController(t *testing.T) {
+	p, before, offer := pendingSummon(t)
+	p = reopenedSummon(t, p)
+	if !p.uncertain || p.selected != offer || p.pending.Action != ConfirmAncientSummon || p.inputAt.IsZero() || p.Next(before.ExportedAt).Action != NoSummonAction {
+		t.Fatal("restart lost pending summon ownership")
+	}
+	after := summonReceipt(before, offer)
+	after.Generation++
+	wrong := cloneSnapshot(after)
+	wrong.State.HeroSouls = "97"
+	if p.owner.Recover(context.Background(), wrong.ExportedAt, wrong) == nil || p.owner.summon == nil {
+		t.Fatal("generic changed roster/wallet bypassed exact summon receipt")
+	}
+	if err := p.owner.Recover(context.Background(), after.ExportedAt, after); err != nil {
+		t.Fatal(err)
+	}
+	if p.uncertain || p.pending != (SummonCommand{}) || p.owner.summon != nil || p.snapshot.State.SaveHash != after.State.SaveHash {
+		t.Fatal("controller receipt left the bound planner stale")
+	}
+	// A second restart must retain the accepted receipt without another debit.
+	p = reopenedSummon(t, p)
+	after.ExportedAt = after.ExportedAt.Add(time.Second)
+	after.Generation++
+	if err := p.owner.Recover(context.Background(), after.ExportedAt, after); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Begin(context.Background(), after.ExportedAt, after); err != nil {
+		t.Fatal(err)
+	}
+	for _, missing := range p.MissingAncients() {
+		if missing.ID == offer.ID {
+			t.Fatal("accepted summon became missing after restart")
+		}
+	}
+}
+
+func TestSummonPersistenceFailureStopsBeforePurchase(t *testing.T) {
+	for _, afterRename := range []bool{false, true} {
+		s, offer := summonFixture()
+		p := newSummon(t, s, true)
+		o := offerObservation(s, offer)
+		p.Observe(o)
+		reserveSummon(t, p, s.ExportedAt, ChooseAncientOffer)
+		o.Frame, o.Screen, o.ConfirmKnown, o.CancelKnown = 2, SummonConfirmationScreen, true, true
+		p.Observe(o)
+		cmd := p.Next(s.ExportedAt)
+		fileSync, dirSync := journalSyncFile, journalSyncDirectory
+		injected := errors.New("injected summon journal failure")
+		if afterRename {
+			journalSyncDirectory = func(string) error { return injected }
+		} else {
+			journalSyncFile = func(*os.File) error { return injected }
+		}
+		err := p.Reserve(s.ExportedAt, cmd)
+		journalSyncFile, journalSyncDirectory = fileSync, dirSync
+		if err == nil || !p.uncertain || p.owner.Stage() != Uncertain || p.Next(s.ExportedAt).Action != NoSummonAction {
+			t.Fatal("failed durable summon reservation authorized input", afterRename)
+		}
+		p = reopenedSummon(t, p)
+		if (p.pending.Action == ConfirmAncientSummon) != afterRename {
+			t.Fatal("wrong durable checkpoint after persistence failure", afterRename)
+		}
+		if afterRename {
+			s.ExportedAt = s.ExportedAt.Add(time.Second)
+			s.Generation++
+			if p.owner.Recover(context.Background(), s.ExportedAt, s) == nil {
+				t.Fatal("unchanged wallet replayed uncertain summon after restart")
+			}
+		}
+	}
+}
+
+func TestControllerSummonReceiptSynchronizesDespiteCancellationDuringCommit(t *testing.T) {
+	for _, interrupted := range []bool{false, true} {
+		p, before, offer := pendingSummon(t)
+		after := summonReceipt(before, offer)
+		if interrupted {
+			p.Interrupt()
+			after.Generation++
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		syncFile := journalSyncFile
+		journalSyncFile = func(file *os.File) error {
+			cancel()
+			return syncFile(file)
+		}
+		var err error
+		if interrupted {
+			err = p.owner.Recover(ctx, after.ExportedAt, after)
+		} else {
+			err = p.owner.AcceptExport(ctx, after.ExportedAt, after)
+		}
+		journalSyncFile = syncFile
+		cancel()
+		if err != nil || p.owner.summon != nil || p.pending != (SummonCommand{}) || p.uncertain || p.snapshot.State.SaveHash != after.State.SaveHash {
+			t.Fatal("durable receipt left planner stale after cancellation", interrupted, err)
+		}
+		other := SummonOffer{ID: 15, Name: "Bhaal", Cost: "2", InitialLevel: "1", Known: true}
+		p.Observe(offerObservation(after, other))
+		reserveSummon(t, p, after.ExportedAt, ChooseAncientOffer)
+	}
+}
+
+func TestJournalRejectsInvalidSummonOwnership(t *testing.T) {
+	p, _, _ := pendingSummon(t)
+	for _, change := range []func(*journalState){
+		func(s *journalState) { s.Stage = AwaitFirstSouls },
+		func(s *journalState) { s.Summon.Pending.Offer.Cost = "3" },
+		func(s *journalState) { s.Summon.Pending.Generation++ },
+		func(s *journalState) { s.Summon.InputAt = s.Snapshot.ExportedAt.Add(-time.Second) },
+		func(s *journalState) {
+			s.Summon.Pending.Offer.Cost, s.Summon.Selected.Cost = "101", "101"
+		},
+	} {
+		s := p.owner.journal.state
+		s.Summon = cloneSummonReservation(s.Summon)
+		change(&s)
+		if validateJournalState(s, s.ProfileID) == nil {
+			t.Fatal("invalid durable summon ownership accepted")
+		}
 	}
 }

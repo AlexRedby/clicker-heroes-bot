@@ -59,10 +59,46 @@ type SummonCommand struct {
 	Offer                     SummonOffer
 }
 
-// SummonPlanner is an independent, required-only restoration transaction. It
-// emits commands for the existing shared input owner, never captures or inputs.
+type summonReservation struct {
+	Selected SummonOffer
+	Pending  SummonCommand
+	InputAt  time.Time
+}
+
+func cloneSummonReservation(s *summonReservation) *summonReservation {
+	if s == nil {
+		return nil
+	}
+	copy := *s
+	return &copy
+}
+
+func validateSummonReservation(s Snapshot, r summonReservation) error {
+	cmd := r.Pending
+	if cmd.Action != ConfirmAncientSummon || cmd.Offer != r.Selected || cmd.SaveHash != s.State.SaveHash || cmd.Generation != s.Generation || cmd.Frame == 0 || r.InputAt.IsZero() || r.InputAt.Before(s.ExportedAt) || !s.State.Transcendent || s.State.AscensionsThisTranscension <= 0 {
+		return errors.New("invalid pending Ancient summon ownership")
+	}
+	missing, err := ancientcalc.MissingActiveAncients(context.Background(), s.State, 1, true)
+	if err != nil {
+		return err
+	}
+	p := SummonPlanner{missing: missing}
+	wallet, err := exactSummonAmount(s.State.HeroSouls, false)
+	if err != nil || !p.required(r.Selected) {
+		return errors.New("pending summon is not a known missing Active Ancient")
+	}
+	cost, _ := exactSummonAmount(r.Selected.Cost, false)
+	if wallet.Cmp(cost) < 0 {
+		return errors.New("pending Ancient summon exceeds owned Hero Souls")
+	}
+	return nil
+}
+
+// SummonPlanner restores required Ancients through the Controller's journal.
+// It emits commands for the shared input owner, never captures or inputs.
 // There is no reroll, ruby purchase, respec, or retry of an uncertain summon.
 type SummonPlanner struct {
+	owner             *Controller
 	policy            Policy
 	native            NativeEvidence
 	snapshot          Snapshot
@@ -82,7 +118,42 @@ func NewSummonPlanner(policy Policy, native NativeEvidence) *SummonPlanner {
 	return &SummonPlanner{policy: policy, native: native}
 }
 
+// BindController shares the profile journal and single restoration owner. A
+// pending summon reopened from disk remains uncertain until its exact receipt.
+func (p *SummonPlanner) BindController(c *Controller) error {
+	if p.owner != nil || p.active || c == nil || c.journal == nil || c.summonPlanner != nil || c.pending != (Command{}) || p.policy != c.policy {
+		return errors.New("summon requires the exclusive journal-backed restoration controller")
+	}
+	c.journal.mu.Lock()
+	err := c.journal.ensure()
+	c.journal.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	var missing []ancientcalc.AncientRequirement
+	if c.summon != nil {
+		var err error
+		missing, err = ancientcalc.MissingActiveAncients(context.Background(), c.snapshot.State, p.policy.SkillRate, p.policy.Beyond8k)
+		if err != nil {
+			return err
+		}
+	}
+	p.owner, c.summonPlanner = c, p
+	if c.summon != nil {
+		p.snapshot, p.missing = cloneSnapshot(c.snapshot), missing
+		p.pending, p.selected, p.inputAt = c.summon.Pending, c.summon.Selected, c.summon.InputAt
+		p.active, p.uncertain, p.reason = true, true, "durable Ancient summon requires exact fresh-export recovery"
+	}
+	return nil
+}
+
+func (p *SummonPlanner) ownsSource() bool {
+	c := p.owner
+	return c != nil && c.summonPlanner == p && c.stage == AwaitAncients && c.policy == p.policy && c.policy.Enabled && c.snapshot.State.SaveHash == p.snapshot.State.SaveHash && c.snapshot.Generation == p.snapshot.Generation && c.snapshot.ExportedAt.Equal(p.snapshot.ExportedAt)
+}
+
 func (p *SummonPlanner) Reason() string { return p.reason }
+func (p *SummonPlanner) Active() bool   { return p.active }
 func (p *SummonPlanner) Complete() bool {
 	return p.active && !p.uncertain && p.pending.Action == NoSummonAction && len(p.missing) == 0
 }
@@ -95,7 +166,7 @@ func (p *SummonPlanner) MissingAncients() []ancientcalc.AncientRequirement {
 // remain a blocker; missing offers never acquire an invented aggregate cost.
 func (p *SummonPlanner) NeedsMoreSouls(now time.Time) bool {
 	o := p.latest
-	if !p.active || p.uncertain || p.pending.Action != NoSummonAction || p.selected != (SummonOffer{}) || !p.native.AncientSummon || p.native.Build != p.snapshot.State.Build || !o.Known || o.Screen != SummonOffersScreen || o.Frame == 0 || o.Frame <= p.lastFrame || o.Generation != p.snapshot.Generation || !fresh(now, o.At, 5*time.Second) || !fresh(now, p.snapshot.ExportedAt, 30*time.Second) {
+	if !p.ownsSource() || !p.active || p.uncertain || p.pending.Action != NoSummonAction || p.selected != (SummonOffer{}) || !p.native.AncientSummon || !p.owner.native.AncientSummon || p.native.Build != p.snapshot.State.Build || p.owner.native.Build != p.snapshot.State.Build || !o.Known || o.Screen != SummonOffersScreen || o.Frame == 0 || o.Frame <= p.lastFrame || o.Generation != p.snapshot.Generation || !fresh(now, o.At, 5*time.Second) || !fresh(now, p.snapshot.ExportedAt, 30*time.Second) {
 		return false
 	}
 	wallet, we := exactSummonAmount(o.Wallet, false)
@@ -143,6 +214,10 @@ func (p *SummonPlanner) Begin(ctx context.Context, now time.Time, s Snapshot) er
 	if !p.policy.Enabled {
 		return errors.New("Transcension disabled")
 	}
+	if p.owner == nil || p.owner.stage != AwaitAncients || p.owner.policy != p.policy || p.owner.summonPlanner != p || p.owner.summon != nil || p.owner.snapshot.State.SaveHash != s.State.SaveHash || p.owner.snapshot.Generation != s.Generation || !p.owner.snapshot.ExportedAt.Equal(s.ExportedAt) {
+		return errors.New("fresh journal-backed AwaitAncients source required")
+	}
+	s = cloneSnapshot(p.owner.snapshot)
 	if err := validateSnapshot(ctx, s); err != nil {
 		return err
 	}
@@ -157,7 +232,7 @@ func (p *SummonPlanner) Begin(ctx context.Context, now time.Time, s Snapshot) er
 	if err != nil {
 		return err
 	}
-	*p = SummonPlanner{policy: p.policy, native: p.native, snapshot: cloneSnapshot(s), missing: missing, active: true}
+	*p = SummonPlanner{owner: p.owner, policy: p.policy, native: p.native, snapshot: cloneSnapshot(s), missing: missing, active: true}
 	return nil
 }
 
@@ -199,7 +274,7 @@ func (p *SummonPlanner) required(offer SummonOffer) bool {
 func (p *SummonPlanner) Next(now time.Time) SummonCommand {
 	o := p.latest
 	cmd := SummonCommand{Frame: o.Frame, Generation: o.Generation, Layout: o.Layout, SaveHash: p.snapshot.State.SaveHash}
-	if !p.active || p.uncertain || len(p.missing) == 0 {
+	if !p.ownsSource() || !p.active || p.uncertain || len(p.missing) == 0 {
 		return cmd
 	}
 	if p.pending.Action == ConfirmAncientSummon {
@@ -221,7 +296,7 @@ func (p *SummonPlanner) Next(now time.Time) SummonCommand {
 			cmd.Action = ScrollSummonAncientsUp
 		}
 	case SummonOffersScreen, SummonConfirmationScreen:
-		if !p.native.AncientSummon || p.native.Build != p.snapshot.State.Build {
+		if !p.native.AncientSummon || !p.owner.native.AncientSummon || p.native.Build != p.snapshot.State.Build || p.owner.native.Build != p.snapshot.State.Build {
 			return cmd
 		}
 		wallet, we := exactSummonAmount(o.Wallet, false)
@@ -273,6 +348,12 @@ func (p *SummonPlanner) Reserve(now time.Time, cmd SummonCommand) error {
 		p.selected = cmd.Offer
 	case ConfirmAncientSummon:
 		p.pending, p.inputAt, p.exportRequested = cmd, now, false
+		p.owner.summon = &summonReservation{Selected: p.selected, Pending: cmd, InputAt: now}
+		p.owner.inputAt = now
+		if err := p.owner.commit(); err != nil {
+			p.uncertain, p.reason = true, err.Error()
+			return err
+		}
 	case ExportSummonReceipt:
 		p.exportRequested = true
 	}
@@ -282,31 +363,35 @@ func (p *SummonPlanner) Reserve(now time.Time, cmd SummonCommand) error {
 func (p *SummonPlanner) Interrupt() {
 	if p.active && !p.Complete() {
 		p.uncertain, p.reason = true, "Ancient summon interrupted; reconcile fresh ownership and wallet before further input"
+		p.owner.Interrupt()
 	}
 }
 
 func (p *SummonPlanner) AcceptExport(ctx context.Context, now time.Time, after Snapshot) error {
-	fail := func(err error) error { p.uncertain, p.reason = true, err.Error(); return err }
+	fail := func(err error) error {
+		p.uncertain, p.reason = true, err.Error()
+		if p.owner != nil {
+			p.owner.Interrupt()
+		}
+		return err
+	}
 	if p.pending.Action != ConfirmAncientSummon {
 		return errors.New("no reserved Ancient summon receipt expected")
 	}
-	if err := validateSnapshot(ctx, after); err != nil {
+	if p.uncertain || !p.ownsSource() || p.owner.summon == nil || p.owner.summon.Pending != p.pending {
+		return fail(errors.New("owned pending Ancient summon requires recovery"))
+	}
+	if err := p.owner.AcceptExport(ctx, now, after); err != nil {
 		return fail(err)
 	}
-	if after.Generation != p.snapshot.Generation || !fresh(now, after.ExportedAt, 30*time.Second) || !after.ExportedAt.After(p.inputAt) || !after.ExportedAt.After(p.snapshot.ExportedAt) || after.State.SaveHash == p.snapshot.State.SaveHash {
-		return fail(errors.New("stale Ancient summon receipt"))
-	}
-	if err := VerifyAncientSummonReceipt(ctx, p.snapshot.State, after.State, p.pending.Offer); err != nil {
-		return fail(err)
-	}
-	missing, err := ancientcalc.MissingActiveAncients(ctx, after.State, p.policy.SkillRate, p.policy.Beyond8k)
-	if err != nil {
-		return fail(err)
-	}
-	p.snapshot, p.missing = cloneSnapshot(after), missing
-	p.selected, p.pending, p.latest = SummonOffer{}, SummonCommand{}, SummonObservation{}
-	p.exportRequested, p.uncertain, p.reason = false, false, ""
 	return nil
+}
+
+func (p *SummonPlanner) refresh(s Snapshot, missing []ancientcalc.AncientRequirement) {
+	p.snapshot, p.missing = cloneSnapshot(s), missing
+	p.selected, p.pending, p.latest = SummonOffer{}, SummonCommand{}, SummonObservation{}
+	p.inputAt, p.lastFrame, p.scrolls = time.Time{}, 0, 0
+	p.exportRequested, p.uncertain, p.reason = false, false, ""
 }
 
 // Reconcile proves a pending one-shot debit after an interruption. A missing or
@@ -315,14 +400,41 @@ func (p *SummonPlanner) Reconcile(ctx context.Context, now time.Time, after Snap
 	if !p.uncertain || p.pending.Action != ConfirmAncientSummon {
 		return errors.New("no pending Ancient summon to reconcile")
 	}
-	next := *p
-	next.snapshot = cloneSnapshot(p.snapshot)
-	next.snapshot.Generation = after.Generation
-	if err := next.AcceptExport(ctx, now, after); err != nil {
+	return p.Recover(ctx, now, after)
+}
+
+// Recover never retries a submitted summon. Without a submitted debit it
+// requires unchanged wallet/ownership, then discards selection and old frames.
+// The shared navigation owner cancels any orphaned confirmation using a
+// verified free control before presenting a new offer observation.
+func (p *SummonPlanner) Recover(ctx context.Context, now time.Time, after Snapshot) error {
+	if p.owner == nil || p.owner.summonPlanner != p || !p.uncertain && p.owner.stage != Uncertain {
+		return errors.New("no interrupted Ancient summon to recover")
+	}
+	if p.pending.Action != ConfirmAncientSummon {
+		if err := p.verifyUnchanged(ctx, now, after); err != nil {
+			return err
+		}
+	} else if p.owner.summon == nil || p.owner.summon.Pending != p.pending {
+		return errors.New("durable pending Ancient summon ownership lost")
+	}
+	if p.owner.stage != Uncertain {
+		p.owner.Interrupt()
+	}
+	if err := p.owner.Recover(ctx, now, after); err != nil {
 		return err
 	}
-	next.lastFrame = 0
-	*p = next
+	return nil
+}
+
+func (p *SummonPlanner) verifyUnchanged(ctx context.Context, now time.Time, after Snapshot) error {
+	if err := validateSnapshot(ctx, after); err != nil {
+		return err
+	}
+	before, next := p.snapshot.State, after.State
+	if !fresh(now, after.ExportedAt, 30*time.Second) || !after.ExportedAt.After(p.snapshot.ExportedAt) || !sameCycle(before, next) || before.Ascensions != next.Ascensions || before.AscensionsThisTranscension != next.AscensionsThisTranscension || before.HeroSouls != next.HeroSouls || !slices.Equal(before.Ancients, next.Ancients) || !slices.Equal(before.Outsiders, next.Outsiders) {
+		return errors.New("fresh unchanged summon wallet/profile/cycle/ownership required")
+	}
 	return nil
 }
 
