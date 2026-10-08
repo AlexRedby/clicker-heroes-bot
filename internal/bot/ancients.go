@@ -71,7 +71,7 @@ func calculateAncientData(ctx context.Context, save []byte, savePath, reserve st
 		return plan, fmt.Errorf("Ancient calculator: %w", err)
 	}
 	// Redistribution remains preview-only, so it does not reduce the purchase budget.
-	gilds, err := ancientcalc.CalculateGilds(ctx, save, reserve, nil)
+	gilds, err := ancientcalc.CalculateGilds(ctx, save, reserve)
 	if ctx.Err() != nil {
 		return plan, ctx.Err()
 	}

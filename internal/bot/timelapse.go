@@ -91,7 +91,7 @@ func calculateTimelapsePreview(ctx context.Context, exported []byte, options anc
 	if len(p.Hybrid.Plan.Rows) > 0 {
 		p.Blocked = append(p.Blocked, "Hybrid Ancient purchases are projected, not applied")
 	}
-	gilds, err := ancientcalc.CalculateGilds(ctx, exported, options.Reserve, nil)
+	gilds, err := ancientcalc.CalculateGilds(ctx, exported, options.Reserve)
 	if err != nil {
 		p.GildError = err.Error()
 	} else {
