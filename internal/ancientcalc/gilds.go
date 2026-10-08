@@ -29,15 +29,6 @@ type GildHero struct {
 	Locked bool   `json:"locked"`
 }
 
-// GildHistory is supplied by the caller. Preview never creates a successful
-// transfer receipt. An unresolved attempt must be reconciled before any replay.
-type GildHistory struct {
-	Transcensions         int64 `json:"transcensions"`
-	TranscensionTimestamp int64 `json:"transcensionTimestamp"`
-	LastTargetID          int   `json:"lastTargetID"`
-	PendingTargetID       int   `json:"pendingTargetID"`
-}
-
 // TimelapseGildForecast is supplied by the Timelapse model for one save.
 // HeroID/Level describe preparation BEFORE the Timelapse, not its end state.
 // WithTransferZones must include the soul debit and changed gild distribution;
@@ -51,25 +42,24 @@ type TimelapseGildForecast struct {
 }
 
 type GildPlan struct {
-	PreviewOnly           bool         `json:"previewOnly"`
-	Eligible              bool         `json:"eligible"`
-	SaveHash              string       `json:"saveHash"`
-	Ascensions            int64        `json:"ascensions"`
-	Transcensions         int64        `json:"transcensions"`
-	TranscensionTimestamp int64        `json:"transcensionTimestamp"`
-	Target                GildHero     `json:"target"`
-	Heroes                []GildHero   `json:"heroes"`
-	TotalGilds            int64        `json:"totalGilds"`
-	MoveGilds             int64        `json:"moveGilds"`
-	UnitCost              int          `json:"unitCost"`
-	Cost                  string       `json:"cost"`
-	Allowance             string       `json:"allowance"`
-	Souls                 string       `json:"souls"`
-	Reserve               string       `json:"reserve"`
-	Remaining             string       `json:"remaining"`
-	MissingUpgrades       []int        `json:"missingUpgrades"`
-	History               *GildHistory `json:"history"`
-	Reasons               []string     `json:"reasons"`
+	PreviewOnly           bool       `json:"previewOnly"`
+	Eligible              bool       `json:"eligible"`
+	SaveHash              string     `json:"saveHash"`
+	Ascensions            int64      `json:"ascensions"`
+	Transcensions         int64      `json:"transcensions"`
+	TranscensionTimestamp int64      `json:"transcensionTimestamp"`
+	Target                GildHero   `json:"target"`
+	Heroes                []GildHero `json:"heroes"`
+	TotalGilds            int64      `json:"totalGilds"`
+	MoveGilds             int64      `json:"moveGilds"`
+	UnitCost              int        `json:"unitCost"`
+	Cost                  string     `json:"cost"`
+	Allowance             string     `json:"allowance"`
+	Souls                 string     `json:"souls"`
+	Reserve               string     `json:"reserve"`
+	Remaining             string     `json:"remaining"`
+	MissingUpgrades       []int      `json:"missingUpgrades"`
+	Reasons               []string   `json:"reasons"`
 }
 
 type gildSaveHero struct {
@@ -142,14 +132,14 @@ func gildDecimalString(n *big.Rat, places int) string {
 // CalculateGilds produces a read-only preview, never an executable action plan.
 // Eligible means this snapshot fits the policy; live application still needs
 // fresh state, modal ownership and native verification in the shared pipeline.
-func CalculateGilds(ctx context.Context, exported []byte, reserve string, history *GildHistory) (GildPlan, error) {
-	return calculateGilds(ctx, exported, reserve, history, 0)
+func CalculateGilds(ctx context.Context, exported []byte, reserve string) (GildPlan, error) {
+	return calculateGilds(ctx, exported, reserve, 0)
 }
 
 // CalculateTimelapseGilds checks a forecast-selected hero using current save
-// levels/upgrades and the existing budget/history policy. It does not forecast
+// levels/upgrades and the existing budget policy. It does not forecast
 // damage, buy levels, transfer gilds or authorize a Timelapse purchase.
-func CalculateTimelapseGilds(ctx context.Context, exported []byte, reserve string, history *GildHistory, forecast TimelapseGildForecast) (GildPlan, error) {
+func CalculateTimelapseGilds(ctx context.Context, exported []byte, reserve string, forecast TimelapseGildForecast) (GildPlan, error) {
 	invalid := GildPlan{PreviewOnly: true}
 	if len(exported) == 0 || len(exported) > MaxSaveInput {
 		return invalid, errors.New("save must be non-empty and at most 4 MiB")
@@ -160,7 +150,7 @@ func CalculateTimelapseGilds(ctx context.Context, exported []byte, reserve strin
 	if forecast.HeroID < 1 || forecast.HeroID > 54 || forecast.Level < 1 || forecast.Level > maxGildInteger || forecast.WithoutTransferZones < 0 || forecast.WithoutTransferZones > maxGildInteger || forecast.WithTransferZones < 0 || forecast.WithTransferZones > maxGildInteger {
 		return invalid, errors.New("invalid Timelapse gild forecast")
 	}
-	p, err := calculateGilds(ctx, exported, reserve, history, forecast.HeroID)
+	p, err := calculateGilds(ctx, exported, reserve, forecast.HeroID)
 	if err != nil {
 		return p, err
 	}
@@ -174,7 +164,7 @@ func CalculateTimelapseGilds(ctx context.Context, exported []byte, reserve strin
 	return p, nil
 }
 
-func calculateGilds(ctx context.Context, exported []byte, reserve string, history *GildHistory, targetID int) (GildPlan, error) {
+func calculateGilds(ctx context.Context, exported []byte, reserve string, targetID int) (GildPlan, error) {
 	p := GildPlan{PreviewOnly: true, UnitCost: 80, Heroes: []GildHero{}, MissingUpgrades: []int{}, Reasons: []string{}}
 	if ctx == nil {
 		ctx = context.Background()
@@ -313,25 +303,6 @@ func calculateGilds(ctx context.Context, exported []byte, reserve string, histor
 	p.Reserve, p.Remaining = gildDecimalString(protected, places), gildDecimalString(remaining, places)
 	if remaining.Cmp(protected) < 0 {
 		p.Reasons = append(p.Reasons, "transfer would exceed the wallet or protected reserve")
-	}
-	if history == nil {
-		p.Reasons = append(p.Reasons, "transfer history is required; reconcile before application")
-	} else {
-		validID := func(id int) bool { return id == 0 || (id >= 28 && id <= 46) }
-		if history.Transcensions < 0 || history.Transcensions > maxGildInteger || history.TranscensionTimestamp < 0 || history.TranscensionTimestamp > maxGildInteger || !validID(history.LastTargetID) || !validID(history.PendingTargetID) {
-			return p, errors.New("invalid gild transfer history")
-		}
-		copy := *history
-		p.History = &copy
-		if history.Transcensions != p.Transcensions || history.TranscensionTimestamp != p.TranscensionTimestamp {
-			p.Reasons = append(p.Reasons, "Transcension identity changed; reconcile transfer history")
-		}
-		if history.PendingTargetID != 0 {
-			p.Reasons = append(p.Reasons, "an attempted transfer is unresolved")
-		}
-		if history.LastTargetID != 0 && p.Target.ID <= history.LastTargetID {
-			p.Reasons = append(p.Reasons, "target is not later than the last transferred hero")
-		}
 	}
 	p.SaveHash = fmt.Sprintf("%x", sha256.Sum256(exported))
 	p.Eligible = len(p.Reasons) == 0

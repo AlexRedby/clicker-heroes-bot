@@ -18,13 +18,12 @@ import (
 )
 
 func TestTimelapseGildPreparationUsesForecastAndKeepsGuards(t *testing.T) {
-	for _, name := range []string{"earlier forecast hero", "needs levels", "missing upgrade", "not hired", "no gain", "nil history", "earlier receipt", "same receipt", "pending receipt", "epoch changed", "no move", "insufficient reserve", "unsupported late hero", "stale forecast", "invalid forecast", "canceled"} {
+	for _, name := range []string{"earlier forecast hero", "needs levels", "missing upgrade", "not hired", "no gain", "no move", "insufficient reserve", "unsupported late hero", "stale forecast", "invalid forecast", "canceled"} {
 		t.Run(name, func(t *testing.T) {
 			f := newGildFixture()
 			setGildHero(f, 41, 1000, 0, false)
 			setGildHero(f, 42, 1000, 0, false)
 			f.Upgrades["196"] = true
-			history := currentGildHistory()
 			forecast := TimelapseGildForecast{HeroID: 41, Level: 1000, WithoutTransferZones: 100, WithTransferZones: 200}
 			reserve, reason, wantError := "0", "", false
 			switch name {
@@ -40,21 +39,6 @@ func TestTimelapseGildPreparationUsesForecastAndKeepsGuards(t *testing.T) {
 			case "no gain":
 				forecast.WithTransferZones = forecast.WithoutTransferZones
 				reason = "no zone gain"
-			case "nil history":
-				history = nil
-				reason = "history is required"
-			case "earlier receipt":
-				history.LastTargetID = 42
-				reason = "not later"
-			case "same receipt":
-				history.LastTargetID = 41
-				reason = "not later"
-			case "pending receipt":
-				history.PendingTargetID = 41
-				reason = "unresolved"
-			case "epoch changed":
-				history.Transcensions++
-				reason = "identity changed"
 			case "no move":
 				setGildHero(f, 41, 1000, 2, false)
 				setGildHero(f, 43, 0, 0, true)
@@ -83,7 +67,7 @@ func TestTimelapseGildPreparationUsesForecastAndKeepsGuards(t *testing.T) {
 			if name == "canceled" {
 				cancel()
 			}
-			p, err := CalculateTimelapseGilds(ctx, save, reserve, history, forecast)
+			p, err := CalculateTimelapseGilds(ctx, save, reserve, forecast)
 			if wantError {
 				if err == nil || p.Eligible || !p.PreviewOnly {
 					t.Fatalf("invalid forecast accepted: %+v %v", p, err)
@@ -100,7 +84,7 @@ func TestTimelapseGildPreparationUsesForecastAndKeepsGuards(t *testing.T) {
 				if !p.Eligible || p.Cost != "160" || p.Remaining != "0" {
 					t.Fatalf("exact-fit forecast target: %+v", p)
 				}
-				active, err := CalculateGilds(context.Background(), save, reserve, history)
+				active, err := CalculateGilds(context.Background(), save, reserve)
 				if err != nil || active.Target.ID != 42 {
 					t.Fatalf("ordinary latest-hero policy changed: %+v %v", active, err)
 				}
@@ -113,7 +97,7 @@ func TestTimelapseGildPreparationUsesForecastAndKeepsGuards(t *testing.T) {
 
 func TestTimelapseGildPreparationBoundsInputBeforeHashing(t *testing.T) {
 	for _, save := range [][]byte{nil, make([]byte, MaxSaveInput+1)} {
-		p, err := CalculateTimelapseGilds(context.Background(), save, "0", nil, TimelapseGildForecast{})
+		p, err := CalculateTimelapseGilds(context.Background(), save, "0", TimelapseGildForecast{})
 		if err == nil || !strings.Contains(err.Error(), "4 MiB") || !p.PreviewOnly || p.Eligible {
 			t.Fatalf("unbounded save accepted: %+v %v", p, err)
 		}
@@ -180,17 +164,13 @@ func setGildHero(f gildFixture, id, level, gilds int, locked bool) {
 	}
 }
 
-func gildPlan(t *testing.T, f gildFixture, reserve string, history *GildHistory) GildPlan {
+func gildPlan(t *testing.T, f gildFixture, reserve string) GildPlan {
 	t.Helper()
-	plan, err := CalculateGilds(context.Background(), f.save(t, false), reserve, history)
+	plan, err := CalculateGilds(context.Background(), f.save(t, false), reserve)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return plan
-}
-
-func currentGildHistory() *GildHistory {
-	return &GildHistory{Transcensions: 1, TranscensionTimestamp: 100}
 }
 
 func hasGildReason(plan GildPlan, want string) bool {
@@ -206,7 +186,7 @@ func TestCalculateGildsMovesLockedGildsAndAcceptsRawAndZlib(t *testing.T) {
 	for _, raw := range []bool{false, true} {
 		f := newGildFixture()
 		setGildHero(f, 42, 1000, 0, false)
-		plan, err := CalculateGilds(context.Background(), f.save(t, raw), "0", currentGildHistory())
+		plan, err := CalculateGilds(context.Background(), f.save(t, raw), "0")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -224,17 +204,17 @@ func TestCalculateGildsBudgetReserveAndHugeWallet(t *testing.T) {
 	setGildHero(f, 43, 0, 2, true)
 	setGildHero(f, 42, 1000, 0, false)
 	f.Souls = "159"
-	short := gildPlan(t, f, "0", currentGildHistory())
+	short := gildPlan(t, f, "0")
 	if short.Eligible || short.Remaining != "-1" || !hasGildReason(short, "transfer would exceed the wallet or protected reserve") {
 		t.Fatalf("one-soul shortage: %+v", short)
 	}
 	f.Souls = "200"
-	reserved := gildPlan(t, f, "100", currentGildHistory())
+	reserved := gildPlan(t, f, "100")
 	if reserved.Eligible || reserved.Remaining != "40" || reserved.Reserve != "100" {
 		t.Fatalf("reserve should block purchase: %+v", reserved)
 	}
 	f.Souls = "1e1000"
-	huge := gildPlan(t, f, "0", currentGildHistory())
+	huge := gildPlan(t, f, "0")
 	if !huge.Eligible || huge.Cost != "160" || strings.ContainsAny(huge.Cost, "eE") {
 		t.Fatalf("huge wallet formatting: %+v", huge)
 	}
@@ -244,25 +224,25 @@ func TestCalculateGildsUpgradeThresholds(t *testing.T) {
 	f := newGildFixture()
 	setGildHero(f, 42, 4000, 0, false)
 	f.Upgrades = map[string]bool{"200": true, "201": true}
-	blocked := gildPlan(t, f, "0", currentGildHistory())
+	blocked := gildPlan(t, f, "0")
 	if blocked.Eligible || len(blocked.MissingUpgrades) != 1 || blocked.MissingUpgrades[0] != 202 {
 		t.Fatalf("missing threshold upgrade: %+v", blocked)
 	}
 	f.Upgrades["202"] = true
-	allowed := gildPlan(t, f, "0", currentGildHistory())
+	allowed := gildPlan(t, f, "0")
 	if !allowed.Eligible {
 		t.Fatalf("threshold upgrades should allow plan: %+v", allowed)
 	}
 }
 
-func TestCalculateGildsBlocksNilHistoryAndUnsupportedMaxTarget(t *testing.T) {
+func TestCalculateGildsUsesCurrentDistributionAndBlocksUnsupportedMaxTarget(t *testing.T) {
 	f := newGildFixture()
 	setGildHero(f, 42, 1000, 0, false)
-	if plan, err := CalculateGilds(context.Background(), f.save(t, false), "0", nil); err != nil || plan.Eligible || !hasGildReason(plan, "transfer history is required; reconcile before application") {
-		t.Fatalf("nil history: plan=%+v err=%v", plan, err)
+	if plan, err := CalculateGilds(context.Background(), f.save(t, false), "0"); err != nil || !plan.Eligible || plan.MoveGilds != 2 {
+		t.Fatalf("fresh distribution: plan=%+v err=%v", plan, err)
 	}
 	setGildHero(f, 47, 2000, 0, false)
-	plan := gildPlan(t, f, "0", currentGildHistory())
+	plan := gildPlan(t, f, "0")
 	if plan.Target.ID != 47 || plan.Eligible || !hasGildReason(plan, "latest hero is outside the supported Atlas-Xavira progression") {
 		t.Fatalf("unsupported max target fell back: %+v", plan)
 	}
@@ -272,50 +252,32 @@ func TestCalculateGildsAcceptsIntegerNumericForms(t *testing.T) {
 	f := newGildFixture()
 	setGildHero(f, 42, 1000, 0, false)
 	f.WorldResets, f.Transcensions, f.Timestamp = "3.0", "1", "100.0"
-	plan := gildPlan(t, f, "0", currentGildHistory())
+	plan := gildPlan(t, f, "0")
 	if !plan.Eligible {
 		t.Fatalf("integer numeric forms rejected: %+v", plan)
 	}
 }
 
-func TestCalculateGildsHistoryBlocksTargetAndEpoch(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		history GildHistory
-		mutate  func(*gildFixture)
-	}{
-		{"same target", GildHistory{LastTargetID: 42}, nil},
-		{"pending target", GildHistory{PendingTargetID: 42}, nil},
-		{"lower target", GildHistory{LastTargetID: 42}, func(f *gildFixture) {
-			setGildHero(*f, 41, 1000, 0, false)
-			f.Heroes["42"].(map[string]any)["level"] = 0
-			f.Upgrades["196"] = true
-		}},
-		{"transcension epoch", GildHistory{Transcensions: 1, TranscensionTimestamp: 100}, func(f *gildFixture) { f.Transcensions = 2 }},
-		{"timestamp epoch", GildHistory{Transcensions: 1, TranscensionTimestamp: 100}, func(f *gildFixture) { f.Timestamp = 101 }},
-		{"ascension keeps lock", GildHistory{LastTargetID: 42}, func(f *gildFixture) { f.WorldResets = 4 }},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			f := newGildFixture()
-			setGildHero(f, 42, 1000, 0, false)
-			tc.history.Transcensions, tc.history.TranscensionTimestamp = 1, 100
-			if tc.mutate != nil {
-				tc.mutate(&f)
+func TestCalculateGildsFreshDistributionAcrossResets(t *testing.T) {
+	f := newGildFixture()
+	setGildHero(f, 42, 1000, 0, false)
+	for _, reset := range []string{"ascension", "transcension", "same target with new gilds", "earlier target"} {
+		t.Run(reset, func(t *testing.T) {
+			switch reset {
+			case "ascension":
+				f.WorldResets = 4
+			case "transcension":
+				f.Transcensions, f.Timestamp = 2, 101
+			case "same target with new gilds":
+				setGildHero(f, 42, 1000, 5, false)
+			case "earlier target":
+				setGildHero(f, 42, 0, 0, false)
+				setGildHero(f, 41, 1000, 0, false)
+				f.Upgrades["196"] = true
 			}
-			plan := gildPlan(t, f, "0", &tc.history)
-			if plan.Eligible || !plan.PreviewOnly {
-				t.Fatalf("history guard not applied: %+v", plan)
-			}
-			want := map[string]string{
-				"same target":          "target is not later than the last transferred hero",
-				"pending target":       "an attempted transfer is unresolved",
-				"lower target":         "target is not later than the last transferred hero",
-				"transcension epoch":   "Transcension identity changed; reconcile transfer history",
-				"timestamp epoch":      "Transcension identity changed; reconcile transfer history",
-				"ascension keeps lock": "target is not later than the last transferred hero",
-			}[tc.name]
-			if !hasGildReason(plan, want) {
-				t.Fatalf("missing reason %q: %+v", want, plan)
+			plan := gildPlan(t, f, "0")
+			if !plan.Eligible || plan.MoveGilds != 2 {
+				t.Fatalf("fresh distribution blocked after %s: %+v", reset, plan)
 			}
 		})
 	}
@@ -337,7 +299,7 @@ func TestCalculateGildsRejectsMalformedRosterAndNumbers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newGildFixture()
 			tc.mutate(&f)
-			if _, err := CalculateGilds(context.Background(), f.save(t, false), "0", &GildHistory{}); err == nil {
+			if _, err := CalculateGilds(context.Background(), f.save(t, false), "0"); err == nil {
 				t.Fatal("malformed save accepted")
 			}
 		})
@@ -348,7 +310,7 @@ func TestCalculateGildsHonorsCancellation(t *testing.T) {
 	f := newGildFixture()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := CalculateGilds(ctx, f.save(t, false), "0", currentGildHistory())
+	_, err := CalculateGilds(ctx, f.save(t, false), "0")
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation error = %v", err)
 	}
@@ -358,13 +320,13 @@ func TestCalculateGildsZeroAndAlreadyOnTarget(t *testing.T) {
 	f := newGildFixture()
 	f.Heroes["43"].(map[string]any)["epicLevel"] = 0
 	setGildHero(f, 42, 1000, 2, false)
-	plan := gildPlan(t, f, "0", currentGildHistory())
+	plan := gildPlan(t, f, "0")
 	if plan.Eligible || plan.TotalGilds != 2 || plan.MoveGilds != 0 || !hasGildReason(plan, "all gilds are already on the target") {
 		t.Fatalf("all gilds on target: %+v", plan)
 	}
 	f.Heroes["43"].(map[string]any)["epicLevel"] = 0
 	f.Heroes["42"].(map[string]any)["epicLevel"] = 0
-	plan = gildPlan(t, f, "0", currentGildHistory())
+	plan = gildPlan(t, f, "0")
 	if plan.Eligible || !hasGildReason(plan, "no gilds") {
 		t.Fatalf("zero gilds: %+v", plan)
 	}
@@ -373,17 +335,17 @@ func TestCalculateGildsZeroAndAlreadyOnTarget(t *testing.T) {
 func TestCalculateGildsTargetLevelAndReservePercentage(t *testing.T) {
 	f := newGildFixture()
 	setGildHero(f, 42, 999, 0, false)
-	plan := gildPlan(t, f, "0", currentGildHistory())
+	plan := gildPlan(t, f, "0")
 	if plan.Eligible || !hasGildReason(plan, "latest hero has not reached level 1000") {
 		t.Fatalf("level 999: %+v", plan)
 	}
 	f.Heroes["42"].(map[string]any)["level"] = 1000
 	f.Souls = "200"
-	plan = gildPlan(t, f, "20%", currentGildHistory())
+	plan = gildPlan(t, f, "20%")
 	if !plan.Eligible || plan.Reserve != "40" || plan.Remaining != "40" {
 		t.Fatalf("percentage exact fit: %+v", plan)
 	}
-	plan = gildPlan(t, f, "20.5%", currentGildHistory())
+	plan = gildPlan(t, f, "20.5%")
 	if plan.Eligible || plan.Remaining != "40" || !hasGildReason(plan, "transfer would exceed the wallet or protected reserve") {
 		t.Fatalf("percentage shortage: %+v", plan)
 	}
@@ -405,7 +367,7 @@ func TestCalculateGildsRejectsInvalidGildFieldsAndReserve(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newGildFixture()
 			tc.mutate(&f)
-			if _, err := CalculateGilds(context.Background(), f.save(t, false), tc.reserve, currentGildHistory()); err == nil {
+			if _, err := CalculateGilds(context.Background(), f.save(t, false), tc.reserve); err == nil {
 				t.Fatal("invalid gild input accepted")
 			}
 		})
@@ -432,7 +394,7 @@ func TestCalculateGildsRejectsDuplicateHeroKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	exported := []byte("7a990d405d2c6fb93aa8fbb0ec1a3b23" + base64.StdEncoding.EncodeToString(compressed.Bytes()))
-	if _, err := CalculateGilds(context.Background(), exported, "0", currentGildHistory()); err == nil || !strings.Contains(err.Error(), "duplicate") {
+	if _, err := CalculateGilds(context.Background(), exported, "0"); err == nil || !strings.Contains(err.Error(), "duplicate") {
 		t.Fatalf("duplicate hero key: %v", err)
 	}
 }
@@ -441,7 +403,7 @@ func TestCalculateGildsExactHugeWalletRemaining(t *testing.T) {
 	f := newGildFixture()
 	setGildHero(f, 42, 1000, 0, false)
 	f.Souls = "1e1000"
-	plan := gildPlan(t, f, "0", currentGildHistory())
+	plan := gildPlan(t, f, "0")
 	wallet, ok := new(big.Int).SetString("1"+strings.Repeat("0", 1000), 10)
 	if !ok {
 		t.Fatal("cannot build expected wallet")
