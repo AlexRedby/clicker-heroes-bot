@@ -9,6 +9,10 @@ import (
 	"image/draw"
 	"reflect"
 	"testing"
+	"time"
+
+	"clicker-heroes-bot/internal/ancientcalc"
+	"clicker-heroes-bot/internal/transcension"
 )
 
 func TestTranscensionNativeConfirmation(t *testing.T) {
@@ -19,9 +23,14 @@ func TestTranscensionNativeConfirmation(t *testing.T) {
 			if !transcensionDialog(screen) || outsiderTabSelected(screen) {
 				t.Fatal("confirmation/background isolation failed")
 			}
-			out, err := readTranscensionObservation(context.Background(), gameFrame{image: screen})
+			frame := gameFrame{id: 1, generation: 1, at: time.Unix(1000, 0), image: screen}
+			out, err := readTranscensionObservation(context.Background(), frame)
 			if err != nil || !out.known || !out.confirm || !out.no || !out.respecKnown || out.respec || out.reward != 79 {
 				t.Fatalf("native confirmation: %+v %v", out, err)
+			}
+			observed, err := nativeTranscensionObservation(frame, outsiderObservation{}, out, ancientcalc.TranscensionState{})
+			if err != nil || observed.Screen != transcension.ConfirmationScreen || !observed.Known || observed.Reward != 79 || observed.Frame != frame.id || observed.Generation != frame.generation {
+				t.Fatal("shared-frame confirmation adapter", observed, err)
 			}
 		})
 	}
@@ -44,6 +53,18 @@ func TestTranscensionNativeConfirmation(t *testing.T) {
 	cancel()
 	if _, err := readTranscensionObservation(ctx, gameFrame{image: source}); !errors.Is(err, context.Canceled) {
 		t.Fatal("cancelled read", err)
+	}
+}
+
+func TestTranscensionNativeAcceptanceRemainsUnavailable(t *testing.T) {
+	n := nativeTranscensionEvidence("1.0e12-6144")
+	if n.Build != "1.0e12-6144" || n.ResetRecovery || n.Feed || n.AncientSummon {
+		t.Fatal("partial screenshots enabled native reset", n)
+	}
+	frame := gameFrame{id: 2, generation: 2}
+	o, err := nativeTranscensionObservation(frame, outsiderObservation{}, transcensionObservation{known: true, frame: gameFrame{id: 1, generation: 1}}, ancientcalc.TranscensionState{})
+	if err != nil || o.Known {
+		t.Fatal("stale analysis supplied an input context", o, err)
 	}
 }
 

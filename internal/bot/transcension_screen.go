@@ -90,9 +90,9 @@ func readTranscensionObservation(ctx context.Context, frame gameFrame) (transcen
 }
 
 // Geometry is derived from the same complete cards consumed by the reader.
-// A clipped card, non-x1 mode or unaffordable row never supplies a FEED target.
+// A clipped card, MAX mode or unaffordable row never supplies a FEED target.
 func outsiderFeedPoint(ui outsiderObservation, name string) (image.Point, bool) {
-	if !ui.known || ui.quantity != "x1" || !outsiderTabSelected(ui.frame.image) {
+	if !ui.known || ui.quantity != "x1" && ui.quantity != "x10" && ui.quantity != "x100" && ui.quantity != "x1000" || !outsiderTabSelected(ui.frame.image) {
 		return image.Point{}, false
 	}
 	tops := outsiderCardTops(ui.frame.image)
@@ -103,6 +103,19 @@ func outsiderFeedPoint(ui outsiderObservation, name string) (image.Point, bool) 
 		if row.name == name && row.cost > 0 && ui.wallet >= row.cost {
 			r := vision.Rect(ui.frame.image, image.Rect(430, tops[i]+61, 539, tops[i]+131))
 			return r.Min.Add(r.Size().Div(2)), true
+		}
+	}
+	return image.Point{}, false
+}
+
+func outsiderQuantityPoint(ui outsiderObservation, quantity int) (image.Point, bool) {
+	if !ui.known || !outsiderTabSelected(ui.frame.image) {
+		return image.Point{}, false
+	}
+	for i, value := range []int{1, 10, 100, 1000} {
+		if quantity == value {
+			x := [...]int{122, 220, 320, 420}[i]
+			return vision.Rect(ui.frame.image, image.Rect(x, 271, x+1, 272)).Min, true
 		}
 	}
 	return image.Point{}, false
