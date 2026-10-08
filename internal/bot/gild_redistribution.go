@@ -165,6 +165,9 @@ func (g *gildRedistribution) next(now time.Time) (gildRedistributionCommand, boo
 	} else if bootstrapHeroes(u.frame.context) {
 		if u.entry != (image.Point{}) {
 			c.action, c.point, c.region = gildOpenRoster, u.entry, u.entryRegion
+		} else if u.bottom {
+			g.active, g.blocked = false, true
+			g.reason = "Gilded entry not recognized at the Heroes list end; continuing ordinary play"
 		} else if g.scrolls < 16 {
 			c.action, c.point = gildScrollHeroes, u.frame.image.Bounds().Min.Add(image.Pt(u.frame.image.Bounds().Dx()*3/10, u.frame.image.Bounds().Dy()*7/10))
 		} else {

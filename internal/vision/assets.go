@@ -51,32 +51,46 @@ func Rect(screen image.Image, r image.Rectangle) image.Rectangle {
 
 // Match only the fixed control region, allowing a few pixels of rendering offset.
 func MatchControl(screen image.Image, region image.Rectangle, name string) (bool, error) {
-	reference, err := Template(name)
-	if err != nil {
-		return false, err
-	}
 	r := Rect(screen, region)
 	margin := max(2, screen.Bounds().Dx()/640)
-	search := r.Inset(-margin).Intersect(screen.Bounds())
-	if r.Empty() || search.Dx() < r.Dx() || search.Dy() < r.Dy() {
-		return false, nil
+	_, found, err := findControl(screen, r.Inset(-margin).Intersect(screen.Bounds()), r.Size(), name)
+	return found, err
+}
+
+// FindControl locates fixed-size artwork within a reference-coordinate region.
+func FindControl(screen image.Image, search image.Rectangle, size image.Point, name string) (image.Rectangle, bool, error) {
+	return findControl(screen, Rect(screen, search).Intersect(screen.Bounds()), Rect(screen, image.Rectangle{Max: size}).Size(), name)
+}
+
+func findControl(screen image.Image, search image.Rectangle, size image.Point, name string) (image.Rectangle, bool, error) {
+	reference, err := Template(name)
+	if err != nil {
+		return image.Rectangle{}, false, err
+	}
+	if size.X <= 0 || size.Y <= 0 || search.Dx() < size.X || search.Dy() < size.Y {
+		return image.Rectangle{}, false, nil
 	}
 	crop := image.NewRGBA(image.Rect(0, 0, search.Dx(), search.Dy()))
 	draw.Draw(crop, crop.Bounds(), screen, search.Min, draw.Src)
 	scene, err := gocv.ImageToMatRGB(crop)
 	if err != nil {
-		return false, err
+		return image.Rectangle{}, false, err
 	}
 	defer scene.Close()
-	score, err := ControlScore(scene, reference, r.Size())
-	return score >= 0.90, err
+	score, point, err := controlMatch(scene, reference, size)
+	return image.Rectangle{Min: point.Add(search.Min), Max: point.Add(search.Min).Add(size)}, score >= 0.90, err
 }
 
 // Transparent artwork excludes the changing game location from UI matching.
 func ControlScore(scene gocv.Mat, reference image.Image, size image.Point) (float32, error) {
+	score, _, err := controlMatch(scene, reference, size)
+	return score, err
+}
+
+func controlMatch(scene gocv.Mat, reference image.Image, size image.Point) (float32, image.Point, error) {
 	source, err := gocv.ImageToMatRGB(reference)
 	if err != nil {
-		return 0, err
+		return 0, image.Point{}, err
 	}
 	defer source.Close()
 	b := reference.Bounds()
@@ -93,25 +107,25 @@ func ControlScore(scene gocv.Mat, reference image.Image, size image.Point) (floa
 		}
 	}
 	if visible == 0 {
-		return 0, nil
+		return 0, image.Point{}, nil
 	}
 	scaled, mask := gocv.NewMat(), gocv.NewMat()
 	defer scaled.Close()
 	defer mask.Close()
 	if err := gocv.Resize(source, &scaled, size, 0, 0, gocv.InterpolationArea); err != nil {
-		return 0, err
+		return 0, image.Point{}, err
 	}
 	if transparent {
 		sourceMask, err := gocv.NewMatFromBytes(b.Dy(), b.Dx(), gocv.MatTypeCV8U, pixels)
 		if err != nil {
-			return 0, err
+			return 0, image.Point{}, err
 		}
 		defer sourceMask.Close()
 		if err = gocv.Resize(sourceMask, &mask, size, 0, 0, gocv.InterpolationNearestNeighbor); err != nil {
-			return 0, err
+			return 0, image.Point{}, err
 		}
 	}
-	return matchTemplate(scene, scaled, mask)
+	return locateTemplate(scene, scaled, mask)
 }
 
 // TemplateScore matches an already converted opaque template.
@@ -126,14 +140,19 @@ func TemplateScore(scene, source gocv.Mat, size image.Point) (float32, error) {
 }
 
 func matchTemplate(scene, reference, mask gocv.Mat) (float32, error) {
+	score, _, err := locateTemplate(scene, reference, mask)
+	return score, err
+}
+
+func locateTemplate(scene, reference, mask gocv.Mat) (float32, image.Point, error) {
 	result := gocv.NewMat()
 	defer result.Close()
 	if err := gocv.MatchTemplate(scene, reference, &result, gocv.TmCcoeffNormed, mask); err != nil {
-		return 0, err
+		return 0, image.Point{}, err
 	}
-	_, score, _, _ := gocv.MinMaxLoc(result)
+	_, score, _, point := gocv.MinMaxLoc(result)
 	if math.IsNaN(float64(score)) || math.IsInf(float64(score), 0) {
-		return 0, nil
+		return 0, image.Point{}, nil
 	}
-	return score, nil
+	return score, point, nil
 }

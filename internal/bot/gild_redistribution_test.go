@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"clicker-heroes-bot/internal/ancientcalc"
+	"clicker-heroes-bot/internal/vision"
 )
 
 func gildMovePlan() ancientcalc.GildPlan {
@@ -272,6 +273,51 @@ func TestGildRedistributionNativeEntryAndExactNames(t *testing.T) {
 	u, err = readGildRedistribution(ctx, frame, ancientcalc.GildHero{ID: 28, Name: "Atlas"})
 	if err != nil || u.targetFound {
 		t.Fatal("offscreen target inferred from roster order", u, err)
+	}
+}
+
+func TestGildEntryDoesNotDependOnUpgradeFooterText(t *testing.T) {
+	for _, name := range []string{"hero-startup-zero.png", "hero-panel-max.png", "hero-scrollbar-before.png"} {
+		for _, width := range []int{1280, 1920, 2560} {
+			source := exportFixture(t, name, width)
+			covered := image.NewRGBA(source.Bounds())
+			draw.Draw(covered, covered.Bounds(), source, source.Bounds().Min, draw.Src)
+			draw.Draw(covered, vision.Rect(source, image.Rect(268, 400, 425, 705)), image.NewUniform(color.Black), image.Point{}, draw.Src)
+			for _, screen := range []image.Image{source, covered} {
+				frame := gameFrame{image: screen, context: gameContext{known: true, heroes: true}}
+				u, err := readGildRedistribution(context.Background(), frame, ancientcalc.GildHero{})
+				if err != nil || u.entry == (image.Point{}) || !u.entry.In(u.entryRegion) {
+					t.Fatalf("independent Gilded entry %s at %d: %v, %v", name, width, u.entry, err)
+				}
+			}
+		}
+	}
+}
+
+func TestGildEntryMissingAtActualEndStopsScrolling(t *testing.T) {
+	now := time.Now()
+	source := exportFixture(t, "hero-panel-max.png", 2560)
+	covered := image.NewRGBA(source.Bounds())
+	draw.Draw(covered, covered.Bounds(), source, source.Bounds().Min, draw.Src)
+	draw.Draw(covered, vision.Rect(source, image.Rect(65, 220, 168, 705)), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	frame := gameFrame{id: 1, layout: 1, at: now, image: covered, context: gameContext{known: true, heroes: true, bounds: covered.Bounds(), window: "Clicker Heroes"}}
+	u, err := readGildRedistribution(context.Background(), frame, ancientcalc.GildHero{})
+	if err != nil || !u.bottom || u.entry != (image.Point{}) {
+		t.Fatal("actual list end", u.bottom, u.entry, err)
+	}
+	var g gildRedistribution
+	if err := g.install(gildMovePlan(), frame); err != nil {
+		t.Fatal(err)
+	}
+	g.observe(u)
+	if cmd, ok := g.next(now); ok || g.active || !g.blocked {
+		t.Fatal("missing entry at bottom emitted another scroll", cmd, ok)
+	}
+	clipped := exportFixture(t, "hero-footer-clipped-bottom.png", 2560)
+	frame.image, frame.context.bounds = clipped, clipped.Bounds()
+	u, err = readGildRedistribution(context.Background(), frame, ancientcalc.GildHero{})
+	if err != nil || u.bottom {
+		t.Fatal("clipped footer was treated as the actual end", u.bottom, err)
 	}
 }
 

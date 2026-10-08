@@ -15,12 +15,12 @@ import (
 )
 
 type gildRedistributionObservation struct {
-	frame                      gameFrame
-	roster, targetFound        bool
-	entry, close, down, target image.Point
-	entryRegion, targetRegion  image.Rectangle
-	targetID                   int
-	rosterHash                 [32]byte
+	frame                       gameFrame
+	roster, targetFound, bottom bool
+	entry, close, down, target  image.Point
+	entryRegion, targetRegion   image.Rectangle
+	targetID                    int
+	rosterHash                  [32]byte
 }
 
 func readGildRedistribution(ctx context.Context, frame gameFrame, target ancientcalc.GildHero) (gildRedistributionObservation, error) {
@@ -30,16 +30,11 @@ func readGildRedistribution(ctx context.Context, frame gameFrame, target ancient
 	}
 	s := frame.image
 	if bootstrapHeroes(frame.context) {
-		footer, known, _, err := readHeroUpgradeFooter(ctx, s)
-		if err != nil || !known {
-			return u, err
-		}
-		b := s.Bounds()
-		y := (footer.Y - b.Min.Y) * 720 / b.Dy()
-		r := image.Rect(69, y-17, 163, y+18)
-		found, err := vision.MatchControl(s, r, "gilds/entry.png")
+		thumb, height, known := heroScrollbarThumb(s)
+		u.bottom = known && heroScrollbarAtEnd(s, thumb, height)
+		r, found, err := vision.FindControl(s, image.Rect(65, 220, 168, 705), image.Pt(94, 35), "gilds/entry.png")
 		if found {
-			u.entryRegion = vision.Rect(s, r)
+			u.entryRegion = r
 			u.entry = u.entryRegion.Min.Add(u.entryRegion.Size().Div(2))
 		}
 		return u, err

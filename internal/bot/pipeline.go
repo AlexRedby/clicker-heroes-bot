@@ -359,7 +359,7 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 			b := job.frame.image.Bounds()
 			// The footer needs the actual end; the ordinary row tolerance can
 			// leave its text clipped just below the viewport.
-			out.hero.bottom = out.hero.thumbFound && absDiff(out.hero.thumb.Y+height/2, b.Min.Y+b.Dy()*965/1000) <= max(3, b.Dy()/250)
+			out.hero.bottom = out.hero.thumbFound && heroScrollbarAtEnd(job.frame.image, out.hero.thumb, height)
 			if out.hero.thumbFound && !out.hero.bottom {
 				out.hero.startupScroll = image.Pt(out.hero.thumb.X, b.Max.Y-1)
 			}

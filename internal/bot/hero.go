@@ -211,6 +211,12 @@ func heroScrollbarAtBottom(screen image.Image) bool {
 	return absDiff(thumb.Y+height/2, b.Min.Y+b.Dy()*965/1000) <= max(3, b.Dy()/100)
 }
 
+// Footer controls need the actual end, beyond the ordinary hero-row tolerance.
+func heroScrollbarAtEnd(screen image.Image, thumb image.Point, height int) bool {
+	b := screen.Bounds()
+	return absDiff(thumb.Y+height/2, b.Min.Y+b.Dy()*965/1000) <= max(3, b.Dy()/250)
+}
+
 func heroListStable(before, after image.Image) bool {
 	if before == nil || after == nil || before.Bounds() != after.Bounds() {
 		return false
