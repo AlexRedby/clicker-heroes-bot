@@ -113,3 +113,17 @@ func TestAncientSpendingRequiresFreshGildBudget(t *testing.T) {
 		t.Fatal("transfer used the wallet from before Ancient spending")
 	}
 }
+
+func TestEarnedGildsInvalidateThePriorDistribution(t *testing.T) {
+	now := time.Now()
+	source := gildMoveFrame(t, now, 1, 1, false)
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{progression: true, gilds: true, gildInterval: time.Minute, export: &saveExportOptions{dir: t.TempDir()}})
+	p.frame, p.layout, p.export.requested = source, 1, false
+	plan := gildMovePlan()
+	p.acceptGildSave(exportResult{gilds: &plan, at: now}, source, now)
+	p.gild = gildCollector{active: true, deadline: now.Add(time.Minute)}
+	p.planGilds(now)
+	if p.gildMove.active || !p.gildRefreshDue.Equal(now.Add(30*time.Second)) {
+		t.Fatal("newly earned gilds kept the old transfer count")
+	}
+}

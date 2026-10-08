@@ -70,7 +70,8 @@ func calculateAncientData(ctx context.Context, save []byte, savePath, reserve st
 	if err != nil {
 		return plan, fmt.Errorf("Ancient calculator: %w", err)
 	}
-	// Redistribution remains preview-only, so it does not reduce the purchase budget.
+	// The transfer owner refreshes the wallet after Ancient spending; these
+	// read-only calculations do not reserve each other's budget.
 	gilds, err := ancientcalc.CalculateGilds(ctx, save, reserve)
 	if ctx.Err() != nil {
 		return plan, ctx.Err()

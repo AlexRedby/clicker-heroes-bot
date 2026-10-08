@@ -2051,6 +2051,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 
 	case buyHero, scrollHeroes, selectQuantity, parkPointer:
 		if a.kind == buyHero && !a.hero.startup && (!a.hero.owned || p.gildRefreshDue.IsZero() && p.gildMove.plan.Target.ID >= 28 && p.gildMove.plan.Target.ID <= 46 && p.gildMove.plan.Target.Level < 1000 && a.hero.level >= 1000) {
+			p.gildMove.active = false
 			p.gildRefreshDue = now.Add(30 * time.Second)
 		}
 		p.hero.sent(a, now)
@@ -2122,6 +2123,10 @@ func (p *gamePipeline) planGilds(now time.Time) bool {
 		p.gild.nextCheck = now.Add(p.options.gildInterval)
 		p.gild.attempts = 0
 		p.hero.nextScan = now
+		if p.options.progression && p.gildMove.plan.Target.ID >= 28 && p.gildMove.plan.Target.ID <= 46 {
+			p.gildMove.active = false
+			p.gildRefreshDue = now.Add(30 * time.Second)
+		}
 		fmt.Println("finished opening earned gild gifts")
 	}
 	exclusive := p.gild.active || modal != noGildModal

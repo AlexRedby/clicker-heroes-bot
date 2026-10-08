@@ -1,10 +1,12 @@
 ## Priority milestone: autonomous Transcension and Outsiders
 
-- Reuse the native Go prestige preview, Outsider allocation and shared export/capture/input queue. Separate an observed stalled run from historical save timestamps; choose Transcension when further ordinary Ascensions offer little growth and a useful AS reward is available.
-- Match the existing e12 reward/TP/cost model to the installed UI. Inspect existing native frames first; collect only missing affordable FEED/result, immediate post-reset and Ancient summon screens. Use supplied native reset/FEED controls and exact fresh-save receipts. At unsupported summon UI, save a diagnostic and report the missing step; the user will supply screenshots when this is reached.
-- Spend only available Ancient Souls on useful Outsider additions using the existing allocation/cost model. Recognize complete cards, use fixed quantities and shared scrolling, and preserve owned levels unless a verified respec route is implemented.
-- Restore the active-play loop after reset: invalidate old Ancient/hero/relic/gild plans, reuse bounded hero setup and Auto Clicker/progression recovery, earn the first Hero Souls, summon missing Active Ancients through recognized controls, then reuse ordinary Ascension/Ancient allocation.
-- Verify useful/no-reward/stale-save decisions, AS accounting, sequential purchases, F8/orphan dialogs, reset counter changes, zero-soul bootstrap and full queue isolation with native fixtures on the authorized Docker host. Run the implemented path in the installed game; collect remaining summon UI states only when the bot reaches them.
+- Validate the opt-in reset/FEED path in the installed game: a fresh positive reward at a combat wall, unchecked respec, exact Ancient Soul accounting, fixed-quantity sequential purchases, F8/restart reconciliation and return to the zero-soul hero/bootstrap loop. Fixture checks establish software behavior only.
+- Calibrate the conservative wall/AS-rate decision against live progression and compare reward/TP/cost estimates with the installed UI. Validate middle Outsider cards, selected fixed quantities and bounded shared scrolling.
+- Implement native Ancient summon/offer/confirmation/cancel controls when that unsupported step is reached. The required-only planner and exact Hero Soul receipts exist; owned-Ancient leveling cannot summon missing Ancients. Save a diagnostic and request only the missing screen then. Integrate the unaffordable-offer handoff with ordinary earning and a funded Ascension. Respec remains excluded.
+
+## Automatic gild redistribution native acceptance
+
+- Verify Q + click in the installed roster, the fresh outcome, all-on-target no-op after restart/manual transfers, newly earned gilds, changed target/cycle, insufficient balance/reserve, missed input and F8 recovery. No separate permanent gild history is used.
 
 ## Owned dialog interruption checks
 
@@ -51,7 +53,7 @@ Owners: Timelapse integration and Quick Ascension (purchase controller and forec
 - Assess readiness from a fresh local export: current/highest zone, rubies, owned Auto Clickers, hero levels/gilds/upgrades, idle and active Ancients, and Outsiders. The user reports two monsters per normal zone already; measure the remaining return-time bottleneck rather than adding more clicking. Distinguish implemented behavior from advisory previews and installed-game acceptance.
 - Validate the native Go reference forecast against installed-game outcomes and measured active return speed. Evaluate actual zones/time saved per ruby; the guide's roughly 50k-zone recommendation is an efficiency guideline, not a fabricated unlock gate. The read-only timelapse-plan command does not establish live readiness.
 - Supply native controls for summoning any absent Hybrid Ancient. The explicit Hybrid allocation is available; missing summons are reported rather than executed.
-- Complete hero/gild preparation: choose and level a suitable Timelapse hero, calculate and apply Hero-Soul-priced gild transfers only when useful, and obtain the actual native transfer controls. Earned gild gift opening does not redistribute existing gilds. The current gild preview supports a limited roster range and does not execute transfers.
+- Complete Timelapse-specific hero preparation and connect its forecast-selected target to the current native gild transfer flow. Ordinary progression already transfers to a supported latest hero; it does not establish Timelapse readiness. Keep earned gift opening separate and account for the transfer soul cost.
 - Add a bounded preparation/handoff using the existing shared capture and input queue: startup/Ancient completion -> hero and gild preparation -> preserve at least one unassigned Auto Clicker for Nogardnit -> Timelapse -> fresh outcome/export -> resume ordinary active play. Coordinate periodic clicker recovery so it does not immediately consume the reserved clicker. Verify the actual Timelapse idle calculation before introducing any idle countdown.
 - Keep paid execution opt-in with `-timelapse` and an explicit finite ruby allowance; zero allowance must never spend. Define a protected balance, a per-Ascension purchase cap and a persisted spending ledger. Newly earned rubies and restarting the program must not replenish the authorized allowance. Reserve the debit before confirming; an interrupted or uncertain purchase must not be replayed automatically. Account for other ruby spenders and profile identity.
 - Collect installed-game evidence: Ruby Shop entry and Timelapse offers with durations/prices, selection/confirmation/cancel screens, resulting summary, Gilds roster and transfer controls, and owned/free Auto Clicker states. Browse/reference existing Downloads before requesting missing states. Do not require a paid purchase merely to obtain a screenshot; a controlled paid acceptance run needs an explicit small ruby allowance.
@@ -90,11 +92,11 @@ Goal: complete the unattended active-play loop using the existing shared capture
 | --- | --- | --- | --- |
 | R1 | Validate remaining hero startup edge cases and recognize the last hero without a successor. | First | Bounded startup inputs and ordinary Q confirmation, missing-input recovery, and terminal-roster evidence. |
 | R2 | Validate conservative Ancient price bounds in the installed game. | First | Compare Juggernaut/Solomon bulk purchases and Chor'gorloth discount/balance rounding to fresh before/after exports; preserve the reserve. |
-| R4 | Gild redistribution: choose a good target consistent with latest-hero progression, calculate transfer cost from current save/state, and plan UI application. | Next | Keep earned gift opening separate; account for soul costs and reserves; no ruby spending and no repeated transfers to the same target. |
+| R4 | Validate automatic gild redistribution against the installed game. | Next | Fresh distribution/outcome, soul costs/reserve, missed input and restart; keep earned gifts separate. |
 | R5 | Combat and boss recovery: validate active/ready skill states, Energize/Reload waves, variable cooldowns, failed-boss retry and the Ascension handoff. | First | Concrete remaining gaps and fixture/live scenarios; reuse current skill/progression/Ascension policies rather than replacing them without evidence. |
 | R6 | Native Windows capture, SIFT, OCR and queue measurement with the integrated changes. | First | Collect p50/p95 timing and timeout rate, with real, rotated, small and scrollbar-overlap fish; no win inferred from fewer detections. |
 | R7 | Windowed game and display scaling: locate the game viewport, map screenshot coordinates to input, and plan focus/permission handling across Windows/macOS. | Later | Native coordinate evidence; correct ROI translation, unknown-window behavior; full-screen behavior remains supported. |
-| R8 | Transcension and Outsiders: validate the read-only preview against the installed UI and implement gated native stages. | Later | Match reward, TP, costs and respec semantics to UI; automated reset waits for the complete Ascension loop and an explicit enabled mode. |
+| R8 | Validate opt-in Transcension/Outsiders and supply missing native Ancient summon controls. | Next | Match reward, TP and costs to UI; exact reset/FEED receipts, no respec, bootstrap and missing-UI diagnostics. |
 | R9 | Mercenary extra-life chooser and explicit vacancy/in-flight recruitment tracking in the existing mercenary chat. | Parallel | Verified chooser controls, no paid Hire/Reroll, bounded roster tracking, and no duplicate quest implementation. |
 
 ### Integration sequence (owned by the main chat)
@@ -102,7 +104,7 @@ Goal: complete the unattended active-play loop using the existing shared capture
 1. Close the remaining hero startup and combat checks below. Keep R6 measurement independent from gameplay decisions.
 2. Verify pending-purchase interruption and cancellation without replay from a stale plan.
 3. Verify the remaining Ascension/startup edge cases: missed input, fish over controls and unsupported dialogs.
-4. Add R4 when the repeated loop works. R7 remains independent platform work. Enable R8 automation only after the loop and recommendation/Outsider preview are accepted.
+4. Validate R4 and R8 in the installed game after the repeated loop works. R7 remains independent platform work.
 
 The detailed unfinished implementation and live-validation gates below remain authoritative. Remove completed work; keep missing screenshot/native-game gates visible.
 
@@ -170,13 +172,3 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 - Verify a live large Ancient purchase with six-significant-digit input and the 200 ms entry wait, including closed owned-dialog acknowledgement. Confirm repeated fresh-export plans stop once large non-exponential increases fall below 0.1%.
 - Verify Ancient purchase recovery after an open quantity-dialog timeout or a silently failed purchase that closes the dialog: allow underbuy without replay. Supplied frames and regressions cover transaction ownership, stale input and interruption.
 - Verify rejection of stale/partial export files and pending Ascension souls during spending decisions; interrupted purchases must not be replayed.
-
-### Transcension
-
-- Match the fresh `-mode transcension-plan` preview to the installed game's reward/TP display, Outsider costs and respec/refund semantics. Capture reward confirmation, respec controls, one small purchase before/after, immediate manual-reset HUD/export and first-run Ancient summon controls.
-- Finish native reset/FEED admission through verified live controls and exact receipts in explicit enabled mode; never infer it solely from build. Automatic approval rejected build-only activation. Keep the current input gate until supported controls/recovery are established. Use a fresh owned positive reward and confirmed combat wall; repeated Transcension uses completed AS-growing save history rather than waiting for new live cycles after every bot restart. Missing future summon UI must gate its own step, not supported earlier actions.
-## Transcension owner implementation
-
-- Calibrate and implement native Ancient summon/offer/confirmation/cancel controls. The required-only planner and exact Hero Souls receipts exist, but native observations currently recognize only the existing Ancient tab/list navigation; owned-Ancient leveling cannot perform this summon. Integrate the verified unaffordable-offer handoff with ordinary earning and another funded Ascension.
-- Validate middle Outsider cards, selected fixed quantities and bounded shared scrolling in the installed game. The supplied confirmation and top/bottom roster frames have OpenCV/Tesseract regression coverage. Calibrate the conservative wall/AS-rate decision against live progression before enabling resets.
-- Obtain native affordable FEED before/after evidence, an immediate post-Transcension HUD/export (zone 1, zero Hero Souls and reset Ancients), and first-run summon evidence before enabling reset. Old zone-1 frames with a large retained Hero Souls wallet establish ordinary Ascension only. Respec remains disabled; a ticked-respec frame is not required for this mode.
