@@ -121,7 +121,9 @@ func NewSummonPlanner(policy Policy, native NativeEvidence) *SummonPlanner {
 // BindController shares the profile journal and single restoration owner. A
 // pending summon reopened from disk remains uncertain until its exact receipt.
 func (p *SummonPlanner) BindController(c *Controller) error {
-	if p.owner != nil || p.active || c == nil || c.journal == nil || c.summonPlanner != nil || c.pending != (Command{}) || p.policy != c.policy {
+	// Attaching an inactive planner must not block exact reset/FEED recovery.
+	recoveringInput := c != nil && c.stage == Uncertain && c.summon == nil && (c.pending.Action == ConfirmReset || c.pending.Action == FeedOutsider)
+	if p.owner != nil || p.active || c == nil || c.journal == nil || c.summonPlanner != nil || c.pending != (Command{}) && !recoveringInput || p.policy != c.policy {
 		return errors.New("summon requires the exclusive journal-backed restoration controller")
 	}
 	c.journal.mu.Lock()

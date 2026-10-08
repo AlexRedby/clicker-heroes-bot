@@ -28,7 +28,7 @@ func TestPendingTranscensionFeedExportPrecedesStartup(t *testing.T) {
 			after := optInPrestigeSave(t, 2, 0, 75, 115, "0", 2)
 			after.ExportedAt = start.Add(2 * time.Second)
 			dir := t.TempDir()
-			journal, err := transcension.OpenJournal(filepath.Join(dir, "journal.json"), before.State.ProfileID)
+			journal, err := transcension.OpenJournal(filepath.Join(dir, "transcension-"+before.State.ProfileID+".json"), before.State.ProfileID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -83,6 +83,10 @@ func TestPendingTranscensionFeedExportPrecedesStartup(t *testing.T) {
 				t.Fatal("FEED did not wait for its receipt", ctl.Stage())
 			}
 
+			if err := journal.Close(); err != nil {
+				t.Fatal(err)
+			}
+
 			outsiders := map[string]any{}
 			for _, row := range after.State.Outsiders {
 				level, _ := strconv.Atoi(row.Level)
@@ -127,7 +131,7 @@ func TestPendingTranscensionFeedExportPrecedesStartup(t *testing.T) {
 				click:   func(image.Point) error { clicks++; return nil },
 			}, pipelineReaders{context: recognizedGame, window: func() string { return c.window }}, pipelineOptions{heroes: true, transcension: true, fishInterval: time.Second, export: &saveExportOptions{dir: dir, planOutput: filepath.Join(dir, "plan.json"), skillRate: 1}})
 			p.generation, p.layout, p.startup, p.startupCheck = 1, 1, phase, false
-			p.prestige = prestigePipeline{controller: ctl, snapshot: after, summon: transcension.NewSummonPlanner(transcension.Policy{Enabled: true, SkillRate: 1}, nativeTranscensionEvidence(after.State.Build))}
+			defer p.prestige.close()
 			now := time.Now()
 			p.frame = gameFrame{id: 10, generation: 1, layout: 1, at: now, image: screen, context: c}
 			p.export = saveExporter{active: true, requested: true, prestigeOnly: true, step: exportReadFile, before: make(exportSnapshot), window: c.window, deadline: now.Add(10 * time.Second)}
@@ -157,6 +161,10 @@ func TestPendingTranscensionFeedExportPrecedesStartup(t *testing.T) {
 			}
 			if err := p.accept(ctx, result, time.Now()); err != nil {
 				t.Fatal(err)
+			}
+			ctl = p.prestige.controller
+			if ctl == nil {
+				t.Fatal("receipt did not restore the journal-backed controller")
 			}
 			if ctl.Stage() != transcension.SpendOutsiders || p.export.requested || p.export.active || p.controls.isPaused() {
 				t.Fatal("receipt did not resume Outsiders", ctl.Stage(), p.export.requested, p.export.active)

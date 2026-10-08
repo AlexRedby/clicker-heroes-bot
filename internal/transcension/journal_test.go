@@ -33,18 +33,46 @@ func reopenController(t *testing.T, c *Controller) *Controller {
 
 func TestJournalRestartReconcilesPendingResetAndFeed(t *testing.T) {
 	c, before, now := beforeReset(t)
+	bindInert := func(c *Controller) *SummonPlanner {
+		t.Helper()
+		pending, inputAt, reward, hash := c.pending, c.inputAt, c.reward, c.snapshot.State.SaveHash
+		wrongPolicy := c.policy
+		wrongPolicy.SkillRate = 0.5
+		if err := NewSummonPlanner(wrongPolicy, c.native).BindController(c); err == nil {
+			t.Fatal("changed policy acquired the restoration controller")
+		}
+		p := NewSummonPlanner(c.policy, c.native)
+		if err := p.BindController(c); err != nil {
+			t.Fatal("pending reset/FEED prevented inert attachment", err)
+		}
+		if c.Stage() != Uncertain || c.pending != pending || c.inputAt != inputAt || c.reward != reward || c.snapshot.State.SaveHash != hash || c.journal.state.Pending != pending || p.owner != c || c.summonPlanner != p || p.Active() || p.Next(now).Action != NoSummonAction || c.Next(now).Action != NoAction {
+			t.Fatal("inert attachment changed pending ownership or enabled input")
+		}
+		if err := p.Begin(context.Background(), now, c.snapshot); err == nil {
+			t.Fatal("pending reset/FEED allowed Ancient summoning")
+		}
+		if err := NewSummonPlanner(c.policy, c.native).BindController(c); err == nil {
+			t.Fatal("second summon planner acquired the same controller")
+		}
+		return p
+	}
+	if err := NewSummonPlanner(c.policy, c.native).BindController(c); err == nil {
+		t.Fatal("live pending reset allowed summon attachment")
+	}
 	c = reopenController(t, c)
+	p := bindInert(c)
+	pendingReset := c.pending
 	if c.Stage() != Uncertain || c.Next(now).Action != NoAction {
 		t.Fatal("pending reset reopened as executable")
 	}
 	missed := cloneSnapshot(before)
 	missed.Generation, missed.ExportedAt, missed.State.SaveHash = 2, now.Add(time.Second), strings.Repeat("d", 64)
-	if c.Recover(context.Background(), missed.ExportedAt, missed) == nil || c.Stage() != Uncertain {
+	if c.Recover(context.Background(), missed.ExportedAt, missed) == nil || c.Stage() != Uncertain || c.pending != pendingReset || c.journal.state.Pending != pendingReset || p.Next(missed.ExportedAt).Action != NoSummonAction {
 		t.Fatal("unchanged reset outcome permitted replay")
 	}
 	s := resetSnapshot(before, now.Add(2*time.Second))
 	s.Generation = 2
-	if err := c.Recover(context.Background(), s.ExportedAt, s); err != nil || c.Stage() != SpendOutsiders {
+	if err := c.Recover(context.Background(), s.ExportedAt, s); err != nil || c.Stage() != SpendOutsiders || c.pending != (Command{}) || p.owner != c || c.summonPlanner != p || p.Active() {
 		t.Fatal("pending reset recovery", err, c.Stage())
 	}
 	// Committed receipt and fixed targets also survive a second restart.
@@ -56,9 +84,18 @@ func TestJournalRestartReconcilesPendingResetAndFeed(t *testing.T) {
 	}
 	c.Observe(outsiderObservation(s, 1, s.ExportedAt))
 	cmd := reserve(t, c, s.ExportedAt, FeedOutsider)
+	if err := NewSummonPlanner(c.policy, c.native).BindController(c); err == nil {
+		t.Fatal("live pending FEED allowed summon attachment")
+	}
 	c = reopenController(t, c)
+	p = bindInert(c)
 	if c.Next(s.ExportedAt).Action != NoAction || c.pending != cmd {
 		t.Fatal("pending FEED was discarded on restart")
+	}
+	missed = cloneSnapshot(s)
+	missed.Generation, missed.ExportedAt, missed.State.SaveHash = 4, s.ExportedAt.Add(time.Second), strings.Repeat("f", 64)
+	if c.Recover(context.Background(), missed.ExportedAt, missed) == nil || c.Stage() != Uncertain || c.pending != cmd || c.journal.state.Pending != cmd || p.Next(missed.ExportedAt).Action != NoSummonAction || c.Next(missed.ExportedAt).Action != NoAction {
+		t.Fatal("unchanged FEED outcome lost pending ownership or permitted replay")
 	}
 	s = cloneSnapshot(s)
 	for i := range s.State.Outsiders {
@@ -70,7 +107,7 @@ func TestJournalRestartReconcilesPendingResetAndFeed(t *testing.T) {
 	s.State.SaveHash = strings.Repeat("e", 64)
 	s.ExportedAt = s.ExportedAt.Add(time.Second)
 	s.Generation = 4
-	if err := c.Recover(context.Background(), s.ExportedAt, s); err != nil || c.Stage() != SpendOutsiders {
+	if err := c.Recover(context.Background(), s.ExportedAt, s); err != nil || c.Stage() != SpendOutsiders || c.pending != (Command{}) || p.owner != c || c.summonPlanner != p || p.Active() {
 		t.Fatal("pending FEED recovery", err)
 	}
 }
