@@ -52,7 +52,7 @@ func nativeTranscensionObservation(frame gameFrame, ui outsiderObservation, conf
 	}
 	// An unrecognized popup must not be converted into a game-entry command.
 	c := frame.context
-	if c.known && c.heroes && !c.saveMenu && !c.ancientDialog && !c.ascension && !c.relicJunk && !c.questDialog && !c.mercenaryDialog && c.modal == noGildModal {
+	if c.known && c.heroes && !c.transcension && !c.saveMenu && !c.ancientDialog && !c.ascension && !c.relicJunk && !c.questDialog && !c.mercenaryDialog && c.modal == noGildModal {
 		out.Screen, out.Known = transcension.GameScreen, true
 	}
 	return out, nil

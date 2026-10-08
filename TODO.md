@@ -1,10 +1,21 @@
+## Priority milestone: autonomous Transcension and Outsiders
+
+- Reuse the native Go prestige preview, Outsider allocation and shared export/capture/input queue. Separate an observed stalled run from historical save timestamps; choose Transcension when further ordinary Ascensions offer little growth and a useful AS reward is available.
+- Match the existing e12 reward/TP/cost model to the installed UI. Inspect existing native frames first; collect only missing affordable FEED/result, immediate post-reset and Ancient summon screens. No guessed confirmation controls or synthetic-only paid acceptance.
+- Integrate the reviewed native readers and controller with shared modal classification, cancellation, capture/export and action scheduling. Main chat owns pipeline integration; Transcension and Outsiders owns durable recovery and native summon.
+- Fix restoration gates before enabling input: F8 must reconcile nonpending stages, and an insufficient first Hero Soul wallet must return to earning rather than hold gameplay during missing Ancient summons.
+- Implement owned Transcension navigation and one-shot confirmation; a new Transcension counter and fresh post-reset save confirm the reset. F8, failed confirmation and restart must not replay an uncertain reset or feed purchase.
+- Spend only available Ancient Souls on useful Outsider additions using the existing allocation/cost model. Recognize complete cards, use fixed quantities and shared scrolling, and preserve owned levels unless a verified respec route is implemented.
+- Restore the active-play loop after reset: invalidate old Ancient/hero/relic/gild plans, reuse bounded hero setup and Auto Clicker/progression recovery, earn the first Hero Souls, summon missing Active Ancients through recognized controls, then reuse ordinary Ascension/Ancient allocation.
+- Verify useful/no-reward/stale-save decisions, AS accounting, sequential purchases, F8/orphan dialogs, reset counter changes, zero-soul bootstrap and full queue isolation with native fixtures on the authorized Docker host. Native end-to-end acceptance requires the installed game and the missing real UI states.
+
 ## Owned dialog interruption checks
 
 - Verify F8 during an owned quantity/Ascension/quest dialog and manual cancellation while a purchase is pending. Never replay a stopped Ancient batch or prestige confirmation. Unsupported dialogs must keep observing without input.
 
 ## Current implementation sequence
 
-The main chat coordinates integration, tests and delivery to `main`. Feature owners work in their existing chat worktrees and return reviewed commits; shared CLI/pipeline changes are coordinated by the main chat. Finish actionable existing work before enabling achievement goals, then Quick Ascension. Native acceptance that needs an unavailable game state remains an explicit gate, not a reason to stop independent implementation.
+The main chat coordinates integration, tests and delivery to `main`. Feature owners work in their existing chat worktrees and return reviewed commits; shared CLI/pipeline changes are coordinated by the main chat. Prioritize the complete Transcension/Outsider/restart loop. Timelapse, achievements, Quick Ascension and speed optimization follow this milestone. Native acceptance that needs an unavailable game state remains an explicit gate, not a reason to stop independent implementation.
 
 ### 1. Existing features and reproducible bugs
 

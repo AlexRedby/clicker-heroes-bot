@@ -93,3 +93,38 @@ func TestOutsiderNativeBottomAndUnaffordableFeed(t *testing.T) {
 		t.Fatal("native Transcend control", err)
 	}
 }
+
+func TestTranscensionModalIsolatesSharedPipeline(t *testing.T) {
+	screen := exportFixture(t, "transcension-confirm.png", 1280)
+	c, err := recognizedGame(screen)
+	if err != nil || !c.known || !c.transcension || c.heroes || c.outsiders || c.ascension || gameScreenVisible(c) || bootstrapHeroes(c) {
+		t.Fatalf("Transcension modal leaked game context: %+v %v", c, err)
+	}
+	now := time.Now()
+	clicks := 0
+	p := newGamePipeline(&pauseControl{}, heroInput{click: func(image.Point) error { clicks++; return nil }}, pipelineReaders{}, pipelineOptions{heroes: true, monster: true})
+	p.frame = gameFrame{id: 2, at: now, image: screen, context: c}
+	fish := image.Pt(900, 600)
+	p.fishTarget = &fish
+	for _, kind := range []actionKind{collectFish, clickMonster, buyHero, handleExport} {
+		a := gameAction{kind: kind, frame: p.frame, point: fish}
+		p.enqueue(a, now)
+		if _, ok := p.nextAction(now); ok {
+			t.Fatalf("modal admitted queued action %v", kind)
+		}
+		if acted, err := p.execute(context.Background(), a); acted || !errors.Is(err, errInputContext) {
+			t.Fatalf("modal admitted direct action %v: acted=%t err=%v", kind, acted, err)
+		}
+	}
+	if clicks != 0 || p.fishTarget == nil || *p.fishTarget != fish {
+		t.Fatal("covered fish was clicked or its cached position was discarded")
+	}
+	p.plan(now)
+	a, ok := p.nextAction(now)
+	if !ok || a.kind != navigateGame || a.navigation != navigationTranscension {
+		t.Fatal("orphan Transcension modal did not select verified No", a, ok)
+	}
+	if acted, err := p.execute(context.Background(), a); !acted || err != nil || clicks != 1 {
+		t.Fatalf("verified cancellation failed: acted=%t err=%v clicks=%d", acted, err, clicks)
+	}
+}

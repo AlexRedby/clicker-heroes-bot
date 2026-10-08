@@ -22,10 +22,11 @@ const (
 	navigationGildReward
 	navigationGildRoster
 	navigationHeroes
+	navigationTranscension
 )
 
 func (s navigationStep) String() string {
-	return [...]string{"restore game focus", "close Settings", "cancel Ancient quantity", "cancel Ascension", "cancel junk salvage", "close quest selection", "cancel Mercenary recovery", "open earned gild chest", "close gild reward", "close gild roster", "return to Heroes"}[s]
+	return [...]string{"restore game focus", "close Settings", "cancel Ancient quantity", "cancel Ascension", "cancel junk salvage", "close quest selection", "cancel Mercenary recovery", "open earned gild chest", "close gild reward", "close gild roster", "return to Heroes", "cancel Transcension"}[s]
 }
 
 type gameNavigation struct {
@@ -52,6 +53,10 @@ func navigationControl(f gameFrame, step navigationStep) (image.Point, bool, err
 	case navigationSettings:
 		if c.saveMenu {
 			return saveControl(f.image, 1)
+		}
+	case navigationTranscension:
+		if c.transcension {
+			return transcensionControl(f.image, transcensionNo)
 		}
 	case navigationQuantity:
 		if c.ancientDialog {
@@ -86,7 +91,7 @@ func navigationControl(f gameFrame, step navigationStep) (image.Point, bool, err
 			region = image.Rect(1137, 27, 1161, 51)
 		}
 	case navigationHeroes:
-		if c.known && !c.heroes && !c.saveMenu && !c.ancientDialog && !c.ascension && !c.relicJunk && !c.questDialog && !c.mercenaryDialog && c.modal == noGildModal {
+		if c.known && !c.heroes && !c.saveMenu && !c.transcension && !c.ancientDialog && !c.ascension && !c.relicJunk && !c.questDialog && !c.mercenaryDialog && c.modal == noGildModal {
 			return ancientTabPoint(f.image, true), true, nil
 		}
 	}
@@ -140,6 +145,8 @@ func (p *gamePipeline) planNavigation(now time.Time) (recovering bool) {
 			return true
 		}
 		step = navigationFocus
+	case c.transcension:
+		step = navigationTranscension
 	case c.saveMenu:
 		if p.options.export != nil && p.export.requested && (p.startup == startupSave || !p.startupCheck && p.startup == noStartup || p.export.active) {
 			return false

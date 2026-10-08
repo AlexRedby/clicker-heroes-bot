@@ -18,6 +18,7 @@ func TestNavigationCancelsRecognizedOrphanModals(t *testing.T) {
 		{"ancient-quantity.png", navigationQuantity},
 		{"ancient-quantity-filled.png", navigationQuantity},
 		{"ascension-confirm.png", navigationAscension},
+		{"transcension-confirm.png", navigationTranscension},
 		{"ascension-junk.png", navigationJunk},
 		{"mercenary-quests.png", navigationQuest},
 		{"mercenary-revive.png", navigationRecovery},

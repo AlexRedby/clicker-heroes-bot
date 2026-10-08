@@ -196,5 +196,5 @@ func heroTextStable(a, z image.Image, region image.Rectangle) bool {
 }
 
 func bootstrapHeroes(c gameContext) bool {
-	return c.known && c.heroes && c.modal == noGildModal && !c.ascension && !c.ancients && !c.ancientDialog && !c.saveMenu && !c.questDialog && !c.mercenaries
+	return c.known && c.heroes && c.modal == noGildModal && !c.transcension && !c.ascension && !c.ancients && !c.ancientDialog && !c.saveMenu && !c.questDialog && !c.mercenaries
 }
