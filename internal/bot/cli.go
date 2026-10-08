@@ -39,6 +39,7 @@ func Main() {
 	interval := flag.Duration("interval", 100*time.Millisecond, "time between optional monster clicks in run mode")
 	fishInterval := flag.Duration("fish-interval", time.Second, "time between fish scans in run mode")
 	progression := flag.Bool("progression", false, "automate heroes, skills, owned Auto Clickers, gild gifts, boss progression, Ascension and Ancients; requires -export-dir")
+	transcension := flag.Bool("transcension", false, "enable guarded Transcension integration; reset remains blocked until native recovery and spending are verified")
 	gildInterval := flag.Duration("gild-interval", 5*time.Minute, "time between earned gild gift checks")
 	ascensionMinGain := flag.Float64("ascension-min-gain", 0.25, "minimum Ascension reward as a fraction of soul capital (0.25 means 25%)")
 	ascensionStall := flag.Duration("ascension-stall", 3*time.Minute, "fallback stall before Ascension when a full combat failure was not observed")
@@ -196,7 +197,7 @@ func Main() {
 			}
 		}
 		options, e := configureRun(pipelineOptions{
-			progression: *progression, mercenaries: *mercenaries, monster: hasX,
+			progression: *progression, transcension: *transcension, mercenaries: *mercenaries, monster: hasX,
 			monsterPoint: image.Pt(*x, *y), clickInterval: *interval, fishInterval: *fishInterval,
 			gildInterval: *gildInterval, ascensionStall: *ascensionStall, ascensionMinGain: *ascensionMinGain,
 			export: export, windowed: *windowed, achievements: goals,

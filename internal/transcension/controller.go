@@ -3,7 +3,6 @@ package transcension
 import (
 	"context"
 	"errors"
-	"math"
 	"math/big"
 	"slices"
 	"strconv"
@@ -49,8 +48,8 @@ type Policy struct {
 	Beyond8k  bool
 }
 
-// NativeEvidence is installed-client acceptance, not a CLI override. The bot
-// adapter must leave missing FEED/reset-recovery/summon evidence false.
+// NativeEvidence binds supported controls and receipt models to this build.
+// Missing summon controls block their purchase, not earlier reset/FEED steps.
 type NativeEvidence struct {
 	Build                              string
 	ResetRecovery, Feed, AncientSummon bool
@@ -76,8 +75,8 @@ func ReadSnapshot(ctx context.Context, exported []byte, at time.Time, generation
 	return s, err
 }
 
-// Timing comes from completed live loops and measured active play. Save dates,
-// offline time and an advisory preview cannot establish these facts.
+// Timing binds an actual observed wall to the current export and generation.
+// Loop/rate fields are advisory; completed save history survives bot restarts.
 type Timing struct {
 	At                           time.Time
 	Generation                   uint64
@@ -199,19 +198,16 @@ func (c *Controller) Begin(ctx context.Context, now time.Time, s Snapshot, timin
 	if p.SaveHash != state.SaveHash || p.Build != state.Build || p.SaveVersion != state.SaveVersion || p.Transcensions != state.Transcensions || p.Ascensions != state.AscensionsThisTranscension || p.AncientSouls != state.AncientSouls || p.AncientSoulsTotal != state.AncientSoulsTotal || p.Transcendent != state.Transcendent || p.HighestZone != state.HighestZone || p.EstimatedASGain == nil || *p.EstimatedASGain <= 0 || state.HighestZone < 300 {
 		return errors.New("preview and fresh state do not establish positive reset eligibility")
 	}
-	if timing.CompletedLoops < 2 || !timing.WallConfirmed {
-		return errors.New("two completed Ascension loops and a confirmed wall required")
+	if !timing.WallConfirmed {
+		return errors.New("confirmed live combat wall required")
 	}
 	if state.Transcendent {
 		if !p.History.Available || p.History.ASGrowingAscensions < 3 {
 			return errors.New("three completed AS-growing Ascensions required by the conservative policy")
 		}
-		if math.IsNaN(timing.PreviousASPerHour) || math.IsInf(timing.PreviousASPerHour, 0) || math.IsNaN(timing.ASPerHour) || math.IsInf(timing.ASPerHour, 0) || timing.PreviousASPerHour <= 0 || timing.ASPerHour < 0 || timing.ASPerHour >= timing.PreviousASPerHour {
-			return errors.New("declining measured AS per active-play hour required")
-		}
 	}
-	if c.native.Build != state.Build || !c.native.ResetRecovery || !c.native.Feed || !c.native.AncientSummon {
-		return errors.New("native reset recovery, affordable FEED and Ancient summon acceptance required")
+	if c.native.Build != state.Build || !c.native.ResetRecovery || !c.native.Feed {
+		return errors.New("supported native reset/FEED controls and receipt models required")
 	}
 	if plans, err := ancientcalc.PlanOutsiders(ctx, state.AncientSoulsTotal, state.AncientSouls, *p.EstimatedASGain, state.Outsiders); err != nil || plans.AfterReward.Status != "ok" {
 		return errors.New("unsupported projected Outsider allocation")
@@ -267,7 +263,7 @@ func (c *Controller) Next(now time.Time) Command {
 	if c.stage != AwaitOutsiders && c.stage != AwaitConfirmation && c.stage != SpendOutsiders {
 		return cmd
 	}
-	if !c.policy.Enabled || c.native.Build != c.snapshot.State.Build || !c.native.ResetRecovery || !c.native.Feed || !c.native.AncientSummon {
+	if !c.policy.Enabled || c.native.Build != c.snapshot.State.Build || !c.native.ResetRecovery || !c.native.Feed {
 		c.reason = "current policy/native acceptance blocks further Transcension input"
 		return cmd
 	}

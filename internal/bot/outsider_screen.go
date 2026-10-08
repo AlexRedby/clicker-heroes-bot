@@ -150,7 +150,7 @@ func readOutsiderObservation(ctx context.Context, frame gameFrame) (outsiderObse
 	}
 	read := func(r image.Rectangle, threshold int, chars string) (string, error) {
 		w := screen.Bounds().Dx()
-		raw, err := readGameText(ctx, screen, vision.Rect(screen, r), max(1, (2560+w-1)/w), 7, threshold, chars)
+		raw, err := readGameText(ctx, screen, vision.Rect(screen, r), max(1, (5120+w-1)/w), 7, threshold, chars)
 		return strings.TrimSpace(raw), err
 	}
 	chars := "0123456789.,eE%+'-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ :"
@@ -174,17 +174,23 @@ func readOutsiderObservation(ctx context.Context, frame gameFrame) (outsiderObse
 		target *int
 	}{
 		{image.Rect(420, 180, 605, 198), "", " Ancient Souls", &out.wallet},
-		{image.Rect(560, 200, 605, 220), "+", "", &out.gain},
+		{image.Rect(445, 200, 605, 220), "Transcend for +", "", &out.gain},
 	} {
-		raw, err := readGameText(ctx, screen, vision.Rect(screen, field.r), max(1, 2560/screen.Bounds().Dx()), 7, 230, chars)
+		scale := max(1, 2560/screen.Bounds().Dx())
+		if field.target == &out.gain {
+			scale = max(1, (5120+screen.Bounds().Dx()-1)/screen.Bounds().Dx())
+		}
+		raw, err := readGameText(ctx, screen, vision.Rect(screen, field.r), scale, 7, 230, chars)
 		raw = strings.TrimSpace(raw)
 		if err != nil {
 			return out, err
 		}
-		if !strings.HasPrefix(raw, field.prefix) || !strings.HasSuffix(raw, field.suffix) {
+		label := strings.ReplaceAll(raw, " ", "")
+		prefix, suffix := strings.ReplaceAll(field.prefix, " ", ""), strings.ReplaceAll(field.suffix, " ", "")
+		if !strings.HasPrefix(label, prefix) || !strings.HasSuffix(label, suffix) {
 			return out, fmt.Errorf("unreadable Ancient Souls label %q", raw)
 		}
-		*field.target, err = parseOutsiderInteger(strings.TrimSuffix(strings.TrimPrefix(raw, field.prefix), field.suffix))
+		*field.target, err = parseOutsiderInteger(strings.TrimSuffix(strings.TrimPrefix(label, prefix), suffix))
 		if err != nil {
 			return out, err
 		}

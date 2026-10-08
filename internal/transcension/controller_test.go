@@ -3,7 +3,6 @@ package transcension
 import (
 	"context"
 	"fmt"
-	"math"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -201,11 +200,9 @@ func TestEligibilityAndUnverifiedNativeGates(t *testing.T) {
 			s.ExportedAt = s.ExportedAt.Add(-time.Minute)
 		}},
 		{"unowned timing", func(_ *Snapshot, timing *Timing, _ *NativeEvidence, _ *Policy) { timing.Generation++ }},
-		{"only one loop", func(_ *Snapshot, timing *Timing, _ *NativeEvidence, _ *Policy) { timing.CompletedLoops = 1 }},
 		{"no wall", func(_ *Snapshot, timing *Timing, _ *NativeEvidence, _ *Policy) { timing.WallConfirmed = false }},
 		{"no reset receipt evidence", func(_ *Snapshot, _ *Timing, n *NativeEvidence, _ *Policy) { n.ResetRecovery = false }},
 		{"no affordable FEED", func(_ *Snapshot, _ *Timing, n *NativeEvidence, _ *Policy) { n.Feed = false }},
-		{"no summon", func(_ *Snapshot, _ *Timing, n *NativeEvidence, _ *Policy) { n.AncientSummon = false }},
 		{"different preview", func(s *Snapshot, _ *Timing, _ *NativeEvidence, _ *Policy) { s.Preview.SaveHash = "wrong" }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -320,8 +317,8 @@ func TestNewCycleDoesNotReuseOldGenerationFrame(t *testing.T) {
 	}
 }
 
-func TestRepeatResetNeedsGrowingHistoryAndDecliningMeasuredRate(t *testing.T) {
-	for _, name := range []string{"ready", "no history", "only two AS-growing Ascensions", "rate still growing", "invalid active rate"} {
+func TestRepeatResetNeedsCompletedGrowingHistory(t *testing.T) {
+	for _, name := range []string{"ready", "no history", "only two AS-growing Ascensions"} {
 		t.Run(name, func(t *testing.T) {
 			s, timing, native := preparation()
 			s.State.Transcendent, s.State.Transcensions = true, 1
@@ -333,10 +330,6 @@ func TestRepeatResetNeedsGrowingHistoryAndDecliningMeasuredRate(t *testing.T) {
 				s.Preview.History.Available = false
 			case "only two AS-growing Ascensions":
 				s.Preview.History.ASGrowingAscensions = 2
-			case "rate still growing":
-				timing.ASPerHour = timing.PreviousASPerHour
-			case "invalid active rate":
-				timing.ASPerHour = math.NaN()
 			}
 			c := newTestController(t, Policy{Enabled: true}, native)
 			err := c.Begin(context.Background(), s.ExportedAt, s, timing)

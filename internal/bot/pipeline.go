@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"clicker-heroes-bot/internal/ancientcalc"
+	"clicker-heroes-bot/internal/transcension"
 )
 
 type analysisKind uint8
@@ -27,6 +28,7 @@ const (
 	outsiderAnalysis
 	autoClickerAnalysis
 	relicAnalysis
+	transcensionAnalysis
 	analysisCount
 )
 
@@ -41,6 +43,8 @@ const (
 	placeOwnedClicker
 	handleMercenary
 	handleAscension
+	handleTranscension
+	handleSummon
 	handleAncient
 	handleExport
 	handleRelic
@@ -99,6 +103,7 @@ type observation struct {
 	ascension     ascensionObservation
 	ancient       ancientObservation
 	export        exportResult
+	confirmation  transcensionObservation
 	outsider      outsiderObservation
 	outsiderPlan  outsiderAdvice
 	clickerPool   autoClickerPool
@@ -115,6 +120,8 @@ type gameAction struct {
 	progression   progressionState
 	mercenary     mercenaryCommand
 	ascension     ascensionStep
+	prestige      transcension.Command
+	summon        transcension.SummonCommand
 	ancient       ancientCommand
 	navigation    navigationStep
 	export        *exportCommand
@@ -140,6 +147,7 @@ type pipelineReaders struct {
 	ancients         func(context.Context, gameFrame) (ancientObservation, error)
 	ancientNames     func(context.Context, gameFrame) (ancientObservation, error)
 	outsiders        func(context.Context, gameFrame) (outsiderObservation, error)
+	transcension     func(context.Context, gameFrame) (transcensionObservation, error)
 	heroes           heroReaders
 	autoClickers     func(context.Context, gameFrame) (autoClickerPool, error)
 	window           func() string
@@ -147,6 +155,7 @@ type pipelineReaders struct {
 type pipelineOptions struct {
 	windowed, autoClickers                                              bool
 	heroes, skills, progression, mercenaries, monster, gilds, ascension bool
+	transcension                                                        bool
 	ascensionStall                                                      time.Duration
 	ascensionMinGain, ascensionCapital                                  float64
 	ancientPlan                                                         *ancientPlan
@@ -169,6 +178,7 @@ type pipelineMetrics struct {
 }
 
 type gamePipeline struct {
+	prestige                                            prestigePipeline
 	readers                                             pipelineReaders
 	options                                             pipelineOptions
 	clickers                                            autoClickerPlanner
@@ -367,6 +377,12 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 		}
 	case exportAnalysis:
 		out.export, out.err = readExport(*job.export)
+	case transcensionAnalysis:
+		if job.frame.context.outsiders {
+			out.outsider, out.err = p.readers.outsiders(ctx, job.frame)
+		} else if job.frame.context.transcension {
+			out.confirmation, out.err = p.readers.transcension(ctx, job.frame)
+		}
 	case outsiderAnalysis:
 		out.outsider, out.err = p.readers.outsiders(ctx, job.frame)
 		if out.err == nil {
@@ -398,6 +414,7 @@ func replaceJob(ch chan analysisJob, job analysisJob) {
 
 func (p *gamePipeline) reset(generation uint64) {
 	if generation != p.generation {
+		p.prestige.interrupt()
 		p.invalidateAchievementGoals()
 	}
 	relicExport := p.relic.active && p.export.relicsOnly && p.export.requested
@@ -450,7 +467,7 @@ func (p *gamePipeline) run(ctx context.Context) error {
 	workerCtx, cancel := context.WithCancel(ctx)
 	workerCtx = withTimingCollector(workerCtx, &p.metrics.ocrWaitTime, &p.metrics.ocrExecutionTime)
 	var wg sync.WaitGroup
-	defer func() { cancel(); p.export.interrupt(); close(p.diagnostics); wg.Wait() }()
+	defer func() { cancel(); p.export.interrupt(); close(p.diagnostics); wg.Wait(); p.prestige.close() }()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -524,6 +541,11 @@ func (p *gamePipeline) run(ctx context.Context) error {
 			p.busy = false
 			p.rememberCompletedSave(done)
 			if done.err != nil {
+				if done.action.kind == handleTranscension || done.action.kind == handleSummon {
+					p.prestige.interrupt()
+					p.prestige.report("input failed; fresh receipt required: " + done.err.Error())
+					continue
+				}
 				if done.action.kind == handleExport {
 					p.exportFailed(done.err)
 					continue
@@ -685,6 +707,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.relic.jobFrame = 0
 			p.relic.latest = relicObservation{}
 			p.ancient.jobFrame = 0
+			p.prestige.jobFrame, p.prestige.nextRead = 0, time.Time{}
 			p.outsiderJobFrame = 0
 			p.nextOutsider = time.Time{}
 			p.outsiderMessage = ""
@@ -737,6 +760,14 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 				p.nextClickerRead = now.Add(300 * time.Millisecond)
 			}
 		}
+		if p.prestige.exclusive() && !p.export.requested {
+			if p.prestige.jobFrame == 0 && !now.Before(p.prestige.nextRead) {
+				p.prestige.jobFrame = p.frame.id
+				replaceJob(jobs[transcensionAnalysis], analysisJob{frame: p.frame})
+				p.prestige.nextRead = now.Add(300 * time.Millisecond)
+			}
+			return nil
+		}
 		if c.transcension {
 			return nil
 		}
@@ -780,7 +811,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			if p.export.active && p.export.step == exportReadFile && p.export.jobFrame == 0 && c.window == p.export.window && c.known && !c.saveMenu {
 				jobCtx, cancel := context.WithDeadline(ctx, p.export.deadline)
 				p.export.cancel, p.export.jobFrame = cancel, p.frame.id
-				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before, relicsOnly: p.export.relicsOnly, goalsOnly: p.export.goalsOnly, achievements: p.options.achievements != nil, initialSetup: p.export.initialSetup}})
+				replaceJob(jobs[exportAnalysis], analysisJob{frame: p.frame, export: &exportJob{ctx: jobCtx, options: *p.options.export, before: p.export.before, relicsOnly: p.export.relicsOnly, goalsOnly: p.export.goalsOnly, achievements: p.options.achievements != nil, initialSetup: p.export.initialSetup, prestige: p.options.transcension, prestigeOnly: p.export.prestigeOnly || p.prestige.holdAncients(), restoreAllocation: p.prestige.stage() != transcension.Ordinary, generation: p.generation}})
 			}
 			return nil
 		}
@@ -852,6 +883,9 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 }
 
 func (p *gamePipeline) accept(ctx context.Context, out observation, now time.Time) error {
+	if out.kind == transcensionAnalysis && out.frame.id == p.prestige.jobFrame {
+		p.prestige.jobFrame = 0
+	}
 	if out.kind == relicAnalysis && out.frame.id == p.relic.jobFrame {
 		p.relic.jobFrame = 0
 	}
@@ -911,6 +945,17 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.exportFailed(reason)
 			return nil
 		}
+		if err := p.acceptPrestigeSave(ctx, out.export, now); err != nil {
+			p.export.interrupt()
+			p.controls.pauseLocked("Transcension receipt rejected: "+err.Error(), false)
+			return nil
+		}
+		if (p.export.prestigeOnly && p.prestige.stage() != transcension.ReadyForAllocation) || p.prestige.holdAncients() && !p.export.initialSetup && !p.export.relicsOnly && !p.export.goalsOnly {
+			p.export.interrupt()
+			p.export.requested, p.export.prestigeOnly = false, false
+			p.queue = make(map[actionKind]gameAction)
+			return nil
+		}
 		if goals := p.options.achievements; goals != nil {
 			delete(p.queue, handleMercenary)
 			if err := goals.acceptSnapshot(out.export.achievements, out.export.achievementErr); err != nil {
@@ -951,6 +996,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.ascension.nextRead, p.nextFish, p.nextProgression = time.Time{}, time.Time{}, time.Time{}
 			return nil
 		}
+		p.export.prestigeOnly = false
 		initial := p.export.initialSetup
 		if out.export.plan == nil && !initial {
 			return errors.New("save export returned no Ancient plan")
@@ -1004,6 +1050,17 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		} else {
 			fmt.Println("save export: fresh plan ready")
 		}
+		return nil
+	}
+	if out.kind == transcensionAnalysis {
+		if out.frame.layout != p.layout || out.frame.generation != p.generation || out.frame.context != p.frame.context {
+			return nil
+		}
+		if out.err != nil {
+			p.prestige.report(out.err.Error())
+			return nil
+		}
+		p.prestigeFrame(out.frame, out.outsider, out.confirmation)
 		return nil
 	}
 	if out.kind == fishAnalysis && !gameScreenVisible(out.frame.context) {
@@ -1313,6 +1370,9 @@ func (p *gamePipeline) plan(now time.Time) {
 	if now.Before(p.settleUntil) {
 		return
 	}
+	if p.prestige.exclusive() && p.frame.context.known && !p.frame.context.saveMenu && (p.prestige.stage() != transcension.Uncertain || gameScreenVisible(p.frame.context)) && p.planTranscension(now) {
+		return
+	}
 	if p.planNavigation(now) {
 		return
 	}
@@ -1349,7 +1409,7 @@ func (p *gamePipeline) plan(now time.Time) {
 		p.planAutoClickers(now)
 	}
 	p.planAchievementRefresh()
-	if p.planStartup(now) || p.planExport(now) || p.planAncients(now) || p.planRelics(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
+	if p.planTranscension(now) || p.planStartup(now) || p.planExport(now) || p.planAncients(now) || p.planRelics(now) || p.planAscension(now) || p.planGilds(now) || !p.frame.context.known {
 		return
 	}
 	if p.options.mercenaries {
@@ -1400,6 +1460,25 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			}
 			delete(p.queue, kind)
 			return action, true
+		}
+		if kind == handleTranscension || kind == handleSummon {
+			stable := false
+			if kind == handleTranscension {
+				stable = p.prestigeActionStable(action, now)
+			} else if p.prestige.summon != nil {
+				check := action
+				check.kind = handleAncient
+				stable = p.prestige.summon.Allowed(now, action.summon) && nativeAncientSummonActionStable(action.summon, check, p.frame)
+			}
+			delete(p.queue, kind)
+			if stable && !p.export.requested {
+				return action, true
+			}
+			continue
+		}
+		if p.prestige.exclusive() && kind != collectFish && kind != handleExport {
+			delete(p.queue, kind)
+			continue
 		}
 		if p.frame.context.transcension {
 			delete(p.queue, kind)
@@ -1583,7 +1662,7 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 		if !a.restoresFocus() && p.readers.window != nil && p.readers.window() != a.frame.context.window {
 			return errInputContext
 		}
-		if p.frame.context.transcension && (a.kind != navigateGame || a.navigation != navigationTranscension) {
+		if p.frame.context.transcension && a.kind != handleTranscension && (a.kind != navigateGame || a.navigation != navigationTranscension) {
 			return errInputContext
 		}
 		if a.kind == collectFish && (!gameScreenVisible(p.frame.context) || a.frame.context != p.frame.context) {
@@ -1591,6 +1670,24 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 		}
 		if a.kind == handleRelic && !relicActionStable(a, p.frame) {
 			return errInputContext
+		}
+		if a.kind == handleTranscension {
+			if !p.prestigeActionStable(a, time.Now()) {
+				return errInputContext
+			}
+			if err := p.prestige.controller.Reserve(time.Now(), a.prestige); err != nil {
+				return err
+			}
+		}
+		if a.kind == handleSummon {
+			check := a
+			check.kind = handleAncient
+			if !p.prestige.summon.Allowed(time.Now(), a.summon) || !nativeAncientSummonActionStable(a.summon, check, p.frame) {
+				return errInputContext
+			}
+			if err := p.prestige.summon.Reserve(time.Now(), a.summon); err != nil {
+				return err
+			}
 		}
 		if scroll, ok := listScrollAction(a); ok {
 			return scrollList(ctx, input, scroll)
@@ -1600,6 +1697,8 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			if a.navigation == navigationFocus {
 				return input.focus(p.navigation.window)
 			}
+			return input.click(a.point)
+		case handleTranscension, handleSummon:
 			return input.click(a.point)
 		case handleRelic:
 			switch a.relic.step {
@@ -1740,6 +1839,12 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.navigation.report(a.navigation.String())
 		p.queue = make(map[actionKind]gameAction)
 		p.state = [analysisCount]observation{}
+	case handleTranscension, handleSummon:
+		p.queue = make(map[actionKind]gameAction)
+		p.prestige.jobFrame, p.prestige.nextRead = 0, time.Time{}
+		p.prestige.outsider, p.prestige.confirmation = outsiderObservation{}, transcensionObservation{}
+		p.settleUntil = now.Add(listScrollSettle)
+		fmt.Printf("Transcension input submitted: stage=%d at (%d, %d)\n", p.prestige.stage(), a.point.X, a.point.Y)
 	case handleRelic:
 		p.relic.sent(a, now)
 		invalidate(relicAnalysis)
@@ -1889,12 +1994,12 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 func (m *pipelineMetrics) String() string {
 	parts := []string{fmt.Sprintf("captures=%d capture=%s actions=%d input=%s queue=%s stale=%d", m.captures, m.captureTime, m.actions, m.inputTime, m.queueTime, m.dropped)}
 	parts = append(parts, fmt.Sprintf("timings=capture=%s context=%s action-queue=%s ocr-wait=%s ocr-exec=%s wait-polls={%s}", m.captureSamples.Snapshot(), m.contextTime.Snapshot(), m.actionQueueTime.Snapshot(), m.ocrWaitTime.Snapshot(), m.ocrExecutionTime.Snapshot(), m.waitReasons.String()))
-	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers", "relics"} {
+	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers", "relics", "transcension"} {
 		if summary := m.analysisTime[i].Snapshot(); summary.Window > 0 {
 			parts = append(parts, fmt.Sprintf("%s-time=%s analyzer-queue=%s", name, summary, m.analyzerQueueTime[i].Snapshot()))
 		}
 	}
-	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers", "relics"} {
+	for i, name := range []string{"fish", "skills", "progression", "heroes", "mercenaries", "ascension", "ancients", "export", "outsiders", "clickers", "relics", "transcension"} {
 		parts = append(parts, fmt.Sprintf("%s=%d/%s", name, m.counts[i], m.elapsed[i]))
 	}
 	return strings.Join(parts, " ")
@@ -2049,6 +2154,9 @@ func (p *gamePipeline) ascensionReady(now time.Time) bool {
 }
 
 func (p *gamePipeline) planAncients(now time.Time) bool {
+	if p.prestige.holdAncients() {
+		return false
+	}
 	if p.frame.context.ancientDialog && !p.ancient.active {
 		return true
 	}

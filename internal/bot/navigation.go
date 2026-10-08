@@ -5,6 +5,7 @@ import (
 	"image"
 	"time"
 
+	"clicker-heroes-bot/internal/transcension"
 	"clicker-heroes-bot/internal/vision"
 )
 
@@ -146,6 +147,9 @@ func (p *gamePipeline) planNavigation(now time.Time) (recovering bool) {
 		}
 		step = navigationFocus
 	case c.transcension:
+		if p.prestige.stage() == transcension.AwaitConfirmation {
+			return false
+		}
 		step = navigationTranscension
 	case c.saveMenu:
 		if p.options.export != nil && p.export.requested && (p.startup == startupSave || !p.startupCheck && p.startup == noStartup || p.export.active) {

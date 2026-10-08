@@ -114,7 +114,7 @@ func runBot(options pipelineOptions, duration time.Duration, stats bool) error {
 
 	fmt.Println("paused; press F8 to start or pause, Ctrl+C to stop")
 	pipeline := newGamePipeline(&controls, input, pipelineReaders{
-		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation, ascensionEconomy: readAscensionEconomy, ancients: readAncientObservation, ancientNames: readAncientNames, outsiders: readOutsiderObservation,
+		context: recognizedGame, fish: sift.Find, skills: readSkillStates, progression: readProgressionState, mercenaries: readMercenaryObservation, ascension: readAscensionObservation, ascensionEconomy: readAscensionEconomy, ancients: readAncientObservation, ancientNames: readAncientNames, outsiders: readOutsiderObservation, transcension: readTranscensionObservation,
 		heroes: heroReaders{readHeroGold, readHeroPrice, readHeroLevel}, window: windowReader, autoClickers: readAutoClickerPool,
 	}, options)
 	err = pipeline.run(ctx)

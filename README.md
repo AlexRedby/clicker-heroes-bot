@@ -25,6 +25,8 @@ While `run` is active, manually opening the Outsiders tab prints a read-only rep
 
 With `run -save`, `-ancients-save` or a successful `-export-dir` export, the report also shows concrete Outsider additions from the current wallet and a separate conditional plan after the displayed AS reward. It checks visible levels, wallet, TP at display precision and fixed-quantity FEED costs against the save/model; hidden levels still come from the save and MAX pricing remains unverified. State/cost mismatches suppress the plan. A changed reward is reported explicitly and the conditional plan uses the UI reward. These checks do not establish save freshness or authorize spending/reset. Missing prestige metadata remains advisory to ordinary Ancient/relic automation.
 
+The optional `run -progression -transcension -export-dir "path/to/export"` connects the prestige controller to the shared capture, export and input queue. It keeps profile-bound reset/purchase ownership across F8 and restart, and hands restoration back to hero setup, progression and ordinary Ancient allocation. Reset, FEED and summons remain blocked while installed-client acceptance is missing; the switch cannot override that gate. An unsupported summon screen saves `artifacts/transcension-summon-*.png` and pauses for calibration. Ordinary `-progression` does not enable Transcension.
+
 To inspect the same plan offline with an existing Outsiders image:
 
 ```sh

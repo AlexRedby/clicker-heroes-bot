@@ -8,6 +8,9 @@ import (
 // Progression is one complete gameplay cycle; individual pipeline switches remain
 // internal so analyzers and transactions can be tested independently.
 func configureRun(options pipelineOptions) (pipelineOptions, error) {
+	if options.transcension && !options.progression {
+		return options, errors.New("-transcension requires -progression")
+	}
 	if options.progression {
 		if options.export == nil || options.export.dir == "" {
 			return options, errors.New("-progression requires -export-dir for fresh Ancient plans after Ascension")

@@ -102,12 +102,12 @@ func TestTranscensionModalIsolatesSharedPipeline(t *testing.T) {
 	}
 	now := time.Now()
 	clicks := 0
-	p := newGamePipeline(&pauseControl{}, heroInput{click: func(image.Point) error { clicks++; return nil }}, pipelineReaders{}, pipelineOptions{heroes: true, monster: true})
+	p := newGamePipeline(&pauseControl{}, heroInput{click: func(image.Point) error { clicks++; return nil }}, pipelineReaders{}, pipelineOptions{heroes: true, monster: true, windowed: true})
 	p.frame = gameFrame{id: 2, at: now, image: screen, context: c}
 	fish := image.Pt(900, 600)
 	p.fishTarget = &fish
 	for _, kind := range []actionKind{collectFish, clickMonster, buyHero, handleExport} {
-		a := gameAction{kind: kind, frame: p.frame, point: fish}
+		a := gameAction{kind: kind, frame: p.frame, point: fish, export: &exportCommand{step: exportOpenMenu}}
 		p.enqueue(a, now)
 		if _, ok := p.nextAction(now); ok {
 			t.Fatalf("modal admitted queued action %v", kind)

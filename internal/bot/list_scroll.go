@@ -4,6 +4,8 @@ import (
 	"context"
 	"image"
 	"time"
+
+	"clicker-heroes-bot/internal/transcension"
 )
 
 // Modes describe list navigation, without adding feature-specific input paths.
@@ -31,7 +33,9 @@ func listScrollAction(a gameAction) (listScrollCommand, bool) {
 			s.mode = listScrollPage
 		}
 	case a.kind == handleMercenary && (a.mercenary.step == scrollMercenariesTop || a.mercenary.step == scrollMercenariesBottom):
-	case a.kind == handleAncient && a.ancient.step == scrollAncients:
+	case a.kind == handleTranscension && (a.prestige.Action == transcension.ScrollOutsidersTop || a.prestige.Action == transcension.ScrollOutsidersDown):
+		s.mode = listScrollPage
+	case (a.kind == handleAncient || a.kind == handleSummon) && a.ancient.step == scrollAncients:
 		s.mode, s.direction = listScrollRecord, a.ancient.direction
 		if a.ancient.fine {
 			s.mode = listScrollFine

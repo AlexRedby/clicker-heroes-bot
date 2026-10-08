@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"clicker-heroes-bot/internal/ancientcalc"
+	"clicker-heroes-bot/internal/transcension"
 	"clicker-heroes-bot/internal/vision"
 )
 
@@ -67,8 +68,13 @@ type exportJob struct {
 	relicsOnly              bool
 	goalsOnly, achievements bool
 	initialSetup            bool
+	prestige, prestigeOnly  bool
+	restoreAllocation       bool
+	generation              uint64
 }
 type exportResult struct {
+	transcension        *transcension.Snapshot
+	transcensionErr     error
 	achievements        *ancientcalc.AchievementState
 	achievementErr      error
 	plan                *ancientPlan
@@ -90,6 +96,7 @@ func (p *gamePipeline) reportRelics(preview *ancientcalc.RelicPreview, err error
 type saveExporter struct {
 	requested, active, waiting bool
 	relicsOnly                 bool
+	prestigeOnly               bool
 	goalsOnly                  bool
 	initialSetup               bool
 	step                       exportStep
@@ -160,7 +167,7 @@ func (p *gamePipeline) planExport(now time.Time) bool {
 	if !e.active {
 		if e.before != nil && e.step == exportCloseMenu {
 			e.active = true
-		} else if !p.frame.context.known || (!p.frame.context.heroes && !p.frame.context.ancients && !p.frame.context.saveMenu) {
+		} else if !p.frame.context.known || (!p.frame.context.heroes && !p.frame.context.ancients && !p.frame.context.outsiders && !p.frame.context.saveMenu) {
 			return true
 		}
 		if !e.active && (p.frame.context.window == "" || p.frame.context.window == "!outside-game") {
@@ -205,7 +212,7 @@ func (p *gamePipeline) planExport(now time.Time) bool {
 		if c.window != e.window {
 			e.step, e.waiting = exportRestoreGame, false
 		}
-		if !c.saveMenu && c.known && (c.heroes || c.ancients) {
+		if !c.saveMenu && c.known && (c.heroes || c.ancients || c.outsiders) {
 			e.step, e.waiting = exportReadFile, false
 			e.deadline = now.Add(30 * time.Second)
 		}
@@ -265,6 +272,18 @@ func readExport(job exportJob) (exportResult, error) {
 			return exportResult{}, fmt.Errorf("waiting for new or changed clickerHeroSave*.txt in %q: %w", job.options.dir, err)
 		}
 		var result exportResult
+		prestige := job.prestige || job.prestigeOnly || job.restoreAllocation
+		if prestige {
+			value, err := transcension.ReadSnapshot(job.ctx, data, time.Now().UTC(), job.generation)
+			result.transcensionErr = err
+			if err != nil && job.prestigeOnly {
+				last = err
+				continue
+			}
+			if err == nil {
+				result.transcension, result.prestige = &value, &value.Preview
+			}
+		}
 		if job.achievements {
 			value, err := ancientcalc.ReadAchievementState(job.ctx, data)
 			result.achievementErr = err
@@ -286,19 +305,27 @@ func readExport(job exportJob) (exportResult, error) {
 				result.heroSetup = &value
 			}
 		}
-		if !job.relicsOnly && !job.goalsOnly {
+		allocate := !job.prestigeOnly
+		if job.prestigeOnly && job.restoreAllocation && result.transcension != nil {
+			missing, err := ancientcalc.MissingActiveAncients(job.ctx, result.transcension.State, job.options.skillRate, job.options.beyond8k)
+			result.ancientErr = err
+			allocate = err == nil && len(missing) == 0
+		}
+		if !job.relicsOnly && !job.goalsOnly && allocate {
 			value, err := calculateAncientData(job.ctx, data, path, job.options.reserve, job.options.skillRate, job.options.beyond8k)
 			if err != nil {
-				if !job.initialSetup {
+				if !job.initialSetup && !prestige {
 					last = err
 					continue
 				}
 				result.ancientErr = err
 			} else {
 				result.plan = &value
-				result.prestige = value.Transcension
+				if result.prestige == nil {
+					result.prestige = value.Transcension
+				}
 			}
-		} else if !job.goalsOnly {
+		} else if !job.goalsOnly && !prestige {
 			// An advisory Outsider roster does not require owned Ancients and
 			// cannot block a valid relic-only export when metadata is absent.
 			value, err := ancientcalc.PreviewTranscension(job.ctx, data)
