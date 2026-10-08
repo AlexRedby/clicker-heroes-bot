@@ -118,6 +118,8 @@ func (p *gamePipeline) acceptPrestigeSave(ctx context.Context, out exportResult,
 		p.gild = gildCollector{}
 		p.skill.reset()
 		p.progression = progressionPlanner{}
+		p.gildMove, p.gildMoving, p.gildRefreshDue = gildRedistribution{}, false, time.Time{}
+		p.gildJobFrame, p.nextGildRead = 0, time.Time{}
 		p.hero.interrupt()
 		p.clickers = autoClickerPlanner{footerAttempted: !p.options.heroes}
 		t.report("reset confirmed by fresh save; restoring Outsiders")
@@ -128,7 +130,7 @@ func (p *gamePipeline) acceptPrestigeSave(ctx context.Context, out exportResult,
 
 func (p *gamePipeline) requestPrestigeExport() {
 	p.export.requested, p.export.prestigeOnly = true, true
-	p.export.relicsOnly, p.export.goalsOnly = false, false
+	p.export.relicsOnly, p.export.goalsOnly, p.export.gildsOnly = false, false, false
 	p.queue = make(map[actionKind]gameAction)
 }
 

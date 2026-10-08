@@ -112,6 +112,8 @@ func TestPrestigeQueueModalAndRecoveredReset(t *testing.T) {
 	ctl.Interrupt()
 	p.ancient = ancientPlanner{blocked: true}
 	p.gild.active = true
+	p.gildMove.active, p.gildMoving = true, true
+	p.gildRefreshDue = now
 	p.clickers.blocked = true
 	fresh := s
 	fresh.Generation = 2
@@ -123,7 +125,7 @@ func TestPrestigeQueueModalAndRecoveredReset(t *testing.T) {
 	if err := p.acceptPrestigeSave(context.Background(), exportResult{transcension: &fresh}, fresh.ExportedAt); err != nil {
 		t.Fatal(err)
 	}
-	if ctl.Stage() != transcension.SpendOutsiders || p.ancient.blocked || p.gild.active || p.clickers.blocked {
+	if ctl.Stage() != transcension.SpendOutsiders || p.ancient.blocked || p.gild.active || p.clickers.blocked || p.gildMove.active || p.gildMoving || !p.gildRefreshDue.IsZero() {
 		t.Fatal("recovered reset retained old game plans", ctl.Stage(), p.ancient, p.gild, p.clickers)
 	}
 

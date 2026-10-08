@@ -127,3 +127,12 @@ func TestEarnedGildsInvalidateThePriorDistribution(t *testing.T) {
 		t.Fatal("newly earned gilds kept the old transfer count")
 	}
 }
+
+func TestPrestigeExportReplacesGildOnlyPurpose(t *testing.T) {
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
+	p.export.gildsOnly = true
+	p.requestPrestigeExport()
+	if !p.export.requested || !p.export.prestigeOnly || p.export.gildsOnly {
+		t.Fatal("prestige receipt retained the gild-only export purpose")
+	}
+}
