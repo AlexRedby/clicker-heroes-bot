@@ -109,8 +109,8 @@ func TestRestoredTranscensionScrollsNativeOutsiders(t *testing.T) {
 			if !ok || a.kind != handleTranscension || a.prestige.Action != transcension.ScrollOutsidersDown {
 				t.Fatalf("restored Outsiders did not queue downward scroll: available=%t kind=%d command=%+v", ok, a.kind, a.prestige)
 			}
-			thumb, _, found := listScrollbarThumb(screen, 445)
-			if !found || a.point != thumb || a.target.X != thumb.X || a.target.Y <= thumb.Y {
+			thumb, height, found := listScrollbarThumb(screen, 445)
+			if !found || a.point != thumb || a.target.X != thumb.X || a.target.Y != min(c.bounds.Max.Y-1, thumb.Y+max(3, height/2)) {
 				t.Fatal("scroll did not use the native thumb", a.point, a.target, thumb, found)
 			}
 			acted, err := p.execute(ctx, a)

@@ -233,10 +233,11 @@ func (p *gamePipeline) prestigeAction(cmd transcension.Command) (gameAction, boo
 			return a, false
 		}
 		// Start below the up arrow; joining it to the thumb fails the height check.
-		a.point, _, found = listScrollbarThumb(f.image, 445)
+		var height int
+		a.point, height, found = listScrollbarThumb(f.image, 445)
 		a.target = image.Pt(a.point.X, f.context.bounds.Min.Y+f.context.bounds.Dy()*455/1000)
 		if cmd.Action == transcension.ScrollOutsidersDown {
-			a.target.Y = min(f.context.bounds.Max.Y-1, a.point.Y+f.context.bounds.Dy()*24/100)
+			a.target.Y = min(f.context.bounds.Max.Y-1, a.point.Y+max(3, height/2))
 		}
 	default:
 		return a, false

@@ -66,7 +66,7 @@ func TestOutsiderRejectsOtherTabsAndUnreadableFields(t *testing.T) {
 	}
 	for _, region := range []image.Rectangle{
 		image.Rect(470, 180, 605, 198), image.Rect(450, 200, 600, 220),
-		image.Rect(292, 180, 382, 198), image.Rect(442, 420, 520, 453), image.Rect(480, 502, 530, 525),
+		image.Rect(292, 180, 382, 198), image.Rect(442, 420, 520, 453),
 		image.Rect(35, 380, 562, 713),
 	} {
 		source := exportFixture(t, "outsiders-top.png", 1280)
@@ -221,5 +221,46 @@ func TestOutsiderPipelineReadOnlyAndContextOwnership(t *testing.T) {
 	p.reset(p.controls.snapshot())
 	if err := p.accept(ctx, p.analyze(ctx, outsiderAnalysis, job), now); err != nil || p.state[outsiderAnalysis].outsider.known {
 		t.Fatal("old pause generation accepted", err)
+	}
+}
+
+func TestOutsiderFeedingMiddleScreen(t *testing.T) {
+	requireAncientOCR(t)
+	for _, width := range []int{1280, 1920, 2560} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			screen := exportFixture(t, "outsiders-feeding-middle.png", width)
+			c, err := recognizedGame(screen)
+			if err != nil || !c.outsiders {
+				t.Fatal("middle classification", c, err)
+			}
+			out, err := readOutsiderObservation(context.Background(), gameFrame{image: screen, context: c})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []outsiderScreenRow{{"Phandoryss", 41, 1, true}, {"Ponyboy", 17, 18, true}}
+			if !out.known || out.wallet != 22 || out.quantity != "x1" || !reflect.DeepEqual(out.rows, want) {
+				t.Fatalf("middle rows: %+v", out)
+			}
+		})
+	}
+}
+
+func TestOutsiderUnknownPricePreservesCardPositions(t *testing.T) {
+	requireAncientOCR(t)
+	source := exportFixture(t, "outsiders-post-transcension.png", 1280)
+	screen := image.NewRGBA(source.Bounds())
+	draw.Draw(screen, screen.Bounds(), source, source.Bounds().Min, draw.Src)
+	tops := outsiderCardTops(screen)
+	draw.Draw(screen, image.Rect(480, tops[0]+94, 530, tops[0]+117), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	out, err := readOutsiderObservation(context.Background(), gameFrame{image: screen, context: gameContext{outsiders: true}})
+	if err != nil || !out.known || len(out.rows) != len(tops) || out.rows[0].cost != 0 || out.rows[0].feed {
+		t.Fatalf("unreadable neighbor: %+v %v", out, err)
+	}
+	if _, found := outsiderFeedPoint(out, "Xyliqil"); found {
+		t.Fatal("unknown price authorized FEED")
+	}
+	point, found := outsiderFeedPoint(out, "Chor'gorloth")
+	if !found || point != image.Pt(484, tops[1]+96) {
+		t.Fatal("neighbor price changed target coordinates", point, found, tops)
 	}
 }

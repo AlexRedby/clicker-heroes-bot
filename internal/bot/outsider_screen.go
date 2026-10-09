@@ -124,14 +124,14 @@ func outsiderCardTops(screen image.Image) []int {
 	return tops
 }
 
-func readOutsiderText(ctx context.Context, screen image.Image, region image.Rectangle, scale int, characters string) (string, error) {
+func readOutsiderText(ctx context.Context, screen image.Image, region image.Rectangle, scale, mode int, characters string) (string, error) {
 	// Keep antialiased outlines and let Tesseract binarize the native artwork.
 	crop := image.NewRGBA(image.Rect(0, 0, region.Dx(), region.Dy()))
 	draw.Draw(crop, crop.Bounds(), screen, region.Min, draw.Src)
 	up := image.NewRGBA(image.Rect(0, 0, crop.Bounds().Dx()*scale+20, crop.Bounds().Dy()*scale+20))
 	draw.Draw(up, up.Bounds(), image.NewUniform(color.Black), image.Point{}, draw.Src)
 	xdraw.ApproxBiLinear.Scale(up, image.Rect(10, 10, up.Bounds().Max.X-10, up.Bounds().Max.Y-10), crop, crop.Bounds(), draw.Src, nil)
-	raw, err := readTextImage(ctx, up, 7, characters)
+	raw, err := readTextImage(ctx, up, mode, characters)
 	return strings.TrimSpace(raw), err
 }
 
@@ -195,7 +195,7 @@ func readOutsiderObservation(ctx context.Context, frame gameFrame) (outsiderObse
 		{image.Rect(268, 216, 355, 235), &out.sacrificed},
 		{image.Rect(516, 225, 605, 244), &out.nextAS},
 	} {
-		raw, err := readOutsiderText(ctx, screen, vision.Rect(screen, field.r), max(1, 5120/screen.Bounds().Dx()), "0123456789.eE")
+		raw, err := readOutsiderText(ctx, screen, vision.Rect(screen, field.r), max(1, 5120/screen.Bounds().Dx()), 7, "0123456789.eE")
 		if err != nil {
 			return out, err
 		}
@@ -210,6 +210,7 @@ func readOutsiderObservation(ctx context.Context, frame gameFrame) (outsiderObse
 	if out.quantity == "" {
 		return out, fmt.Errorf("unreadable Outsider quantity")
 	}
+	lineScale := max(1, (3840+screen.Bounds().Dx()-1)/screen.Bounds().Dx())
 	for _, top := range outsiderCardTops(screen) {
 		nameRegion := image.Rect(238, top+10, 390, top+36)
 		name := ""
@@ -240,49 +241,38 @@ func readOutsiderObservation(ctx context.Context, frame gameFrame) (outsiderObse
 			return out, fmt.Errorf("unreadable Outsider name %q", name)
 		}
 		row := outsiderScreenRow{name: name}
-		for i, r := range []image.Rectangle{image.Rect(442, top+12, 520, top+45), image.Rect(480, top+94, 530, top+117)} {
-			var raw string
-			var err error
-			if i == 0 {
-				raw, err = read(r, 0, "0123456789,lLvViIO ")
-			} else {
-				// Tesseract loses the outlined FEED line when its glyphs are oversized.
-				scale := 6
-				if screen.Bounds().Dx() >= 2048 {
-					scale = 3
-				}
-				raw, err = readOutsiderText(ctx, screen, vision.Rect(screen, r), scale, "0123456789,xX")
-				if err == nil && raw == "" && scale == 6 {
-					// Thin disabled captions can disappear at the larger text size.
-					raw, err = readOutsiderText(ctx, screen, vision.Rect(screen, r), 3, "0123456789,xX")
-				}
-			}
+		raw, err := readOutsiderText(ctx, screen, vision.Rect(screen, image.Rect(442, top+12, 520, top+45)), lineScale, 7, "0123456789,lLvViIO ")
+		if err != nil {
+			return out, err
+		}
+		if !ancientLevelLabel.MatchString(raw) {
+			return out, fmt.Errorf("unreadable Outsider level %q", raw)
+		}
+		raw = strings.ReplaceAll(ancientLevelLabel.ReplaceAllString(raw, ""), "O", "0")
+		row.level, err = parseOutsiderInteger(raw)
+		if err != nil {
+			return out, err
+		}
+		scale := 3
+		if screen.Bounds().Dx() < 2048 {
+			scale = 6
+		}
+		// Short outlined prices can need raw-line segmentation instead of word heuristics.
+		for _, attempt := range []struct{ scale, mode int }{{scale, 7}, {3, 7}, {lineScale, 13}} {
+			raw, err := readOutsiderText(ctx, screen, vision.Rect(screen, image.Rect(480, top+94, 530, top+117)), attempt.scale, attempt.mode, "0123456789,xX")
 			if err != nil {
 				return out, err
 			}
-			if i == 0 {
-				if !ancientLevelLabel.MatchString(raw) {
-					return out, fmt.Errorf("unreadable Outsider level %q", raw)
+			if strings.HasPrefix(strings.ToLower(raw), "x") {
+				cost, err := parseOutsiderInteger(raw[1:])
+				if err == nil && cost > 0 {
+					row.cost = cost
+					break
 				}
-				raw = ancientLevelLabel.ReplaceAllString(raw, "")
-				raw = strings.ReplaceAll(raw, "O", "0")
-			} else {
-				if !strings.HasPrefix(strings.ToLower(raw), "x") {
-					return out, fmt.Errorf("unreadable %s FEED cost %q", row.name, raw)
-				}
-				raw = raw[1:]
-			}
-			value, err := parseOutsiderInteger(raw)
-			if err != nil || (i == 1 && value == 0) {
-				return out, fmt.Errorf("unreadable Outsider level/cost %q", raw)
-			}
-			if i == 0 {
-				row.level = value
-			} else {
-				row.cost = value
 			}
 		}
-		if out.wallet >= row.cost {
+		// Keep unreadable prices inert without dropping the card's geometric position.
+		if row.cost > 0 && out.wallet >= row.cost {
 			// A readable cost also exists on disabled buttons. Require the
 			// bright FEED caption itself; unknown/dim controls remain inert.
 			r := vision.Rect(screen, image.Rect(449, top+73, 513, top+94))
@@ -320,7 +310,11 @@ func (o outsiderObservation) String() string {
 	}
 	parts := []string{fmt.Sprintf("Outsiders: AS=%d reward=+%d TP=%.2f%% sacrificed=%s nextAS=%s quantity=%s", o.wallet, o.gain, o.power, o.sacrificed, o.nextAS, o.quantity)}
 	for _, row := range o.rows {
-		parts = append(parts, fmt.Sprintf("%s level=%d FEED=%d", row.name, row.level, row.cost))
+		cost := "unknown"
+		if row.cost > 0 {
+			cost = strconv.Itoa(row.cost)
+		}
+		parts = append(parts, fmt.Sprintf("%s level=%d FEED=%s", row.name, row.level, cost))
 	}
 	return strings.Join(parts, "; ")
 }

@@ -362,7 +362,7 @@ func (c *Controller) rowsMatch(o Observation) bool {
 	}
 	seen := make(map[int]bool, len(o.Rows))
 	for _, row := range o.Rows {
-		if seen[row.ID] || c.level(row.ID) != row.Level || row.Cost <= 0 {
+		if seen[row.ID] || c.level(row.ID) != row.Level {
 			return false
 		}
 		seen[row.ID] = true
@@ -374,12 +374,6 @@ func (c *Controller) rowsMatch(o Observation) bool {
 		}
 		if row.Name != name || name == "" {
 			return false
-		}
-		if o.Quantity > 0 {
-			cost, err := ancientcalc.OutsiderFeedCost(row.ID, row.Level, o.Quantity)
-			if err != nil || cost != row.Cost {
-				return false
-			}
 		}
 	}
 	return true

@@ -106,6 +106,76 @@ func outsiderObservation(s Snapshot, frame uint64, now time.Time) Observation {
 	return o
 }
 
+func TestOutsiderFeedChecksOnlyTargetPrice(t *testing.T) {
+	setup := func(t *testing.T) (*Controller, Observation, int) {
+		t.Helper()
+		c, s, now := beforeReset(t)
+		s = resetSnapshot(s, now.Add(time.Second))
+		if err := c.AcceptExport(context.Background(), s.ExportedAt, s); err != nil {
+			t.Fatal(err)
+		}
+		o := outsiderObservation(s, 4, s.ExportedAt)
+		c.Observe(o)
+		cmd := c.Next(o.At)
+		if cmd.Action != FeedOutsider {
+			t.Fatal("fixture has no affordable target", cmd)
+		}
+		for i, row := range o.Rows {
+			if row.ID == cmd.ID {
+				return c, o, i
+			}
+		}
+		t.Fatal("target absent from fixture", cmd)
+		return nil, Observation{}, 0
+	}
+	for _, cost := range []int{0, 999} {
+		for _, action := range []Action{FeedOutsider, ScrollOutsidersDown, BootstrapHeroes} {
+			t.Run(fmt.Sprintf("neighbor-cost-%d-action-%d", cost, action), func(t *testing.T) {
+				c, o, target := setup(t)
+				neighbor := (target + 1) % len(o.Rows)
+				o.Rows[neighbor].Cost, o.Rows[neighbor].FeedKnown = cost, false
+				targetID := o.Rows[target].ID
+				if action == ScrollOutsidersDown {
+					o.Rows = append(o.Rows[:target:target], o.Rows[target+1:]...)
+				} else if action == BootstrapHeroes {
+					for i := range c.targets {
+						c.targets[i].Target = c.targets[i].Current
+					}
+				}
+				o.Frame++
+				c.Observe(o)
+				cmd := c.Next(o.At)
+				if cmd.Action != action || action == FeedOutsider && cmd.ID != targetID {
+					t.Fatal("unrelated price blocked the target action", cmd, action)
+				}
+			})
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		edit func(*Observation, int)
+	}{
+		{"unknown target price", func(o *Observation, i int) { o.Rows[i].Cost = 0 }},
+		{"wrong target price", func(o *Observation, i int) { o.Rows[i].Cost++ }},
+		{"disabled target", func(o *Observation, i int) { o.Rows[i].FeedKnown = false }},
+		{"unknown quantity", func(o *Observation, _ int) { o.QuantityKnown = false }},
+		{"wallet mismatch", func(o *Observation, _ int) { o.Wallet++ }},
+		{"neighbor level mismatch", func(o *Observation, i int) { o.Rows[(i+1)%len(o.Rows)].Level++ }},
+		{"neighbor name mismatch", func(o *Observation, i int) { o.Rows[(i+1)%len(o.Rows)].Name = "unknown" }},
+		{"duplicate row", func(o *Observation, i int) { o.Rows = append(o.Rows, o.Rows[i]) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, o, target := setup(t)
+			tc.edit(&o, target)
+			o.Frame++
+			c.Observe(o)
+			if cmd := c.Next(o.At); cmd.Action != NoAction {
+				t.Fatal("invalid target or roster authorized input", cmd)
+			}
+		})
+	}
+}
+
 func TestResetFeedBootstrapAndAncientRestoration(t *testing.T) {
 	c, before, now := beforeReset(t)
 	reserve(t, c, now, FreshExport)
