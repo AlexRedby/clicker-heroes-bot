@@ -120,7 +120,7 @@ func listScrollbarThumb(screen image.Image, top int) (image.Point, int, bool) {
 		}
 		for _, candidate := range runs {
 			height := candidate.end - candidate.start + 1
-			if height <= h*55/1000 || height >= h*18/100 {
+			if height <= h*55/1000 {
 				continue
 			}
 			score := 2*candidate.count - gold

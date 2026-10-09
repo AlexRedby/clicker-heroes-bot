@@ -18,7 +18,7 @@ const (
 func (p *gamePipeline) beginStartup() {
 	p.startupCheck = false
 	p.startup, p.startupPassive = startupHeroes, false
-	p.startupDeadline = time.Time{}
+	p.startupDeadline, p.nextSkillSetup = time.Time{}, time.Time{}
 	p.startupExported, p.startupSkillsReady = false, false
 	p.nextUpgrades = time.Time{}
 	p.hero.startStartup()
@@ -153,4 +153,23 @@ func (p *gamePipeline) finishStartupUpgradePass(now time.Time) {
 	p.barriers[progressionAnalysis] = p.frame.id + 1
 	p.nextProgression = time.Time{}
 	p.queue = make(map[actionKind]gameAction)
+}
+
+// Incomplete skill rows must not hold the rest of automation while gold grows.
+func (p *gamePipeline) retrySkillSetup(now time.Time) bool {
+	if p.nextSkillSetup.IsZero() || now.Before(p.nextSkillSetup) || !p.options.heroes ||
+		!bootstrapHeroes(p.frame.context) || p.hero.pending != nil || p.clickers.pending != nil ||
+		p.mercenary.active || p.mercenary.pending != nil || p.skill.pending != nil || p.progression.pending != nil {
+		return false
+	}
+	p.startup, p.startupDeadline = startupHeroes, time.Time{}
+	p.nextSkillSetup = time.Time{}
+	p.hero.startStartup()
+	p.hero.sweep.retry = 2
+	p.state[heroAnalysis] = observation{}
+	p.barriers[heroAnalysis], p.heroJobFrame = p.frame.id+1, 0
+	p.queue = make(map[actionKind]gameAction)
+	fmt.Println("startup: revisiting incomplete skill rows after earning")
+	p.planStartup(now)
+	return true
 }

@@ -531,3 +531,79 @@ func TestStartupSparseHeroesNeedsNoNumbers(t *testing.T) {
 		}
 	}
 }
+
+func TestStartupAffordableHirePrecedesOwnedMAX(t *testing.T) {
+	f := startupFrame(t, "../../testdata/hero-early-large-scrollbar.png")
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{})
+	if err != nil || !out.found || out.owned || absDiff(out.button.Y, 1076) > 4 {
+		t.Fatalf("Ivan must be hired before Cid/Treebeast MAX: %+v %v", out, err)
+	}
+	out, err = readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true, y: out.button.Y, attempts: 2})
+	if err != nil || !out.found || out.owned || absDiff(out.button.Y, 1260) > 4 || !out.sweep.needsLevels {
+		t.Fatalf("two missed Ivan hires must advance to Brittany and request a later retry: %+v %v", out, err)
+	}
+}
+
+func TestStartupSuccessfulHireRevisitsEarlierOwnedRows(t *testing.T) {
+	f := startupFrame(t, "../../testdata/hero-early-large-scrollbar.png")
+	before, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{})
+	if err != nil || !before.found || before.owned {
+		t.Fatalf("before hire: %+v %v", before, err)
+	}
+	// Native LEVEL UP artwork proves the prior HIRE registered; names, levels,
+	// and gold do not participate in the cursor reset.
+	s := image.NewRGBA(f.image.Bounds())
+	draw.Draw(s, s.Bounds(), f.image, s.Bounds().Min, draw.Src)
+	for _, y := range []int{before.button.Y, 1260} {
+		destination := heroButtonCaptionRegion(s, image.Pt(before.button.X, y))
+		source := heroButtonCaptionRegion(f.image, image.Pt(before.button.X, 865))
+		draw.Draw(s, destination, f.image, source.Min, draw.Src)
+	}
+	f.image = s
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), &before, startupSweep{top: true, y: before.button.Y, attempts: 1})
+	if err != nil || !out.found || !out.owned || absDiff(out.button.Y, 865) > 4 || out.sweep.attempts != 0 {
+		t.Fatalf("successful hires must revisit earlier locked Treebeast: %+v %v", out, err)
+	}
+}
+
+func TestStartupShortListMissingHireStaysBounded(t *testing.T) {
+	f := startupFrame(t, "../../testdata/hero-startup-gold.png")
+	s := image.NewRGBA(f.image.Bounds())
+	draw.Draw(s, s.Bounds(), f.image, s.Bounds().Min, draw.Src)
+	b := s.Bounds()
+	draw.Draw(s, image.Rect(b.Dx()*45/100, b.Dy()*4/10, b.Dx()*49/100, b.Max.Y), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
+	f.image = s
+	if _, _, found := heroScrollbarThumb(s); found {
+		t.Fatal("short list fixture still has a thumb")
+	}
+	p := heroRunner{enabled: true, sweep: startupSweep{top: true}}
+	firstY := 0
+	for i := 0; i < 3; i++ {
+		f.id++
+		f.at = f.at.Add(time.Second)
+		out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), p.before(), p.sweep)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p.observe(out, observation{}, f.at)
+		a, ok := p.action(f.at)
+		if !ok || a.kind != buyHero {
+			t.Fatalf("attempt %d: %+v %t", i, a, ok)
+		}
+		if i == 0 {
+			firstY = a.point.Y
+		}
+		if i < 2 && a.point.Y != firstY || i == 2 && (a.point.Y <= firstY || !a.hero.sweep.needsLevels) {
+			t.Fatalf("unchanged short-list HIRE did not stop at two inputs: %+v", a)
+		}
+		p.sent(a, f.at)
+	}
+}
+
+func TestStartupExhaustedLockedRowRequestsLaterRetry(t *testing.T) {
+	f := startupFrame(t, "../../testdata/hero-startup-cid-locked.png")
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true, y: 655, attempts: 2, retry: 2})
+	if err != nil || !out.sweep.needsLevels || out.sweep.retry != 2 || out.found && absDiff(out.button.Y, 655) <= 4 {
+		t.Fatalf("still-locked row must yield after two inputs and remain unfinished: %+v %v", out, err)
+	}
+}

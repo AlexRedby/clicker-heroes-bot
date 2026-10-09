@@ -29,7 +29,7 @@ func TestStartupOpenCVFailedFrameUsesSharedQueue(t *testing.T) {
 	p.hero.sweep.top = true
 	p.frame = gameFrame{id: 1, layout: 1, at: now, image: screen, context: c}
 	out := p.analyze(context.Background(), heroAnalysis, analysisJob{frame: p.frame, startup: startupHeroes, sweep: p.hero.sweep})
-	if out.err != nil || !out.hero.found {
+	if out.err != nil || !out.hero.found || out.hero.owned {
 		t.Fatalf("failure frame: %+v %v", out.hero, out.err)
 	}
 	if err = p.accept(context.Background(), out, now); err != nil {
@@ -41,7 +41,7 @@ func TestStartupOpenCVFailedFrameUsesSharedQueue(t *testing.T) {
 		t.Fatalf("queue: %+v %t", a, ok)
 	}
 	acted, err := p.execute(context.Background(), a)
-	if err != nil || !acted || captures != 0 || len(keys) != 2 || keys[0] != "q:down" || keys[1] != "q:up" {
+	if err != nil || !acted || captures != 0 || len(keys) != 0 {
 		t.Fatalf("startup input: %t %v keys=%v captures=%d", acted, err, keys, captures)
 	}
 }

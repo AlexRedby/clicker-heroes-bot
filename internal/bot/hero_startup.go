@@ -8,11 +8,11 @@ import (
 )
 
 // A sweep owns only a viewport cursor, not a roster or OCR-derived identity.
-// At most two MAX inputs per row keep missing clicks from blocking the sweep.
+// At most two purchase inputs per row keep missing clicks from blocking the sweep.
 type startupSweep struct {
-	top         bool
-	y, attempts int
-	retry       uint8 // 0: initial; 1: unaffordable locked row seen; 2: final pass.
+	top, needsLevels bool
+	y, attempts      int
+	retry            uint8 // 0: initial; 1: unaffordable locked row seen; 2: final pass.
 }
 
 func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroReaders, before *heroObservation, sweep startupSweep) (heroObservation, error) {
@@ -40,6 +40,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroRead
 		band      image.Rectangle
 		available bool
 		kind      heroButtonKind
+		locked    bool
 	}
 	var rows []row
 	for _, available := range []bool{true, false} {
@@ -70,7 +71,8 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroRead
 		// A small list scroll can put a different card at the old Y coordinate.
 		// The attempt budget belongs to the visible list position, so restart it
 		// whenever the viewport moved before applying the Y cursor.
-		if !heroListStable(before.frame.image, frame.image) {
+		if !heroListStable(before.frame.image, frame.image) &&
+			!(!before.thumbFound && !out.thumbFound && heroRowNameMatches(before.frame.image, frame.image, before.button, before.button)) {
 			out.sweep.attempts = 0
 		}
 		nearest := rows[0].button.Y
@@ -91,6 +93,49 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroRead
 		}
 		// At the top Cid is the first card; every subsequent owned row has DPS.
 		out.passiveReady = out.passiveReady || rows[i].kind == heroButtonLevelUp && (i > 0 || out.thumbFound && out.thumb.Y-height/2 > b.Min.Y+b.Dy()*435/1000)
+		if rows[i].kind == heroButtonLevelUp && rows[i].band.Min.Y > viewport.Min.Y+edgeGap && rows[i].button.Y+b.Dy()*85/1000 < viewport.Max.Y {
+			rows[i].locked, err = heroHasLockedUpgrade(frame.image, rows[i].button)
+			if err != nil {
+				return out, err
+			}
+			if rows[i].locked && !rows[i].available {
+				out.sweep.needsLevels = true
+				if out.sweep.retry == 0 {
+					out.sweep.retry = 1
+				}
+			}
+		}
+	}
+	// A successful hire opens a larger card; revisit earlier owned rows once
+	// affordable hires have stopped taking priority over their MAX purchases.
+	if before != nil && !before.owned {
+		for _, r := range rows {
+			if absDiff(r.button.Y, out.sweep.y) <= b.Dy()/20 && r.kind == heroButtonLevelUp {
+				out.sweep.y, out.sweep.attempts = 0, 0
+				break
+			}
+		}
+	}
+	// Hire affordable successors before MAX can spend their gold on old rows.
+	for _, r := range rows {
+		y := r.button.Y
+		if r.kind != heroButtonHire || !r.available || r.band.Min.Y <= viewport.Min.Y+edgeGap ||
+			r.band.Max.Y >= viewport.Max.Y-edgeGap || !heroPriceRegion(frame.image, r.button).In(viewport) {
+			continue
+		}
+		if y < out.sweep.y-b.Dy()/20 || out.sweep.attempts >= 2 && absDiff(y, out.sweep.y) <= b.Dy()/20 {
+			out.sweep.needsLevels = true
+			if out.sweep.retry == 0 {
+				out.sweep.retry = 1
+			}
+			continue
+		}
+		if absDiff(y, out.sweep.y) > b.Dy()/20 {
+			out.sweep.attempts = 0
+		}
+		out.sweep.y = y
+		out.button, out.found = r.button, true
+		return out, nil
 	}
 	clipped := false
 	for _, r := range rows {
@@ -99,6 +144,12 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroRead
 			continue
 		}
 		if y < out.sweep.y-b.Dy()/20 || out.sweep.attempts >= 2 && absDiff(y, out.sweep.y) <= b.Dy()/20 {
+			if r.locked || r.kind == heroButtonHire && r.available {
+				out.sweep.needsLevels = true
+				if out.sweep.retry == 0 {
+					out.sweep.retry = 1
+				}
+			}
 			continue
 		}
 		if r.kind == heroButtonUnknown {
@@ -114,11 +165,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroRead
 				clipped = true
 				break
 			}
-			locked, err := heroHasLockedUpgrade(frame.image, r.button)
-			if err != nil {
-				return out, err
-			}
-			if !locked {
+			if !r.locked {
 				continue
 			}
 			if !r.available {

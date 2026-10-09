@@ -67,7 +67,7 @@ Owners: Timelapse integration and Quick Ascension (purchase controller and forec
 | --- | --- |
 | Viewport edges | Complete HIRE/LVL UP captions and upgrade strips at the top, middle and bottom are recognized. Clipped rows are brought into view; overlap advances the bounded sweep. |
 | Card variants | Plain/gilded cards, blue/dark captions, dark unavailable slots, gray unlocked artwork, and partial/covered strips. Startup must not read names, levels or purchased checks. |
-| Purchases | Startup begins at the top. Owned rows without level-unavailable upgrades receive no levels; missing hires and unavailable-upgrade rows get at most two Q/MAX inputs per viewport, including missed clicks and expanded cards. Ordinary latest-hero Q confirmation still works. |
+| Purchases | Startup begins at the top. Owned rows without level-unavailable upgrades receive no levels; missing hires get x1 clicks and unavailable-upgrade rows get Q/MAX, with at most two inputs per viewport, including missed clicks and expanded cards. Ordinary latest-hero Q confirmation still works. |
 | Gold and successor | Zero gold, affordable and unaffordable successors, short and growing lists. Starter clicks stop for an affordable purchase, an owned passive hero, pending input or unknown ownership/gold. Startup reads only a locked successor price/gold when needed; numeric level OCR belongs to ordinary latest-hero play. |
 | Obstructions | Fish over the caption/level/scrollbar, purchase tooltip and covering modal. Fish recovery stays independent; hero input waits for a covering modal. |
 | Navigation and pause | Partial/overlapping rows, missed drag/no motion. Preserve the viewport cursor and attempt count; advance after two inputs instead of looping on one hero. |
@@ -76,7 +76,9 @@ Owners: Timelapse integration and Quick Ascension (purchase controller and forec
 
 ## Startup and unattended Ascension validation
 
-- Verify bounded startup skill setup in the installed game, including unlocked rows with or without purchased checks, one-slot low-level rows, missing hires, limited gold, two Q/MAX inputs, overlap scrolling and final Buy Available Upgrades. Capture before/after rows if a skill remains locked.
+- Verify an early growing list after Transcension: recognize its large thumb, reach the complete upgrade footer, prioritize visible x1 hires, use Q/MAX for owned levels and revisit unfinished skills while ordinary earning continues.
+
+- Verify bounded startup skill setup in the installed game, including unlocked rows with or without purchased checks, one-slot low-level rows, missing hires, limited gold, two bounded inputs, overlap scrolling and final Buy Available Upgrades. Capture before/after rows if a skill remains locked.
 - Verify two consecutive startup/progression cycles with zero gold, short/expanding lists, no-purchase plans, obscured upgrade strips/unreadable prices and fish over controls.
 - Extend shared scrolling acceptance beyond the user-observed working cases: current thumb centering, 200 ms source hover, RobotGo smooth drag, 350 ms post-scroll observation settling, partial movement and short no-motion retries. Include Heroes overlap/edges, Ancient wheel/fine arrows and Mercenary edges.
 - Verify initial hero/skill upgrade setup at a later zone, including missing earlier heroes, already-disabled Buy Available Upgrades, and an empty Ancient plan that stays on Heroes.

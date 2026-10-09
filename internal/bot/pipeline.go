@@ -207,7 +207,7 @@ type gamePipeline struct {
 	startupPassive                                      bool
 	startupExported, startupSkillsReady                 bool
 	startupDeadline                                     time.Time
-	nextUpgrades                                        time.Time
+	nextUpgrades, nextSkillSetup                        time.Time
 	skill                                               skillPlanner
 	progression                                         progressionPlanner
 	ascension                                           ascensionPlanner
@@ -1373,6 +1373,12 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 					fmt.Println("startup: revisiting earlier unaffordable skill rows")
 				} else {
 					p.startup = startupUpgrades
+					if p.hero.sweep.needsLevels {
+						p.nextSkillSetup = now.Add(time.Minute)
+						fmt.Println("startup: incomplete skill rows deferred; continuing earning before another pass")
+					} else {
+						p.nextSkillSetup = time.Time{}
+					}
 					p.hero.interrupt()
 					p.startupDeadline = time.Time{}
 					fmt.Println("startup: skill setup sweep complete; seeking Buy Available Upgrades")
@@ -1475,6 +1481,9 @@ func (p *gamePipeline) plan(now time.Time) {
 	}
 	p.planAchievementRefresh()
 	if p.planTranscension(now) || p.planStartup(now) || p.planExport(now) || p.planAncients(now) || p.planRelics(now) || p.planAscension(now) || p.planGilds(now) || p.planGildRedistribution(now) || !p.frame.context.known {
+		return
+	}
+	if p.retrySkillSetup(now) {
 		return
 	}
 	if p.options.mercenaries {
@@ -1869,7 +1878,11 @@ func (p *gamePipeline) execute(ctx context.Context, a gameAction) (bool, error) 
 			}
 			return input.move(parkPoint(a.frame.context.bounds))
 		case buyHero:
-			if err := clickHeroMax(ctx, input, a.point); err != nil {
+			key := ""
+			if a.hero.owned {
+				key = "q"
+			}
+			if err := clickHeroModified(ctx, input, a.point, key); err != nil {
 				return err
 			}
 			return input.move(parkPoint(a.frame.context.bounds))
@@ -2063,7 +2076,11 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		}
 		p.hero.sent(a, now)
 		if a.kind == buyHero && a.hero.startup {
-			fmt.Printf("startup: submitted Q/MAX at (%d, %d), attempt %d/2\n", a.point.X, a.point.Y, p.hero.sweep.attempts)
+			quantity := "x1 HIRE"
+			if a.hero.owned {
+				quantity = "Q/MAX"
+			}
+			fmt.Printf("startup: submitted %s at (%d, %d), attempt %d/2\n", quantity, a.point.X, a.point.Y, p.hero.sweep.attempts)
 		}
 		if a.kind == scrollHeroes {
 			confirmation := "bottom confirmation"

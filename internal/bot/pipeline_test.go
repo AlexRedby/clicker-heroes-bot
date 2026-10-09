@@ -211,7 +211,7 @@ func TestPipelineQueueAndInputGuards(t *testing.T) {
 	p.input.click = func(image.Point) error { return failure }
 	p.input.move = func(image.Point) error { return nil }
 	p.readers.window = func() string { return "other" }
-	a = gameAction{kind: buyHero, frame: frame}
+	a = gameAction{kind: buyHero, frame: frame, hero: heroObservation{owned: true}}
 	if acted, err := p.execute(context.Background(), a); acted || err != nil || len(events) != 0 {
 		t.Fatal("focus change allowed input")
 	}
