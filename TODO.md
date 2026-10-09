@@ -76,7 +76,7 @@ Owners: Timelapse integration and Quick Ascension (purchase controller and forec
 
 ## Startup and unattended Ascension validation
 
-- Verify an early growing list after Transcension: recognize its large thumb, reach the complete upgrade footer, prioritize visible x1 hires, use Q/MAX for owned levels and revisit unfinished skills while ordinary earning continues.
+- Verify an early growing list after Transcension: recognize its large thumb, reach the complete upgrade footer, finish the global x1 hire traversal before owned purchases, use Q/MAX for owned levels and revisit unfinished skills while ordinary earning continues.
 
 - Verify bounded startup skill setup in the installed game, including unlocked rows with or without purchased checks, one-slot low-level rows, missing hires, limited gold, two bounded inputs, overlap scrolling and final Buy Available Upgrades. Capture before/after rows if a skill remains locked.
 - Verify two consecutive startup/progression cycles with zero gold, short/expanding lists, no-purchase plans, obscured upgrade strips/unreadable prices and fish over controls.

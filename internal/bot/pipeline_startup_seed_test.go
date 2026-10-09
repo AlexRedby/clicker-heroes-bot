@@ -133,12 +133,41 @@ func TestStartupVisualAffordabilityAndOwnershipNeedNoNumericalOCR(t *testing.T) 
 	if err != nil || short.found || short.passiveReady || short.startupComplete {
 		t.Fatalf("unavailable HIRE: %+v %v", short, err)
 	}
+	// A short list can end its hiring pass while zero DPS still requires seed clicks.
+	noThumb := image.NewRGBA(dark.Bounds())
+	draw.Draw(noThumb, noThumb.Bounds(), dark, dark.Bounds().Min, draw.Src)
+	b := noThumb.Bounds()
+	draw.Draw(noThumb, image.Rect(b.Dx()*445/1000, b.Dy()*38/100, b.Dx()*495/1000, b.Max.Y), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
+	draw.Draw(noThumb, image.Rect(b.Dx()*35/1000, b.Dy()*84/100, b.Dx()*44/100, b.Max.Y), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
+	shortFrame := frame(noThumb)
+	boundary, err := readStartupHeroObservation(context.Background(), shortFrame, read, nil, startupSweep{top: true})
+	if err != nil || boundary.thumbFound || boundary.found || boundary.passiveReady || boundary.startupComplete || !boundary.sweep.hiresDone || boundary.sweep.top {
+		t.Fatalf("short unavailable list must end only the hire phase: %+v %v", boundary, err)
+	}
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
+	p.frame, p.layout = shortFrame, shortFrame.layout
+	p.beginStartup()
+	deadline := time.Now().Add(time.Minute)
+	p.startupDeadline = deadline
+	if err := p.accept(context.Background(), observation{kind: heroAnalysis, frame: shortFrame, startup: startupHeroes, hero: boundary}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if p.startup != startupHeroes || p.startupPassive || p.startupDeadline != deadline || p.export.requested || !p.hero.sweep.hiresDone {
+		t.Fatal("hire phase handoff completed startup or lost its budget", p.startup, p.hero.sweep)
+	}
+	levels, err := readStartupHeroObservation(context.Background(), shortFrame, read, nil, p.hero.sweep)
+	if err != nil || levels.found || levels.passiveReady || levels.startupComplete {
+		t.Fatalf("zero passive DPS cannot finish the level pass: %+v %v", levels, err)
+	}
+	if !p.monsterAssistReady() {
+		t.Fatal("unavailable short list suppressed seed clicks")
+	}
 	obscured := image.NewRGBA(dark.Bounds())
 	draw.Draw(obscured, obscured.Bounds(), dark, dark.Bounds().Min, draw.Src)
 	draw.Draw(obscured, image.Rect(179, 825, 294, 875), image.NewUniform(color.RGBA{45, 60, 70, 255}), image.Point{}, draw.Src)
 	uncertain, err := readStartupHeroObservation(context.Background(), frame(obscured), read, nil, startupSweep{top: true})
-	if err != nil || uncertain.found || uncertain.passiveReady || uncertain.startupComplete {
-		t.Fatalf("covered lower ownership inferred a purchase or completion: %+v %v", uncertain, err)
+	if err == nil || uncertain.found || uncertain.startupComplete {
+		t.Fatalf("covered lower caption must block global traversal without input: %+v %v", uncertain, err)
 	}
 	if numericalReads != 0 {
 		t.Fatalf("native button affordability required %d numerical reads", numericalReads)

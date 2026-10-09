@@ -165,11 +165,11 @@ func TestStartupF8FishAndModal(t *testing.T) {
 	if _, ok := p.queue[enableProgression]; !ok || p.export.requested {
 		t.Fatal("early progression did not enable before export")
 	}
-	p.hero.sweep = startupSweep{top: true, y: 865, attempts: 2}
+	p.hero.sweep = startupSweep{top: true, hiresDone: true, y: 865, attempts: 2}
 	p.hero.enabled = false
 	controls.toggle()
 	p.reset(controls.snapshot())
-	if p.hero.sweep != (startupSweep{top: true, y: 865, attempts: 2}) || !p.hero.enabled || p.startup != startupHeroes || p.export.requested || len(p.queue) != 0 {
+	if p.hero.sweep != (startupSweep{top: true, hiresDone: true, y: 865, attempts: 2}) || !p.hero.enabled || p.startup != startupHeroes || p.export.requested || len(p.queue) != 0 {
 		t.Fatal("F8 lost bounded cursor or startup state")
 	}
 	old := gameAction{kind: buyHeroUpgrades, frame: f, point: point}

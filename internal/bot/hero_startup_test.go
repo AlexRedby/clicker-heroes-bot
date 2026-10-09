@@ -321,12 +321,12 @@ func TestStartupUnlockedWithoutChecksSkipped(t *testing.T) {
 
 func TestStartupLockedUpgradeRequestsMAXWithoutOCR(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-cid-locked.png")
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{})
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{hiresDone: true})
 	if err != nil || !out.found || !out.owned || out.button != image.Pt(204, 655) {
 		t.Fatalf("one-slot dark artwork must request levels: %+v %v", out, err)
 	}
 	f = startupFrame(t, "../../testdata/hero-nongilded-successor.jpg")
-	out, err = readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	out, err = readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{hiresDone: true, top: true})
 	if err != nil || !out.found || !out.owned || absDiff(out.button.Y, 446) > 3 {
 		t.Fatalf("locked Skogur must request levels: %+v %v", out, err)
 	}
@@ -373,7 +373,7 @@ func TestStartupCompleteUnavailableSuccessorNeedsNoNumericalOCR(t *testing.T) {
 	if !ok {
 		t.Fatal("missing Skogur HIRE")
 	}
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true, y: next.Y})
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{hiresDone: true, top: true, y: next.Y})
 	if err != nil || out.found || !out.passiveReady || !out.startupComplete {
 		t.Fatalf("complete unavailable successor: %+v %v", out, err)
 	}
@@ -461,7 +461,7 @@ func TestStartupRevisitsUnaffordableLockedRowOnce(t *testing.T) {
 		}
 	}
 	low.image = s
-	first, err := readStartupHeroObservation(context.Background(), low, noStartupOCR(t), nil, startupSweep{})
+	first, err := readStartupHeroObservation(context.Background(), low, noStartupOCR(t), nil, startupSweep{hiresDone: true})
 	if err != nil || !first.found || first.owned || first.button != image.Pt(204, 865) || first.sweep.retry != 1 {
 		t.Fatalf("unaffordable Cid must yield to cheap DPS and request one revisit: %+v %v", first, err)
 	}
@@ -494,12 +494,14 @@ func TestStartupRevisitsUnaffordableLockedRowOnce(t *testing.T) {
 	high.id, high.generation, high.layout = low.id+1, p.generation, p.layout
 	high.at = low.at.Add(time.Second)
 	p.frame = high
+	// The final locked-skill pass follows its own hire traversal.
+	p.hero.sweep.hiresDone = true
 	second, err := readStartupHeroObservation(context.Background(), high, noStartupOCR(t), nil, p.hero.sweep)
 	if err != nil || !second.found || !second.owned || second.button != image.Pt(204, 655) || second.sweep.retry != 2 {
 		t.Fatalf("rising gold must make earlier Cid selectable in the final pass: %+v %v", second, err)
 	}
 	// Even persistent unaffordability cannot schedule a third pass.
-	stillLow, err := readStartupHeroObservation(context.Background(), low, noStartupOCR(t), nil, startupSweep{retry: 2})
+	stillLow, err := readStartupHeroObservation(context.Background(), low, noStartupOCR(t), nil, startupSweep{hiresDone: true, retry: 2})
 	if err != nil || stillLow.sweep.retry != 2 {
 		t.Fatal("final pass rearmed a retry", err)
 	}
@@ -544,14 +546,14 @@ func TestStartupAffordableHirePrecedesOwnedMAX(t *testing.T) {
 	}
 }
 
-func TestStartupSuccessfulHireRevisitsEarlierOwnedRows(t *testing.T) {
+func TestStartupHireDuringLevelPassRestartsGlobalPriority(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-early-large-scrollbar.png")
-	before, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{})
+	before, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{hiresDone: true})
 	if err != nil || !before.found || before.owned {
 		t.Fatalf("before hire: %+v %v", before, err)
 	}
 	// Native LEVEL UP artwork proves the prior HIRE registered; names, levels,
-	// and gold do not participate in the cursor reset.
+	// and gold do not participate in the purchase decision.
 	s := image.NewRGBA(f.image.Bounds())
 	draw.Draw(s, s.Bounds(), f.image, s.Bounds().Min, draw.Src)
 	for _, y := range []int{before.button.Y, 1260} {
@@ -561,8 +563,8 @@ func TestStartupSuccessfulHireRevisitsEarlierOwnedRows(t *testing.T) {
 	}
 	f.image = s
 	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), &before, startupSweep{top: true, y: before.button.Y, attempts: 1})
-	if err != nil || !out.found || !out.owned || absDiff(out.button.Y, 865) > 4 || out.sweep.attempts != 0 {
-		t.Fatalf("successful hires must revisit earlier locked Treebeast: %+v %v", out, err)
+	if err != nil || out.found || out.sweep.hiresDone || out.startupScroll.Y <= out.thumb.Y || out.startupComplete {
+		t.Fatalf("successful hire must finish global hiring before earlier locked Treebeast: %+v %v", out, err)
 	}
 }
 
@@ -602,8 +604,50 @@ func TestStartupShortListMissingHireStaysBounded(t *testing.T) {
 
 func TestStartupExhaustedLockedRowRequestsLaterRetry(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-cid-locked.png")
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true, y: 655, attempts: 2, retry: 2})
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{hiresDone: true, top: true, y: 655, attempts: 2, retry: 2})
 	if err != nil || !out.sweep.needsLevels || out.sweep.retry != 2 || out.found && absDiff(out.button.Y, 655) <= 4 {
 		t.Fatalf("still-locked row must yield after two inputs and remain unfinished: %+v %v", out, err)
+	}
+}
+
+func TestStartupHiresBelowFirstViewportBeforeOwnedMAX(t *testing.T) {
+	top := startupFrame(t, "../../testdata/hero-startup-cid-locked.png")
+	p := heroRunner{enabled: true}
+	first, err := readStartupHeroObservation(context.Background(), top, noStartupOCR(t), nil, p.sweep)
+	if err != nil || first.found || first.sweep.hiresDone || first.startupComplete || first.startupScroll.Y <= first.thumb.Y {
+		t.Fatalf("owned top rows must yield to offscreen HIRE rows: %+v %v", first, err)
+	}
+	p.observe(first, observation{}, top.at)
+	a, ok := p.action(top.at)
+	if !ok || a.kind != scrollHeroes {
+		t.Fatalf("top viewport must scroll before MAX: %+v %t", a, ok)
+	}
+	p.sent(a, top.at)
+	lower := startupFrame(t, "../../testdata/hero-startup-bottom-hire.png")
+	lower.id, lower.at = top.id+1, top.at.Add(time.Second)
+	hire, err := readStartupHeroObservation(context.Background(), lower, noStartupOCR(t), p.before(), p.sweep)
+	if err != nil || !hire.found || hire.owned || !hire.x1 || absDiff(hire.button.Y, 1337) > 4 || hire.sweep.hiresDone {
+		t.Fatalf("lower affordable HIRE must precede old locked Cid: %+v %v", hire, err)
+	}
+	p.observe(hire, observation{}, lower.at)
+	a, ok = p.action(lower.at)
+	if !ok || a.kind != buyHero || a.hero.owned {
+		t.Fatalf("lower HIRE must produce an unmodified purchase: %+v %t", a, ok)
+	}
+	// A fully visible disabled successor at the bottom finishes only hiring.
+	end := startupFrame(t, "../../testdata/hero-skogur-hire.png")
+	thumb, height, found := heroScrollbarThumb(end.image)
+	if !found {
+		t.Fatal("missing end fixture scrollbar")
+	}
+	b := end.image.Bounds()
+	end.image = startupShiftThumbBy(t, end.image, b.Min.Y+b.Dy()*965/1000-thumb.Y-height/2)
+	boundary, err := readStartupHeroObservation(context.Background(), end, noStartupOCR(t), nil, startupSweep{top: true, y: 1234, attempts: 2, retry: 1, needsLevels: true})
+	if err != nil || !boundary.sweep.hiresDone || boundary.sweep.top || boundary.sweep.y != 0 || boundary.sweep.attempts != 0 || boundary.startupComplete || boundary.found || boundary.startupScroll.Y >= boundary.thumb.Y || boundary.sweep.retry != 1 || !boundary.sweep.needsLevels {
+		t.Fatalf("hire completion must reset navigation and preserve deferred work: %+v %v", boundary, err)
+	}
+	levels, err := readStartupHeroObservation(context.Background(), top, noStartupOCR(t), nil, boundary.sweep)
+	if err != nil || !levels.found || !levels.owned || levels.button != image.Pt(204, 655) || !levels.sweep.hiresDone {
+		t.Fatalf("old locked Cid becomes eligible only after the global hire pass: %+v %v", levels, err)
 	}
 }
