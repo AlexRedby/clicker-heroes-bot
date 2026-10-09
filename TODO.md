@@ -119,7 +119,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Earned gild gifts
 
-- Verify the first zone-100 gift after Transcension and the remaining earned-gift edge cases in the installed game: a single reward, a missed input. Confirm recovery closes the roster and resumes automation without repeated opening.
+- Verify the first zone-100 gift after Transcension with chest animation and the remaining earned-gift edge cases in the installed game: a single reward, a missed input. Confirm recovery closes the roster and resumes automation without repeated opening.
 
 ## Automatic progression
 

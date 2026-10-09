@@ -129,6 +129,35 @@ func TestGildDialogsIgnoreChangingTitle(t *testing.T) {
 	}
 }
 
+func TestGildChestArtworkDoesNotAffectRecognition(t *testing.T) {
+	for _, name := range []string{"chest", "chest-first-zone"} {
+		for _, width := range []int{1280, 2560} {
+			img := exportFixture(t, "gild-"+name+".png", width)
+			changed := image.NewRGBA(img.Bounds())
+			draw.Draw(changed, changed.Bounds(), img, img.Bounds().Min, draw.Src)
+			// Ignore every pixel in the animated chest area.
+			art := image.Rect(550*width/1280, 270*width/1280, 730*width/1280, 420*width/1280)
+			draw.Draw(changed, art, image.NewUniform(color.Black), image.Point{}, draw.Src)
+			c, err := recognizedGame(changed)
+			if err != nil || !c.known || c.modal != gildChestModal {
+				t.Fatalf("%s width=%d context=%+v err=%v", name, width, c, err)
+			}
+			point, found, err := gildActionPoint(gameFrame{image: changed, context: c})
+			if err != nil || !found || point != image.Pt(640*width/1280, 349*width/1280) {
+				t.Fatalf("%s width=%d point=%v found=%v err=%v", name, width, point, found, err)
+			}
+			// Artwork alone must not authorize clicking an unrecognized window.
+			draw.Draw(changed, changed.Bounds(), img, img.Bounds().Min, draw.Src)
+			prompt := image.Rect(555*width/1280, 500*width/1280, 725*width/1280, 535*width/1280)
+			draw.Draw(changed, prompt, image.NewUniform(color.RGBA{255, 252, 213, 255}), image.Point{}, draw.Src)
+			c, err = recognizedGame(changed)
+			if err != nil || c.known || c.modal != unknownGildModal {
+				t.Fatalf("%s width=%d missing prompt context=%+v err=%v", name, width, c, err)
+			}
+		}
+	}
+}
+
 func TestGildGiftIgnoresAnimatedNotification(t *testing.T) {
 	hud := gildFixture(t, "hud")
 	for _, scale := range []int{1, 2} {

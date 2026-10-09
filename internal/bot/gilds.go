@@ -38,9 +38,9 @@ func readGildModal(screen image.Image) (gildModal, error) {
 		return noGildModal, nil
 	}
 	if giftPanel {
-		// The zone number changes title wrapping; match the controls instead.
-		chest, err := vision.MatchControl(screen, image.Rect(599, 304, 681, 394), "gilds/chest.png")
-		if err != nil || chest {
+		// The title wraps differently and the chest animates; use the fixed prompt.
+		prompt, err := vision.MatchControl(screen, image.Rect(560, 504, 720, 530), "gilds/click-to-open.png")
+		if err != nil || prompt {
 			return gildChestModal, err
 		}
 		close, err := vision.MatchControl(screen, image.Rect(982, 116, 1006, 140), "gilds/close.png")
