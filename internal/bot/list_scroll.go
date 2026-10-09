@@ -35,7 +35,7 @@ func listScrollAction(a gameAction) (listScrollCommand, bool) {
 	case a.kind == handleGildRedistribution && a.gildMove.action == gildScrollRoster:
 		s.mode = listScrollFine
 	case a.kind == scrollHeroes:
-		if a.hero.startup && a.hero.sweep.top && a.hero.startupScroll != (image.Point{}) {
+		if a.hero.startup && a.hero.sweep.bottom && a.hero.startupScroll != (image.Point{}) {
 			s.mode = listScrollPage
 		}
 	case a.kind == handleMercenary && (a.mercenary.step == scrollMercenariesTop || a.mercenary.step == scrollMercenariesBottom):

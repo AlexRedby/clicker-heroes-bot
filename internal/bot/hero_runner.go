@@ -172,7 +172,7 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 		return
 	}
 	p.lastReadError = ""
-	if out.startup {
+	if out.startup && (p.pending == nil || p.pending.action.kind != scrollHeroes) {
 		p.sweep = out.sweep
 	}
 	if p.pending != nil {
@@ -220,7 +220,7 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 			p.pending = nil
 		case scrollHeroes:
 			moved := out.thumbFound && absDiff(out.thumb.Y, pending.action.point.Y) >= max(2, out.frame.context.bounds.Dy()/1000)
-			if !out.bottom && !moved {
+			if !moved && !(out.bottom && pending.action.target.Y > pending.action.point.Y) {
 				// Give a busy game time to apply input, independently of scan cadence.
 				if pending.attempts < 3 || now.Before(pending.afterAt.Add(time.Second)) {
 					p.nextScan = now.Add(150 * time.Millisecond)
@@ -238,6 +238,9 @@ func (p *heroRunner) observe(out heroObservation, fish observation, now time.Tim
 				return
 			}
 			p.scrollFailures = 0
+			if out.startup {
+				p.sweep = out.sweep
+			}
 			p.pending = nil
 			p.nextScan = now
 		case parkPointer:

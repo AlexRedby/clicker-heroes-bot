@@ -37,7 +37,7 @@ func TestStartupHireNeedsNoNameOrLevelOCR(t *testing.T) {
 	for _, path := range []string{"../../testdata/hero-startup-zero.png", "../../testdata/hero-startup-gold.png", "../../testdata/hero-startup-alexa-unreadable.png", "../../testdata/hero-startup-name-empty.png"} {
 		t.Run(path, func(t *testing.T) {
 			f := startupFrame(t, path)
-			out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+			out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
 			if err != nil || !out.found {
 				t.Fatalf("native purchase: %+v %v", out, err)
 			}
@@ -47,7 +47,7 @@ func TestStartupHireNeedsNoNameOrLevelOCR(t *testing.T) {
 
 func TestStartupMissedHireFixture(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-missed-hire.png")
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
 	if err != nil || !out.found || out.owned {
 		t.Fatalf("missed hire fixture: %+v %v", out, err)
 	}
@@ -56,7 +56,7 @@ func TestStartupMissedHireFixture(t *testing.T) {
 func TestStartupScrollPendingResetsStaleCursor(t *testing.T) {
 	previous := startupFrame(t, "../../testdata/hero-startup-missed-hire.png")
 	current := startupFrame(t, "../../testdata/hero-startup-missed-hire.png")
-	p := heroRunner{enabled: true, sweep: startupSweep{top: true, y: 1395}}
+	p := heroRunner{enabled: true, sweep: startupSweep{bottom: true, boosted: true, y: 600}}
 	previous.id = 1
 	out, err := readStartupHeroObservation(context.Background(), previous, noStartupOCR(t), nil, p.sweep)
 	if err != nil {
@@ -68,6 +68,9 @@ func TestStartupScrollPendingResetsStaleCursor(t *testing.T) {
 		t.Fatalf("expected pending startup scroll: %+v %t", a, ok)
 	}
 	p.sent(a, previous.at)
+	if !p.sweep.bottom || !p.sweep.boosted || p.sweep.y != 0 || p.sweep.attempts != 0 {
+		t.Fatal("upward scroll reset sweep phase or retained viewport cursor")
+	}
 	current.image = startupMoveThumb(t, current.image)
 	current.context.bounds = current.image.Bounds()
 	current.id = 2
@@ -90,7 +93,7 @@ func TestStartupMissedHireAfterViewportMoveKeepsHire(t *testing.T) {
 	}
 	p := heroRunner{enabled: true}
 	p.startStartup()
-	p.sweep.top = true
+	p.sweep.bottom, p.sweep.boosted = true, true
 	for i := 1; i <= 2; i++ {
 		previous.id = uint64(i)
 		previous.at = previous.at.Add(time.Second)
@@ -153,8 +156,8 @@ func startupShiftThumbBy(t *testing.T, screen image.Image, delta int) image.Imag
 }
 func TestStartupCompletedRowSkippedWithoutOCR(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-fisherman-before.png")
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
-	if err != nil || !out.found || out.owned || absDiff(out.button.Y, 966) > 4 || !out.passiveReady {
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
+	if err != nil || !out.found || out.owned || absDiff(out.button.Y, 1361) > 4 || !out.passiveReady {
 		t.Fatalf("completed Brittany should be skipped: %+v %v", out, err)
 	}
 	// Replacing all names and numerical levels must not change startup input.
@@ -166,7 +169,7 @@ func TestStartupCompletedRowSkippedWithoutOCR(t *testing.T) {
 		draw.Draw(covered, region, image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
 	}
 	f.image = covered
-	next, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	next, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
 	if err != nil || next.button != out.button || !next.found || next.owned {
 		t.Fatalf("name/level pixels affected selection: %+v %v", next, err)
 	}
@@ -175,7 +178,7 @@ func TestStartupMissingInputIsBounded(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-gold.png")
 	p := heroRunner{enabled: true}
 	p.startStartup()
-	p.sweep.top = true
+	p.sweep.bottom, p.sweep.boosted = true, true
 	firstY := 0
 	for i := 0; i < 3; i++ {
 		f.id++
@@ -192,13 +195,14 @@ func TestStartupMissingInputIsBounded(t *testing.T) {
 		if i == 0 {
 			firstY = a.point.Y
 		}
-		if i < 2 && a.point.Y != firstY || i == 2 && a.point.Y <= firstY {
+		if i < 2 && a.point.Y != firstY || i == 2 && a.point.Y >= firstY {
 			t.Fatalf("did not advance after two unchanged inputs: %+v", a)
 		}
 		p.sent(a, f.at)
 	}
+	sweep := p.sweep
 	p.interrupt()
-	if !p.sweep.top || p.sweep.attempts != 1 {
+	if p.sweep != sweep || !p.sweep.bottom || !p.sweep.boosted || !p.sweep.maxPending || p.sweep.attempts != 1 {
 		t.Fatal("F8 lost cursor")
 	}
 	p.startStartup()
@@ -206,14 +210,15 @@ func TestStartupMissingInputIsBounded(t *testing.T) {
 		t.Fatal("reset retained cursor")
 	}
 }
-func TestStartupMatureViewportSeeksTopWithoutNames(t *testing.T) {
+func TestStartupMatureViewportSeeksBottomWithoutNames(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-tsuchi-x1.png")
+	f.image = startupMoveThumbBy(t, f.image, -f.image.Bounds().Dy()/40)
 	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{})
-	if err != nil || out.found || out.startupScroll == (image.Point{}) {
-		t.Fatalf("top seek: %+v %v", out, err)
+	if err != nil || out.found || out.startupScroll.Y != f.image.Bounds().Max.Y-1 {
+		t.Fatalf("bottom seek: %+v %v", out, err)
 	}
 	f.context.saveMenu = true
-	out, err = readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	out, err = readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
 	if err != nil || out.found || out.startupScroll != (image.Point{}) {
 		t.Fatal("menu received startup input")
 	}
@@ -256,7 +261,7 @@ func TestStartupShortListWithoutScrollbarCanBuy(t *testing.T) {
 	draw.Draw(s, image.Rect(b.Dx()*445/1000, b.Dy()*38/100, b.Dx()*495/1000, b.Max.Y), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
 	f.image = s
 	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{})
-	if err != nil || out.thumbFound || !out.found || !out.sweep.top {
+	if err != nil || out.thumbFound || !out.found || !out.sweep.bottom {
 		t.Fatalf("short list: %+v %v", out, err)
 	}
 	if !startupHeroStable(out, f) {
@@ -276,7 +281,7 @@ func TestStartupClippedBottomCaptionScrolls(t *testing.T) {
 				draw.Draw(s, image.Rect(b.Dx()*55/1000, b.Max.Y-inset, b.Dx()*140/1000, b.Max.Y), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
 				f.image = s
 			}
-			out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true, y: 1417})
+			out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, y: 1417})
 			if err != nil || out.found || !out.thumbFound || out.startupScroll.Y <= out.thumb.Y || out.startupComplete {
 				t.Fatalf("clipped caption must scroll: %+v %v", out, err)
 			}
@@ -291,7 +296,7 @@ func TestStartupFullyVisibleObscuredCaptionStillBlocks(t *testing.T) {
 	draw.Draw(covered, b, s, b.Min, draw.Src)
 	draw.Draw(covered, heroButtonCaptionRegion(s, image.Pt(204, 900)), image.NewUniform(color.RGBA{70, 170, 235, 255}), image.Point{}, draw.Src)
 	f := gameFrame{image: covered, context: gameContext{known: true, heroes: true, bounds: b}}
-	_, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	_, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
 	if err == nil || !strings.Contains(err.Error(), "caption is obscured") {
 		t.Fatalf("fully visible obstruction should not be treated as an edge: %v", err)
 	}
@@ -305,28 +310,28 @@ func TestStartupClippedTopCaptionIsNavigationOnly(t *testing.T) {
 	viewport := heroListViewport(s)
 	draw.Draw(covered, image.Rect(b.Dx()*55/1000, viewport.Min.Y, b.Dx()*140/1000, viewport.Min.Y+3), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
 	f := gameFrame{image: covered, context: gameContext{known: true, heroes: true, bounds: b}}
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
-	if err != nil || out.found {
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
+	if err != nil || out.found || out.startupComplete || out.startupScroll.Y >= out.thumb.Y {
 		t.Fatalf("clipped top row must not be purchased or block navigation: %+v %v", out, err)
 	}
 }
 
 func TestStartupUnlockedWithoutChecksSkipped(t *testing.T) {
-	f := startupFrame(t, "../../testdata/hero-startup-bottom-hire.png")
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
-	if err != nil || !out.found || out.owned || absDiff(out.button.Y, 1337) > 4 {
-		t.Fatalf("unlocked Fisherman/Betty must be skipped without checks: %+v %v", out, err)
+	f := startupFrame(t, "../../testdata/hero-startup-cid-locked.png")
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
+	if err != nil || !out.found || !out.owned || absDiff(out.button.Y, 655) > 4 {
+		t.Fatalf("earlier completed Treebeast/Ivan/Brittany must be skipped: %+v %v", out, err)
 	}
 }
 
 func TestStartupLockedUpgradeRequestsMAXWithoutOCR(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-cid-locked.png")
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{hiresDone: true})
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
 	if err != nil || !out.found || !out.owned || out.button != image.Pt(204, 655) {
 		t.Fatalf("one-slot dark artwork must request levels: %+v %v", out, err)
 	}
 	f = startupFrame(t, "../../testdata/hero-nongilded-successor.jpg")
-	out, err = readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{hiresDone: true, top: true})
+	out, err = readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
 	if err != nil || !out.found || !out.owned || absDiff(out.button.Y, 446) > 3 {
 		t.Fatalf("locked Skogur must request levels: %+v %v", out, err)
 	}
@@ -334,7 +339,7 @@ func TestStartupLockedUpgradeRequestsMAXWithoutOCR(t *testing.T) {
 
 func TestStartupClippedHirePriceScrollsWithoutOCR(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-clipped-price.png")
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true})
 	if err != nil || out.found || !out.passiveReady || out.bottom || out.startupComplete || out.startupScroll.Y <= out.thumb.Y {
 		t.Fatalf("clipped dark HIRE price must scroll: %+v %v", out, err)
 	}
@@ -354,9 +359,17 @@ func TestStartupHirePriceAtViewportBoundary(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := startupTranslatedCard(t, "../../testdata/hero-startup-bottom-hire.png", 1337, tc.y, false)
+			if tc.buy && tc.y >= 1354 {
+				// Isolate the complete HIRE price from the extra translated lower fragment.
+				isolated := image.NewRGBA(s.Bounds())
+				draw.Draw(isolated, isolated.Bounds(), s, s.Bounds().Min, draw.Src)
+				b := s.Bounds()
+				draw.Draw(isolated, image.Rect(b.Dx()*35/1000, tc.y+54, b.Dx()*44/100, b.Max.Y), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
+				s = isolated
+			}
 			f := gameFrame{image: s, context: gameContext{known: true, heroes: true, bounds: s.Bounds()}}
-			out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
-			if err != nil || out.found != tc.buy || out.owned || out.startupComplete || !tc.buy && out.startupScroll.Y <= out.thumb.Y {
+			out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true})
+			if err != nil || out.found != tc.buy || out.owned || out.startupComplete || !tc.buy && (out.startupScroll == (image.Point{}) || tc.y < 600 && out.startupScroll.Y >= out.thumb.Y || tc.y > 1380 && out.startupScroll.Y <= out.thumb.Y) {
 				t.Fatalf("HIRE price boundary: %+v %v", out, err)
 			}
 		})
@@ -369,11 +382,21 @@ func TestStartupCompleteUnavailableSuccessorNeedsNoNumericalOCR(t *testing.T) {
 	if !ok {
 		t.Fatal("missing owned Tsuchi")
 	}
-	next, ok := findNextHeroButton(f.image, current)
+	_, ok = findNextHeroButton(f.image, current)
 	if !ok {
 		t.Fatal("missing Skogur HIRE")
 	}
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{hiresDone: true, top: true, y: next.Y})
+	f.image = startupThumbAtTop(t, f.image)
+	complete := image.NewRGBA(f.image.Bounds())
+	draw.Draw(complete, complete.Bounds(), f.image, complete.Bounds().Min, draw.Src)
+	viewport := heroListViewport(f.image)
+	for _, band := range findHeroButtonBands(f.image, true) {
+		if band.Min.Y <= viewport.Min.Y+max(3, f.image.Bounds().Dy()/150) {
+			draw.Draw(complete, band, image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
+		}
+	}
+	f.image = complete
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true, y: current.Y, attempts: 2})
 	if err != nil || out.found || !out.passiveReady || !out.startupComplete {
 		t.Fatalf("complete unavailable successor: %+v %v", out, err)
 	}
@@ -390,7 +413,7 @@ func TestStartupClippedHireCannotCompleteAtScrollbarBottom(t *testing.T) {
 	if !heroScrollbarAtBottom(f.image) {
 		t.Fatal("translated thumb is not at bottom")
 	}
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true})
 	if err != nil || !out.bottom || !out.passiveReady || out.found || out.startupComplete {
 		t.Fatalf("scrollbar cannot complete a clipped HIRE: %+v %v", out, err)
 	}
@@ -398,7 +421,7 @@ func TestStartupClippedHireCannotCompleteAtScrollbarBottom(t *testing.T) {
 
 func TestStartupClippedHireNoMotionAndPause(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-clipped-price.png")
-	p := heroRunner{enabled: true, sweep: startupSweep{top: true}}
+	p := heroRunner{enabled: true, sweep: startupSweep{bottom: true}}
 	for i := 0; i < 4; i++ {
 		f.id++
 		f.at = f.at.Add(time.Second)
@@ -437,15 +460,15 @@ func TestStartupClippedHireNoMotionAndPause(t *testing.T) {
 
 func TestStartupClippedHireBandScrollsWithoutOCR(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-clipped-price-band.png")
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true})
 	if err != nil || out.found || out.startupComplete || out.startupScroll.Y <= out.thumb.Y {
 		t.Fatalf("clipped HIRE band must scroll before OCR: %+v %v", out, err)
 	}
 }
 
 func TestStartupRevisitsUnaffordableLockedRowOnce(t *testing.T) {
-	// Compose a real owned dark Cid card with the native affordable Treebeast
-	// HIRE. Dimming only Cid's button models the initial lack of funds.
+	// Compose unavailable locked Cid above affordable HIRE rows. The upward
+	// cursor reaches Cid after the lower rows have already been handled.
 	low := startupFrame(t, "../../testdata/hero-startup-gold.png")
 	high := startupFrame(t, "../../testdata/hero-startup-cid-locked.png")
 	s := image.NewRGBA(low.image.Bounds())
@@ -461,9 +484,9 @@ func TestStartupRevisitsUnaffordableLockedRowOnce(t *testing.T) {
 		}
 	}
 	low.image = s
-	first, err := readStartupHeroObservation(context.Background(), low, noStartupOCR(t), nil, startupSweep{hiresDone: true})
-	if err != nil || !first.found || first.owned || first.button != image.Pt(204, 865) || first.sweep.retry != 1 {
-		t.Fatalf("unaffordable Cid must yield to cheap DPS and request one revisit: %+v %v", first, err)
+	first, err := readStartupHeroObservation(context.Background(), low, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true, y: 655})
+	if err != nil || first.found || !first.sweep.needsLevels || first.sweep.retry != 1 {
+		t.Fatalf("unaffordable earlier Cid must request one revisit: %+v %v", first, err)
 	}
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
 	p.frame, p.startup, p.startupCheck = low, startupHeroes, false
@@ -475,7 +498,7 @@ func TestStartupRevisitsUnaffordableLockedRowOnce(t *testing.T) {
 	if err := p.accept(context.Background(), out, low.at); err != nil {
 		t.Fatal(err)
 	}
-	if p.startup != startupHeroes || p.hero.sweep.retry != 2 || p.hero.sweep.top || p.startupDeadline != deadline {
+	if p.startup != startupHeroes || p.hero.sweep.retry != 2 || p.hero.sweep.bottom || p.startupDeadline != deadline {
 		t.Fatal("first sweep handed off or reset its budget before revisiting")
 	}
 	// A retired first-pass completion cannot skip the fresh second pass.
@@ -494,14 +517,14 @@ func TestStartupRevisitsUnaffordableLockedRowOnce(t *testing.T) {
 	high.id, high.generation, high.layout = low.id+1, p.generation, p.layout
 	high.at = low.at.Add(time.Second)
 	p.frame = high
-	// The final locked-skill pass follows its own hire traversal.
-	p.hero.sweep.hiresDone = true
+	// The bounded revisit has reached this earlier viewport.
+	p.hero.sweep.bottom, p.hero.sweep.boosted = true, true
 	second, err := readStartupHeroObservation(context.Background(), high, noStartupOCR(t), nil, p.hero.sweep)
 	if err != nil || !second.found || !second.owned || second.button != image.Pt(204, 655) || second.sweep.retry != 2 {
 		t.Fatalf("rising gold must make earlier Cid selectable in the final pass: %+v %v", second, err)
 	}
 	// Even persistent unaffordability cannot schedule a third pass.
-	stillLow, err := readStartupHeroObservation(context.Background(), low, noStartupOCR(t), nil, startupSweep{hiresDone: true, retry: 2})
+	stillLow, err := readStartupHeroObservation(context.Background(), low, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true, retry: 2})
 	if err != nil || stillLow.sweep.retry != 2 {
 		t.Fatal("final pass rearmed a retry", err)
 	}
@@ -524,47 +547,67 @@ func TestStartupRevisitsUnaffordableLockedRowOnce(t *testing.T) {
 func TestStartupSparseHeroesNeedsNoNumbers(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-post-transcension-start.png")
 	for _, y := range []int{0, 655, 865, 1076} {
-		out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true, y: y, attempts: 2})
+		out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true, y: y, attempts: 2})
 		if err != nil || out.passiveReady {
 			t.Fatalf("sparse row %d: %+v %v", y, out, err)
 		}
-		if y == 655 && (!out.found || absDiff(out.button.Y, 865) > 4 || out.owned) {
+		if y == 1076 && (!out.found || absDiff(out.button.Y, 865) > 4 || out.owned) {
 			t.Fatalf("available Treebeast not hired: %+v", out)
 		}
 	}
 }
 
-func TestStartupAffordableHirePrecedesOwnedMAX(t *testing.T) {
+func TestStartupLowerHirePrecedesUpperHire(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-early-large-scrollbar.png")
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{})
-	if err != nil || !out.found || out.owned || absDiff(out.button.Y, 1076) > 4 {
-		t.Fatalf("Ivan must be hired before Cid/Treebeast MAX: %+v %v", out, err)
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
+	if err != nil || !out.found || out.owned || absDiff(out.button.Y, 1260) > 4 {
+		t.Fatalf("lower Brittany must be hired before upper Ivan: %+v %v", out, err)
 	}
-	out, err = readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true, y: out.button.Y, attempts: 2})
-	if err != nil || !out.found || out.owned || absDiff(out.button.Y, 1260) > 4 || !out.sweep.needsLevels {
-		t.Fatalf("two missed Ivan hires must advance to Brittany and request a later retry: %+v %v", out, err)
+	out, err = readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true, y: out.button.Y, attempts: 2})
+	if err != nil || !out.found || out.owned || absDiff(out.button.Y, 1076) > 4 || !out.sweep.needsLevels {
+		t.Fatalf("two missed Brittany hires must advance upward to Ivan and defer work: %+v %v", out, err)
 	}
 }
 
-func TestStartupHireDuringLevelPassRestartsGlobalPriority(t *testing.T) {
+func TestStartupHireImmediatelyMAXBeforeUpperHire(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-early-large-scrollbar.png")
-	before, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{hiresDone: true})
-	if err != nil || !before.found || before.owned {
-		t.Fatalf("before hire: %+v %v", before, err)
+	before, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
+	if err != nil || !before.found || before.owned || absDiff(before.button.Y, 1260) > 4 {
+		t.Fatalf("before lower hire: %+v %v", before, err)
 	}
-	// Native LEVEL UP artwork proves the prior HIRE registered; names, levels,
-	// and gold do not participate in the purchase decision.
+	// Native LVL UP artwork proves HIRE registered even with unreadable levels.
 	s := image.NewRGBA(f.image.Bounds())
 	draw.Draw(s, s.Bounds(), f.image, s.Bounds().Min, draw.Src)
-	for _, y := range []int{before.button.Y, 1260} {
-		destination := heroButtonCaptionRegion(s, image.Pt(before.button.X, y))
-		source := heroButtonCaptionRegion(f.image, image.Pt(before.button.X, 865))
-		draw.Draw(s, destination, f.image, source.Min, draw.Src)
+	destination := heroButtonCaptionRegion(s, before.button)
+	source := heroButtonCaptionRegion(f.image, image.Pt(before.button.X, 865))
+	draw.Draw(s, destination, f.image, source.Min, draw.Src)
+	f.image, f.id, f.at = s, f.id+1, f.at.Add(time.Second)
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), &before, startupSweep{bottom: true, boosted: true, maxPending: true, y: before.button.Y, attempts: 2})
+	if err != nil || !out.found || !out.owned || absDiff(out.button.Y, before.button.Y) > f.image.Bounds().Dy()/20 || out.sweep.attempts != 0 || out.sweep.maxPending {
+		t.Fatalf("newly owned row must request immediate MAX with a fresh budget: %+v %v", out, err)
 	}
-	f.image = s
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), &before, startupSweep{top: true, y: before.button.Y, attempts: 1})
-	if err != nil || out.found || out.sweep.hiresDone || out.startupScroll.Y <= out.thumb.Y || out.startupComplete {
-		t.Fatalf("successful hire must finish global hiring before earlier locked Treebeast: %+v %v", out, err)
+	p := heroRunner{enabled: true}
+	p.observe(out, observation{}, f.at)
+	a, ok := p.action(f.at)
+	if !ok || a.kind != buyHero || !a.hero.owned || a.point != out.button {
+		t.Fatalf("upper Ivan HIRE preempted newly owned Brittany MAX: %+v %t", a, ok)
+	}
+	p.sent(a, f.at)
+	if p.sweep.maxPending || !p.sweep.boosted {
+		t.Fatal("sent MAX did not clear the pending hire or establish latest-owned boost")
+	}
+	// Completed native skill artwork allows the same sweep to continue upward.
+	unlocked := loadTestImage(t, "../../testdata/hero-startup-cid-locked.png")
+	card := image.Rect(89, 1180, 1126, 1390)
+	leveled := image.NewRGBA(s.Bounds())
+	draw.Draw(leveled, leveled.Bounds(), s, s.Bounds().Min, draw.Src)
+	draw.Draw(leveled, card, unlocked, card.Min, draw.Src)
+	f.image = leveled
+	f.id++
+	f.at = f.at.Add(time.Second)
+	next, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), &out, p.sweep)
+	if err != nil || !next.found || next.owned || absDiff(next.button.Y, 1076) > 4 {
+		t.Fatalf("after Brittany MAX the same sweep must continue to upper Ivan HIRE: %+v %v", next, err)
 	}
 }
 
@@ -578,7 +621,7 @@ func TestStartupShortListMissingHireStaysBounded(t *testing.T) {
 	if _, _, found := heroScrollbarThumb(s); found {
 		t.Fatal("short list fixture still has a thumb")
 	}
-	p := heroRunner{enabled: true, sweep: startupSweep{top: true}}
+	p := heroRunner{enabled: true, sweep: startupSweep{bottom: true, boosted: true}}
 	firstY := 0
 	for i := 0; i < 3; i++ {
 		f.id++
@@ -595,7 +638,7 @@ func TestStartupShortListMissingHireStaysBounded(t *testing.T) {
 		if i == 0 {
 			firstY = a.point.Y
 		}
-		if i < 2 && a.point.Y != firstY || i == 2 && (a.point.Y <= firstY || !a.hero.sweep.needsLevels) {
+		if i < 2 && a.point.Y != firstY || i == 2 && (a.point.Y >= firstY || !a.hero.sweep.needsLevels) {
 			t.Fatalf("unchanged short-list HIRE did not stop at two inputs: %+v", a)
 		}
 		p.sent(a, f.at)
@@ -604,50 +647,186 @@ func TestStartupShortListMissingHireStaysBounded(t *testing.T) {
 
 func TestStartupExhaustedLockedRowRequestsLaterRetry(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-cid-locked.png")
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{hiresDone: true, top: true, y: 655, attempts: 2, retry: 2})
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true, y: 655, attempts: 2, retry: 2})
 	if err != nil || !out.sweep.needsLevels || out.sweep.retry != 2 || out.found && absDiff(out.button.Y, 655) <= 4 {
 		t.Fatalf("still-locked row must yield after two inputs and remain unfinished: %+v %v", out, err)
 	}
 }
 
-func TestStartupHiresBelowFirstViewportBeforeOwnedMAX(t *testing.T) {
+func TestStartupInitialSeekBottomBeforeBuying(t *testing.T) {
 	top := startupFrame(t, "../../testdata/hero-startup-cid-locked.png")
 	p := heroRunner{enabled: true}
 	first, err := readStartupHeroObservation(context.Background(), top, noStartupOCR(t), nil, p.sweep)
-	if err != nil || first.found || first.sweep.hiresDone || first.startupComplete || first.startupScroll.Y <= first.thumb.Y {
-		t.Fatalf("owned top rows must yield to offscreen HIRE rows: %+v %v", first, err)
+	if err != nil || first.found || first.sweep.bottom || first.startupComplete || first.startupScroll.Y != top.image.Bounds().Max.Y-1 {
+		t.Fatalf("initial viewport must seek bottom before purchases: %+v %v", first, err)
 	}
 	p.observe(first, observation{}, top.at)
 	a, ok := p.action(top.at)
 	if !ok || a.kind != scrollHeroes {
-		t.Fatalf("top viewport must scroll before MAX: %+v %t", a, ok)
+		t.Fatalf("initial seek must produce a scroll: %+v %t", a, ok)
 	}
 	p.sent(a, top.at)
 	lower := startupFrame(t, "../../testdata/hero-startup-bottom-hire.png")
+	thumb, height, found := heroScrollbarThumb(lower.image)
+	if !found {
+		t.Fatal("missing lower fixture scrollbar")
+	}
+	b := lower.image.Bounds()
+	lower.image = startupShiftThumbBy(t, lower.image, b.Min.Y+b.Dy()*965/1000-thumb.Y-height/2)
 	lower.id, lower.at = top.id+1, top.at.Add(time.Second)
 	hire, err := readStartupHeroObservation(context.Background(), lower, noStartupOCR(t), p.before(), p.sweep)
-	if err != nil || !hire.found || hire.owned || !hire.x1 || absDiff(hire.button.Y, 1337) > 4 || hire.sweep.hiresDone {
-		t.Fatalf("lower affordable HIRE must precede old locked Cid: %+v %v", hire, err)
+	if err != nil || !hire.found || hire.owned || !hire.x1 || absDiff(hire.button.Y, 1337) > 4 || !hire.sweep.bottom {
+		t.Fatalf("bottom anchor must authorize lower HIRE before old Cid: %+v %v", hire, err)
 	}
 	p.observe(hire, observation{}, lower.at)
 	a, ok = p.action(lower.at)
 	if !ok || a.kind != buyHero || a.hero.owned {
-		t.Fatalf("lower HIRE must produce an unmodified purchase: %+v %t", a, ok)
+		t.Fatalf("HIRE must produce x1 purchase: %+v %t", a, ok)
 	}
-	// A fully visible disabled successor at the bottom finishes only hiring.
-	end := startupFrame(t, "../../testdata/hero-skogur-hire.png")
-	thumb, height, found := heroScrollbarThumb(end.image)
-	if !found {
-		t.Fatal("missing end fixture scrollbar")
+}
+
+func TestStartupLatestOwnedMAXEvenUnlocked(t *testing.T) {
+	f := startupFrame(t, "../../testdata/hero-startup-cid-locked.png")
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true})
+	if err != nil || !out.found || !out.owned || absDiff(out.button.Y, 1260) > 4 {
+		t.Fatalf("latest owned Brittany must receive MAX before earlier locked Cid: %+v %v", out, err)
 	}
-	b := end.image.Bounds()
-	end.image = startupShiftThumbBy(t, end.image, b.Min.Y+b.Dy()*965/1000-thumb.Y-height/2)
-	boundary, err := readStartupHeroObservation(context.Background(), end, noStartupOCR(t), nil, startupSweep{top: true, y: 1234, attempts: 2, retry: 1, needsLevels: true})
-	if err != nil || !boundary.sweep.hiresDone || boundary.sweep.top || boundary.sweep.y != 0 || boundary.sweep.attempts != 0 || boundary.startupComplete || boundary.found || boundary.startupScroll.Y >= boundary.thumb.Y || boundary.sweep.retry != 1 || !boundary.sweep.needsLevels {
-		t.Fatalf("hire completion must reset navigation and preserve deferred work: %+v %v", boundary, err)
+}
+
+func startupThumbAtTop(t *testing.T, screen image.Image) image.Image {
+	t.Helper()
+	thumb, height, ok := heroScrollbarThumb(screen)
+	if !ok {
+		t.Fatal("fixture has no scrollbar thumb")
 	}
-	levels, err := readStartupHeroObservation(context.Background(), top, noStartupOCR(t), nil, boundary.sweep)
-	if err != nil || !levels.found || !levels.owned || levels.button != image.Pt(204, 655) || !levels.sweep.hiresDone {
-		t.Fatalf("old locked Cid becomes eligible only after the global hire pass: %+v %v", levels, err)
+	b := screen.Bounds()
+	return startupShiftThumbBy(t, screen, b.Min.Y+b.Dy()*420/1000+height/2-thumb.Y)
+}
+
+func TestStartupUnavailableLatestMAXRequestsLaterRetry(t *testing.T) {
+	s := startupTranslatedCard(t, "../../testdata/hero-startup-cid-locked.png", 655, 900, true)
+	f := gameFrame{image: s, context: gameContext{known: true, heroes: true, bounds: s.Bounds()}}
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true})
+	if err != nil || out.found || !out.sweep.boosted || !out.sweep.needsLevels || out.sweep.retry != 1 {
+		t.Fatalf("unavailable latest locked MAX must defer work before moving upward: %+v %v", out, err)
+	}
+}
+
+func TestStartupExhaustedHireRetiresPendingMAX(t *testing.T) {
+	for _, disabled := range []bool{false, true} {
+		t.Run(fmt.Sprint("disabled=", disabled), func(t *testing.T) {
+			f := startupFrame(t, "../../testdata/hero-startup-missed-hire.png")
+			attempts := 2
+			if disabled {
+				attempts = 1
+				dark := image.NewRGBA(f.image.Bounds())
+				draw.Draw(dark, dark.Bounds(), f.image, dark.Bounds().Min, draw.Src)
+				for _, band := range findHeroButtonBands(f.image, true) {
+					if absDiff((band.Min.Y+band.Max.Y-1)/2, 843) > 8 {
+						continue
+					}
+					for y := band.Min.Y; y < band.Max.Y; y++ {
+						for x := band.Min.X; x < band.Max.X; x++ {
+							r, g, b := rgb(dark.At(x, y))
+							if b > 150 && b > r+40 && b >= g-10 && g > 90 {
+								dark.Set(x, y, color.RGBA{45, 60, 70, 255})
+							}
+						}
+					}
+				}
+				f.image = dark
+			}
+			out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true, maxPending: true, y: 843, attempts: attempts})
+			if err != nil || out.found || out.sweep.maxPending || !out.sweep.needsLevels || out.startupScroll.Y >= out.thumb.Y {
+				t.Fatalf("skipped HIRE must retire pending MAX before scrolling to earlier completed rows: %+v %v", out, err)
+			}
+			p := heroRunner{enabled: true}
+			p.observe(out, observation{}, f.at)
+			a, ok := p.action(f.at)
+			if !ok || a.kind != scrollHeroes {
+				t.Fatalf("missing upward scroll: %+v %t", a, ok)
+			}
+			p.sent(a, f.at)
+			if p.sweep.y != 0 || p.sweep.attempts != 0 || !p.sweep.boosted || p.sweep.maxPending {
+				t.Fatal("scroll retained failed HIRE priority")
+			}
+			earlier := startupTranslatedCard(t, "../../testdata/hero-startup-cid-locked.png", 1260, 900, false)
+			current := gameFrame{id: f.id + 1, at: f.at.Add(time.Second), image: earlier, context: gameContext{known: true, heroes: true, bounds: earlier.Bounds()}}
+			next, err := readStartupHeroObservation(context.Background(), current, noStartupOCR(t), p.before(), p.sweep)
+			if err != nil || next.found || next.sweep.maxPending || !next.sweep.boosted {
+				t.Fatalf("upward scroll must skip completed earlier Brittany after retired HIRE: %+v %v", next, err)
+			}
+		})
+	}
+}
+
+func TestStartupUpwardScrollAtBottomNeedsMotion(t *testing.T) {
+	f := startupFrame(t, "../../testdata/hero-startup-bottom-hire.png")
+	thumb, height, ok := heroScrollbarThumb(f.image)
+	if !ok {
+		t.Fatal("fixture has no scrollbar thumb")
+	}
+	b := f.image.Bounds()
+	f.image = startupShiftThumbBy(t, f.image, b.Min.Y+b.Dy()*965/1000-thumb.Y-height/2)
+	p := heroRunner{enabled: true, sweep: startupSweep{bottom: true, boosted: true, y: 600}}
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, p.sweep)
+	if err != nil || !out.bottom || out.found || out.startupScroll.Y >= out.thumb.Y {
+		t.Fatalf("fixture must request upward navigation from bottom: %+v %v", out, err)
+	}
+	p.observe(out, observation{}, f.at)
+	a, ok := p.action(f.at)
+	if !ok || a.kind != scrollHeroes {
+		t.Fatalf("missing upward scroll: %+v %t", a, ok)
+	}
+	p.sent(a, f.at)
+	f.id++
+	f.at = f.at.Add(time.Second)
+	unchanged, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), p.before(), p.sweep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.observe(unchanged, observation{}, f.at)
+	if p.pending == nil {
+		t.Fatal("bottom thumb was mistaken for a successful upward drag")
+	}
+	if a, ok := p.action(f.at); ok {
+		t.Fatalf("unchanged upward drag authorized another input: %+v", a)
+	}
+}
+
+func TestStartupUnconfirmedScrollKeepsFreshCursor(t *testing.T) {
+	f := startupFrame(t, "../../testdata/hero-startup-missed-hire.png")
+	p := heroRunner{enabled: true, sweep: startupSweep{bottom: true, boosted: true, y: 600, needsLevels: true, retry: 1}}
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, p.sweep)
+	if err != nil || out.found || out.startupScroll.Y >= out.thumb.Y {
+		t.Fatalf("fixture must request upward navigation: %+v %v", out, err)
+	}
+	p.observe(out, observation{}, f.at)
+	a, ok := p.action(f.at)
+	if !ok || a.kind != scrollHeroes {
+		t.Fatalf("missing upward scroll: %+v %t", a, ok)
+	}
+	p.sent(a, f.at)
+	fresh := p.sweep
+	f.id++
+	f.at = f.at.Add(time.Second)
+	unchanged, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), p.before(), p.sweep)
+	if err != nil || !unchanged.found || unchanged.sweep.y == 0 || absDiff(unchanged.button.Y, 843) > 8 {
+		t.Fatalf("stationary viewport must compute an obsolete lower-row cursor: %+v %v", unchanged, err)
+	}
+	p.observe(unchanged, observation{}, f.at)
+	if p.pending == nil || p.sweep != fresh || p.sweep.y != 0 {
+		t.Fatal("unconfirmed scroll overwrote its fresh cursor", p.sweep)
+	}
+	moved := startupFrame(t, "../../testdata/hero-startup-fisherman-before.png")
+	moved.id, moved.at = f.id+1, f.at.Add(time.Second)
+	next, err := readStartupHeroObservation(context.Background(), moved, noStartupOCR(t), p.before(), p.sweep)
+	if err != nil || !next.found || next.owned || next.button.Y <= unchanged.button.Y {
+		t.Fatalf("confirmed earlier viewport must select its lower available row: %+v %v", next, err)
+	}
+	p.observe(next, observation{}, moved.at)
+	a, ok = p.action(moved.at)
+	if p.pending != nil || !ok || a.kind != buyHero || a.point != next.button || p.sweep != next.sweep {
+		t.Fatalf("confirmed scroll did not adopt the current purchase cursor: %+v %t", a, ok)
 	}
 }

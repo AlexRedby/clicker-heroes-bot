@@ -103,19 +103,20 @@ func TestStartupVisualAffordabilityAndOwnershipNeedNoNumericalOCR(t *testing.T) 
 			return 0, errors.New("unreadable price")
 		},
 	}
-	affordable, err := readStartupHeroObservation(context.Background(), frame(source), read, nil, startupSweep{top: true})
+	affordable, err := readStartupHeroObservation(context.Background(), frame(source), read, nil, startupSweep{bottom: true, boosted: true})
 	if err != nil || !affordable.found || affordable.passiveReady || affordable.startupComplete {
 		t.Fatalf("affordable HIRE: %+v %v", affordable, err)
 	}
-	// An actual owned card below affordable Cid must establish passive readiness
-	// before selecting Cid, without reading that lower card's name or LVL.
+	// An actual owned lower card establishes passive readiness and gets MAX
+	// before upper Cid HIRE, without reading the card name or LVL.
 	combined := image.NewRGBA(source.Bounds())
 	draw.Draw(combined, combined.Bounds(), source, source.Bounds().Min, draw.Src)
 	lower := startupTranslatedCard(t, "../../testdata/hero-startup-bottom-hire.png", 709, 865, false)
 	r := image.Rect(89, 757, 1126, 987)
 	draw.Draw(combined, r, lower, r.Min, draw.Src)
-	passive, err := readStartupHeroObservation(context.Background(), frame(combined), read, nil, startupSweep{top: true})
-	if err != nil || !passive.found || absDiff(passive.button.Y, 655) > 4 || !passive.passiveReady || passive.startupComplete || numericalReads != 0 {
+	draw.Draw(combined, image.Rect(r.Min.X, r.Max.Y, r.Max.X, combined.Bounds().Max.Y), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
+	passive, err := readStartupHeroObservation(context.Background(), frame(combined), read, nil, startupSweep{bottom: true})
+	if err != nil || !passive.found || absDiff(passive.button.Y, 865) > 4 || !passive.owned || !passive.passiveReady || passive.startupComplete || numericalReads != 0 {
 		t.Fatalf("passive below Cid: %+v %v numerical OCR=%d", passive, err, numericalReads)
 	}
 	// Change only the blue button body; keep the native HIRE artwork and names.
@@ -129,20 +130,20 @@ func TestStartupVisualAffordabilityAndOwnershipNeedNoNumericalOCR(t *testing.T) 
 			}
 		}
 	}
-	short, err := readStartupHeroObservation(context.Background(), frame(dark), read, nil, startupSweep{top: true})
+	short, err := readStartupHeroObservation(context.Background(), frame(dark), read, nil, startupSweep{bottom: true, boosted: true})
 	if err != nil || short.found || short.passiveReady || short.startupComplete {
 		t.Fatalf("unavailable HIRE: %+v %v", short, err)
 	}
-	// A short list can end its hiring pass while zero DPS still requires seed clicks.
+	// A short list with zero passive DPS must retain startup and seed clicks.
 	noThumb := image.NewRGBA(dark.Bounds())
 	draw.Draw(noThumb, noThumb.Bounds(), dark, dark.Bounds().Min, draw.Src)
 	b := noThumb.Bounds()
 	draw.Draw(noThumb, image.Rect(b.Dx()*445/1000, b.Dy()*38/100, b.Dx()*495/1000, b.Max.Y), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
 	draw.Draw(noThumb, image.Rect(b.Dx()*35/1000, b.Dy()*84/100, b.Dx()*44/100, b.Max.Y), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
 	shortFrame := frame(noThumb)
-	boundary, err := readStartupHeroObservation(context.Background(), shortFrame, read, nil, startupSweep{top: true})
-	if err != nil || boundary.thumbFound || boundary.found || boundary.passiveReady || boundary.startupComplete || !boundary.sweep.hiresDone || boundary.sweep.top {
-		t.Fatalf("short unavailable list must end only the hire phase: %+v %v", boundary, err)
+	boundary, err := readStartupHeroObservation(context.Background(), shortFrame, read, nil, startupSweep{bottom: true, boosted: true})
+	if err != nil || boundary.thumbFound || boundary.found || boundary.passiveReady || boundary.startupComplete || !boundary.sweep.bottom {
+		t.Fatalf("short unavailable list must retain zero-DPS startup: %+v %v", boundary, err)
 	}
 	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
 	p.frame, p.layout = shortFrame, shortFrame.layout
@@ -152,12 +153,12 @@ func TestStartupVisualAffordabilityAndOwnershipNeedNoNumericalOCR(t *testing.T) 
 	if err := p.accept(context.Background(), observation{kind: heroAnalysis, frame: shortFrame, startup: startupHeroes, hero: boundary}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if p.startup != startupHeroes || p.startupPassive || p.startupDeadline != deadline || p.export.requested || !p.hero.sweep.hiresDone {
-		t.Fatal("hire phase handoff completed startup or lost its budget", p.startup, p.hero.sweep)
+	if p.startup != startupHeroes || p.startupPassive || p.startupDeadline != deadline || p.export.requested || !p.hero.sweep.bottom {
+		t.Fatal("unavailable list completed startup or lost its budget", p.startup, p.hero.sweep)
 	}
 	levels, err := readStartupHeroObservation(context.Background(), shortFrame, read, nil, p.hero.sweep)
 	if err != nil || levels.found || levels.passiveReady || levels.startupComplete {
-		t.Fatalf("zero passive DPS cannot finish the level pass: %+v %v", levels, err)
+		t.Fatalf("zero passive DPS cannot finish the sweep: %+v %v", levels, err)
 	}
 	if !p.monsterAssistReady() {
 		t.Fatal("unavailable short list suppressed seed clicks")
@@ -165,7 +166,7 @@ func TestStartupVisualAffordabilityAndOwnershipNeedNoNumericalOCR(t *testing.T) 
 	obscured := image.NewRGBA(dark.Bounds())
 	draw.Draw(obscured, obscured.Bounds(), dark, dark.Bounds().Min, draw.Src)
 	draw.Draw(obscured, image.Rect(179, 825, 294, 875), image.NewUniform(color.RGBA{45, 60, 70, 255}), image.Point{}, draw.Src)
-	uncertain, err := readStartupHeroObservation(context.Background(), frame(obscured), read, nil, startupSweep{top: true})
+	uncertain, err := readStartupHeroObservation(context.Background(), frame(obscured), read, nil, startupSweep{bottom: true, boosted: true})
 	if err == nil || uncertain.found || uncertain.startupComplete {
 		t.Fatalf("covered lower caption must block global traversal without input: %+v %v", uncertain, err)
 	}

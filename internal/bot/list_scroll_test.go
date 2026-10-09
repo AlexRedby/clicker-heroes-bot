@@ -15,7 +15,7 @@ func TestListScrollModesUseSharedInput(t *testing.T) {
 		primitive string
 	}{
 		{"hero edge", gameAction{kind: scrollHeroes}, listScrollEdge, "drag"},
-		{"hero page", gameAction{kind: scrollHeroes, hero: heroObservation{startup: true, sweep: startupSweep{top: true}, startupScroll: image.Pt(20, 60)}}, listScrollPage, "drag"},
+		{"hero page", gameAction{kind: scrollHeroes, hero: heroObservation{startup: true, sweep: startupSweep{bottom: true}, startupScroll: image.Pt(20, 60)}}, listScrollPage, "drag"},
 		{"mercenary top", gameAction{kind: handleMercenary, mercenary: mercenaryCommand{step: scrollMercenariesTop}}, listScrollEdge, "drag"},
 		{"mercenary bottom", gameAction{kind: handleMercenary, mercenary: mercenaryCommand{step: scrollMercenariesBottom}}, listScrollEdge, "drag"},
 		{"ancient record", gameAction{kind: handleAncient, ancient: ancientCommand{step: scrollAncients, direction: 1}}, listScrollRecord, "wheel"},
@@ -84,7 +84,7 @@ func TestHeroScrollUsesLatestThumbCenter(t *testing.T) {
 	for _, page := range []bool{false, true} {
 		a := gameAction{kind: scrollHeroes, frame: f, point: thumb, target: image.Pt(thumb.X, f.image.Bounds().Max.Y-1)}
 		if page {
-			a.hero = heroObservation{startup: true, sweep: startupSweep{top: true}, startupScroll: thumb.Add(image.Pt(0, 12))}
+			a.hero = heroObservation{startup: true, sweep: startupSweep{bottom: true}, startupScroll: thumb.Add(image.Pt(0, 12))}
 			a.target = a.hero.startupScroll
 		}
 		p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})

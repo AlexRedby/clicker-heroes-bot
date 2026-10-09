@@ -276,7 +276,7 @@ func TestInitialExportRoutesSupportedPartialAndUnknownSetup(t *testing.T) {
 			f.id++
 			f.at = f.at.Add(time.Second)
 			p.frame = f
-			out := p.analyze(context.Background(), heroAnalysis, analysisJob{frame: f, startup: p.startup, sweep: startupSweep{top: true}})
+			out := p.analyze(context.Background(), heroAnalysis, analysisJob{frame: f, startup: p.startup, sweep: startupSweep{bottom: true}})
 			if err := p.accept(context.Background(), out, f.at); err != nil {
 				t.Fatal(err)
 			}

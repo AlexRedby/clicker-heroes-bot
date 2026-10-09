@@ -8,11 +8,11 @@ import (
 )
 
 // A sweep owns only a viewport cursor, not a roster or OCR-derived identity.
-// At most two purchase inputs per row keep missing clicks from blocking the sweep.
+// Two attempts per caption bound a missed hire or MAX input.
 type startupSweep struct {
-	top, hiresDone, needsLevels bool
-	y, attempts                 int
-	retry                       uint8 // 0: initial; 1: unaffordable locked row seen; 2: final pass.
+	bottom, boosted, maxPending, needsLevels bool
+	y, attempts                              int
+	retry                                    uint8 // 0: initial; 1: unaffordable locked row seen; 2: final pass.
 }
 
 func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroReaders, before *heroObservation, sweep startupSweep) (heroObservation, error) {
@@ -40,7 +40,6 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroRead
 		band      image.Rectangle
 		available bool
 		kind      heroButtonKind
-		locked    bool
 	}
 	var rows []row
 	for _, available := range []bool{true, false} {
@@ -48,41 +47,39 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroRead
 			rows = append(rows, row{button: image.Pt(b.Min.X+b.Dx()*8/100, (band.Min.Y+band.Max.Y-1)/2), band: band, available: available})
 		}
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].button.Y < rows[j].button.Y })
+	sort.Slice(rows, func(i, j int) bool { return rows[i].button.Y > rows[j].button.Y })
 	if len(rows) == 0 {
 		return out, nil
 	}
-	if !sweep.top {
-		atTop := out.thumbFound && out.thumb.Y-height/2 <= b.Min.Y+b.Dy()*420/1000+max(3, b.Dy()/100)
-		if !out.thumbFound {
-			atTop = absDiff(rows[0].button.Y, b.Min.Y+b.Dy()*455/1000) <= b.Dy()/40
-		}
-		if !atTop {
-			if out.thumbFound {
-				out.startupScroll = image.Pt(out.thumb.X, b.Min.Y+b.Dy()*4/10)
-			}
+	atTop := out.thumbFound && out.thumb.Y-height/2 <= b.Min.Y+b.Dy()*420/1000+max(3, b.Dy()/100)
+	if !out.thumbFound {
+		atTop = absDiff(rows[len(rows)-1].button.Y, b.Min.Y+b.Dy()*455/1000) <= b.Dy()/40
+	}
+	if !sweep.bottom {
+		if out.thumbFound && !out.bottom {
+			out.startupScroll = image.Pt(out.thumb.X, b.Max.Y-1)
 			return out, nil
 		}
-		out.sweep.top = true
+		if !out.thumbFound && !atTop {
+			return out, nil
+		}
+		out.sweep.bottom = true
 	}
-	// Hiring expands a card. Follow its nearest button on the next shared frame;
-	// input is bounded even if the click did not register.
+	// Hiring can expand the list. Follow the visible row and give its MAX input
+	// a fresh budget once the caption changes from HIRE to LVL UP.
 	if before != nil {
-		// A small list scroll can put a different card at the old Y coordinate.
-		// The attempt budget belongs to the visible list position, so restart it
-		// whenever the viewport moved before applying the Y cursor.
 		if !heroListStable(before.frame.image, frame.image) &&
 			!(!before.thumbFound && !out.thumbFound && heroRowNameMatches(before.frame.image, frame.image, before.button, before.button)) {
 			out.sweep.attempts = 0
 		}
-		nearest := rows[0].button.Y
-		for _, r := range rows {
-			if absDiff(r.button.Y, before.button.Y) < absDiff(nearest, before.button.Y) {
-				nearest = r.button.Y
+		nearest := 0
+		for i := range rows {
+			if absDiff(rows[i].button.Y, before.button.Y) < absDiff(rows[nearest].button.Y, before.button.Y) {
+				nearest = i
 			}
 		}
-		if absDiff(nearest, before.button.Y) <= b.Dy()/12 {
-			out.sweep.y = nearest
+		if absDiff(rows[nearest].button.Y, before.button.Y) <= b.Dy()/12 {
+			out.sweep.y = rows[nearest].button.Y
 		}
 	}
 	for i := range rows {
@@ -91,32 +88,63 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroRead
 		if err != nil {
 			return out, err
 		}
-		// At the top Cid is the first card; every subsequent owned row has DPS.
-		out.passiveReady = out.passiveReady || rows[i].kind == heroButtonLevelUp && (i > 0 || out.thumbFound && out.thumb.Y-height/2 > b.Min.Y+b.Dy()*435/1000)
-		if out.sweep.hiresDone && rows[i].kind == heroButtonLevelUp && rows[i].band.Min.Y > viewport.Min.Y+edgeGap && rows[i].button.Y+b.Dy()*85/1000 < viewport.Max.Y {
-			rows[i].locked, err = heroHasLockedUpgrade(frame.image, rows[i].button)
+		// Cid is the top card; subsequent owned rows provide passive DPS.
+		out.passiveReady = out.passiveReady || rows[i].kind == heroButtonLevelUp &&
+			(i < len(rows)-1 || out.thumbFound && out.thumb.Y-height/2 > b.Min.Y+b.Dy()*435/1000)
+		if before != nil && !before.owned && rows[i].kind == heroButtonLevelUp && absDiff(rows[i].button.Y, out.sweep.y) <= b.Dy()/20 {
+			out.sweep.attempts = 0
+			out.sweep.maxPending = true
+		}
+	}
+	clippedTop := false
+	for _, r := range rows {
+		y := r.button.Y
+		if out.sweep.y != 0 && y > out.sweep.y+b.Dy()/20 {
+			continue
+		}
+		if r.band.Min.Y <= viewport.Min.Y+edgeGap {
+			clippedTop = true
+			continue
+		}
+		if r.band.Max.Y >= viewport.Max.Y-edgeGap || r.kind == heroButtonHire && !heroPriceRegion(frame.image, r.button).In(viewport) {
+			if (!out.sweep.boosted || out.sweep.maxPending) && out.thumbFound {
+				out.sweep.bottom = false
+				out.startupScroll = image.Pt(out.thumb.X, b.Max.Y-1)
+				return out, nil
+			}
+			continue
+		}
+		if r.kind == heroButtonUnknown {
+			return out, fmt.Errorf("startup hero button at %v: caption is obscured", r.button)
+		}
+		owned := r.kind == heroButtonLevelUp
+		forceMax := owned && (!out.sweep.boosted || out.sweep.maxPending && (out.sweep.y == 0 || absDiff(y, out.sweep.y) <= b.Dy()/20))
+		locked := false
+		if owned && (!forceMax || !r.available) {
+			if y+b.Dy()*85/1000 >= viewport.Max.Y {
+				continue
+			}
+			var err error
+			locked, err = heroHasLockedUpgrade(frame.image, r.button)
 			if err != nil {
 				return out, err
 			}
-			if rows[i].locked && !rows[i].available {
+			if !locked && !forceMax {
+				continue
+			}
+		}
+		if out.sweep.attempts >= 2 && absDiff(y, out.sweep.y) <= b.Dy()/20 || !r.available {
+			if !owned {
+				out.sweep.maxPending = false
+			}
+			if !owned || locked {
 				out.sweep.needsLevels = true
 				if out.sweep.retry == 0 {
 					out.sweep.retry = 1
 				}
 			}
-		}
-	}
-	// Hire affordable successors before MAX can spend their gold on old rows.
-	for _, r := range rows {
-		y := r.button.Y
-		if r.kind != heroButtonHire || !r.available || r.band.Min.Y <= viewport.Min.Y+edgeGap ||
-			r.band.Max.Y >= viewport.Max.Y-edgeGap || !heroPriceRegion(frame.image, r.button).In(viewport) {
-			continue
-		}
-		if y < out.sweep.y-b.Dy()/20 || out.sweep.attempts >= 2 && absDiff(y, out.sweep.y) <= b.Dy()/20 {
-			out.sweep.needsLevels = true
-			if out.sweep.retry == 0 {
-				out.sweep.retry = 1
+			if forceMax {
+				out.sweep.boosted, out.sweep.maxPending = true, false
 			}
 			continue
 		}
@@ -124,86 +152,19 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroRead
 			out.sweep.attempts = 0
 		}
 		out.sweep.y = y
-		out.button, out.found = r.button, true
-		out.sweep.hiresDone = false
-		return out, nil
-	}
-	clipped, blockedHire := false, false
-	for _, r := range rows {
-		y := r.button.Y
-		if r.band.Min.Y <= viewport.Min.Y+edgeGap {
-			continue
-		}
-		if y < out.sweep.y-b.Dy()/20 || out.sweep.attempts >= 2 && absDiff(y, out.sweep.y) <= b.Dy()/20 {
-			if r.locked || r.kind == heroButtonHire && r.available {
-				out.sweep.needsLevels = true
-				if out.sweep.retry == 0 {
-					out.sweep.retry = 1
-				}
-			}
-			continue
-		}
-		if r.kind == heroButtonUnknown {
-			if r.band.Max.Y >= viewport.Max.Y-edgeGap {
-				clipped = true
-				break
-			}
-			return out, fmt.Errorf("startup hero button at %v: caption is obscured", r.button)
-		}
-		owned := r.kind == heroButtonLevelUp
+		out.button, out.found, out.owned = r.button, true, owned
+		out.sweep.maxPending = !owned
 		if owned {
-			if !out.sweep.hiresDone {
-				continue
-			}
-			if y+b.Dy()*85/1000 >= viewport.Max.Y {
-				clipped = true
-				break
-			}
-			if !r.locked {
-				continue
-			}
-			if !r.available {
-				if out.sweep.retry == 0 {
-					out.sweep.retry = 1
-				}
-				continue
-			}
-		} else if r.band.Max.Y >= viewport.Max.Y-edgeGap || !heroPriceRegion(frame.image, r.button).In(viewport) {
-			// HIRE can remain readable when its price extends below the screen.
-			// Bring that price into view before buying or checking affordability.
-			clipped = true
-			break
-		}
-		if r.available {
-			if absDiff(y, out.sweep.y) > b.Dy()/20 {
-				out.sweep.attempts = 0
-			}
-			out.sweep.y = y
-			out.button, out.found, out.owned = r.button, true, owned
-			return out, nil
-		}
-		// A disabled HIRE does not rule out another hire below this viewport.
-		if !out.sweep.hiresDone {
-			blockedHire = true
-			continue
-		}
-		out.startupComplete = out.passiveReady
-		return out, nil
-	}
-	if !out.sweep.hiresDone && !clipped && (out.bottom || !out.thumbFound && blockedHire) {
-		out.sweep.hiresDone, out.sweep.top = true, false
-		out.sweep.y, out.sweep.attempts = 0, 0
-		if out.thumbFound {
-			out.startupScroll = image.Pt(out.thumb.X, b.Min.Y+b.Dy()*4/10)
+			out.sweep.boosted = true
 		}
 		return out, nil
 	}
-	if out.bottom && !clipped {
+	if atTop && !clippedTop {
 		out.startupComplete = out.passiveReady
 		return out, nil
 	}
 	if out.thumbFound {
-		out.startupScroll = image.Pt(out.thumb.X, min(out.thumb.Y+max(3, height/2), b.Min.Y+b.Dy()*965/1000-height/2))
+		out.startupScroll = image.Pt(out.thumb.X, max(out.thumb.Y-max(3, height/2), b.Min.Y+b.Dy()*420/1000+height/2))
 	}
 	return out, nil
 }

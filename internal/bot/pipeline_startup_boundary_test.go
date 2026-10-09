@@ -22,7 +22,7 @@ func TestStartupClippedPriceSharedPipeline(t *testing.T) {
 		context: func(image.Image) (gameContext, error) { return c, nil }, heroes: noStartupOCR(t),
 	}, pipelineOptions{heroes: true, fishInterval: time.Second})
 	p.startupCheck, p.startup = false, startupHeroes
-	p.hero.sweep = startupSweep{top: true}
+	p.hero.sweep = startupSweep{bottom: true}
 	jobs := make([]chan analysisJob, analysisCount)
 	for i := range jobs {
 		jobs[i] = make(chan analysisJob, 1)

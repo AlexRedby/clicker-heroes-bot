@@ -165,11 +165,11 @@ func TestStartupF8FishAndModal(t *testing.T) {
 	if _, ok := p.queue[enableProgression]; !ok || p.export.requested {
 		t.Fatal("early progression did not enable before export")
 	}
-	p.hero.sweep = startupSweep{top: true, hiresDone: true, y: 865, attempts: 2}
+	p.hero.sweep = startupSweep{bottom: true, boosted: true, y: 865, attempts: 2}
 	p.hero.enabled = false
 	controls.toggle()
 	p.reset(controls.snapshot())
-	if p.hero.sweep != (startupSweep{top: true, hiresDone: true, y: 865, attempts: 2}) || !p.hero.enabled || p.startup != startupHeroes || p.export.requested || len(p.queue) != 0 {
+	if p.hero.sweep != (startupSweep{bottom: true, boosted: true, y: 865, attempts: 2}) || !p.hero.enabled || p.startup != startupHeroes || p.export.requested || len(p.queue) != 0 {
 		t.Fatal("F8 lost bounded cursor or startup state")
 	}
 	old := gameAction{kind: buyHeroUpgrades, frame: f, point: point}
@@ -289,8 +289,8 @@ func TestOrdinaryHeroUpgradeMaintenance(t *testing.T) {
 	}
 }
 
-func TestStartupSeeksTopWithoutInitialFooterPass(t *testing.T) {
-	f := startupFrame(t, "../../testdata/hero-tsuchi-x1.png")
+func TestStartupSeeksBottomWithoutInitialFooterPass(t *testing.T) {
+	f := startupFrame(t, "../../testdata/hero-startup-cid-locked.png")
 	f.layout = 1
 	c, err := recognizedGame(f.image)
 	if err != nil {
@@ -302,14 +302,14 @@ func TestStartupSeeksTopWithoutInitialFooterPass(t *testing.T) {
 	p.beginStartup()
 	out := p.analyze(context.Background(), heroAnalysis, analysisJob{frame: f, startup: p.startup})
 	if out.err != nil || out.found || out.hero.startupScroll == (image.Point{}) {
-		t.Fatalf("initial top seek: %+v %v", out.hero, out.err)
+		t.Fatalf("initial bottom seek: %+v %v", out.hero, out.err)
 	}
 	if err = p.accept(context.Background(), out, f.at); err != nil {
 		t.Fatal(err)
 	}
 	p.plan(f.at)
 	a, ok := p.nextAction(f.at)
-	if !ok || a.kind != scrollHeroes || a.target.Y >= a.point.Y {
-		t.Fatalf("initial startup must seek top, not footer: %+v %t", a, ok)
+	if !ok || a.kind != scrollHeroes || a.target.Y <= a.point.Y {
+		t.Fatalf("initial startup must seek bottom without buying the footer: %+v %t", a, ok)
 	}
 }

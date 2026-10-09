@@ -26,7 +26,7 @@ func TestStartupOpenCVFailedFrameUsesSharedQueue(t *testing.T) {
 		keyToggle: func(key, state string) error { keys = append(keys, key+":"+state); return nil },
 	}, pipelineReaders{heroes: noStartupOCR(t)}, pipelineOptions{heroes: true})
 	p.layout, p.startup, p.startupCheck = 1, startupHeroes, false
-	p.hero.sweep.top = true
+	p.hero.sweep.bottom = true
 	p.frame = gameFrame{id: 1, layout: 1, at: now, image: screen, context: c}
 	out := p.analyze(context.Background(), heroAnalysis, analysisJob{frame: p.frame, startup: startupHeroes, sweep: p.hero.sweep})
 	if out.err != nil || !out.hero.found || out.hero.owned {
@@ -95,7 +95,7 @@ func TestStartupClippedCaptionUsesSharedQueue(t *testing.T) {
 		},
 	}, pipelineReaders{heroes: noStartupOCR(t)}, pipelineOptions{heroes: true})
 	p.layout, p.startup, p.startupCheck = 1, startupHeroes, false
-	p.hero.sweep = startupSweep{top: true, y: 1417}
+	p.hero.sweep = startupSweep{bottom: true, y: 1417}
 	p.frame = gameFrame{id: 1, layout: 1, at: now, image: screen, context: c}
 	out := p.analyze(context.Background(), heroAnalysis, analysisJob{frame: p.frame, startup: startupHeroes, sweep: p.hero.sweep})
 	if out.err != nil {
