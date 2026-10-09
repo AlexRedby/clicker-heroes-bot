@@ -67,7 +67,7 @@ Owners: Timelapse integration and Quick Ascension (purchase controller and forec
 | --- | --- |
 | Viewport edges | Complete HIRE/LVL UP captions and upgrade strips at the top, middle and bottom are recognized. Clipped rows are brought into view; overlap advances the bounded sweep. |
 | Card variants | Plain/gilded cards, blue/dark captions, dark unavailable slots, gray unlocked artwork, and partial/covered strips. Startup must not read names, levels or purchased checks. |
-| Purchases | Startup begins at the top. Owned rows without level-unavailable upgrades receive no levels; missing hires get x1 clicks and unavailable-upgrade rows get Q/MAX, with at most two inputs per viewport, including missed clicks and expanded cards. Ordinary latest-hero Q confirmation still works. |
+| Purchases | Startup begins at the bottom and visits rows upward. Owned rows without level-unavailable upgrades receive no levels; missing hires get x1 clicks and unavailable-upgrade rows get Q/MAX, with at most two inputs per viewport, including missed clicks and expanded cards. Ordinary latest-hero Q confirmation still works. |
 | Gold and successor | Zero gold, affordable and unaffordable successors, short and growing lists. Starter clicks stop for an affordable purchase, an owned passive hero, pending input or unknown ownership/gold. Startup reads only a locked successor price/gold when needed; numeric level OCR belongs to ordinary latest-hero play. |
 | Obstructions | Fish over the caption/level/scrollbar, purchase tooltip and covering modal. Fish recovery stays independent; hero input waits for a covering modal. |
 | Navigation and pause | Partial/overlapping rows, missed drag/no motion. Preserve the viewport cursor and attempt count; advance after two inputs instead of looping on one hero. |
@@ -75,6 +75,8 @@ Owners: Timelapse integration and Quick Ascension (purchase controller and forec
 - If `hero numbers unreadable` recurs, use the automatically saved `artifacts/hero-unreadable-*.png` and its log containing frame ID, build revision, failed region and OCR output. Collect this analyzed frame rather than a later manual screenshot; reproduce it on the same revision before changing the reader.
 
 ## Startup and unattended Ascension validation
+
+- Verify the first post-Transcension Ascension after beating boss 130: a fresh save confirms zero Ascensions in the current Transcension, positive souls allow the reset without waiting for a combat wall, and a validated empty relic inventory skips the missing Relics tab. Confirm later runs retain ordinary wall policy; include F8 and failed-dialog recovery.
 
 - Verify an early growing list after Transcension: recognize its large thumb, reach the complete upgrade footer, visit heroes from bottom to top, give the latest affordable hire an x1 click followed by Q/MAX before earlier skill rows, and revisit unfinished skills while ordinary earning continues.
 

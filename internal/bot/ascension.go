@@ -187,6 +187,7 @@ type ascensionPlanner struct {
 	lastProgress, lastObservation  time.Time
 	nextCheck                      time.Time
 	active                         bool
+	firstRun                       bool // Run identity from an accepted fresh save, not input permission.
 	fullCombatFailed               bool
 	relicsChecked                  bool // Advisory save check, not permission to move or salvage items.
 	minimumReward                  float64
@@ -201,6 +202,31 @@ type ascensionPlanner struct {
 
 func (p *ascensionPlanner) interrupt() { *p = ascensionPlanner{} }
 
+func (p *ascensionPlanner) resetAttempt() {
+	firstRun, firstZone := p.firstRun, p.highestZone
+	p.interrupt()
+	p.firstRun = firstRun
+	if firstRun {
+		p.highestZone = firstZone
+	}
+}
+
+func (p *ascensionPlanner) observeSave(out exportResult) {
+	p.firstRun = false
+	if out.transcension != nil && out.transcensionErr == nil {
+		s := out.transcension.State
+		p.firstRun = s.SaveHash != "" && s.Transcendent && s.AscensionsThisTranscension == 0
+		return
+	}
+	preview := out.prestige
+	if preview == nil && out.plan != nil {
+		preview = out.plan.Transcension
+	}
+	if preview != nil {
+		p.firstRun = preview.SaveHash != "" && preview.Transcendent && preview.Ascensions == 0
+	}
+}
+
 func (p *ascensionPlanner) invalidate() {
 	p.relicsChecked = false
 	p.lastObservation = time.Time{}
@@ -212,13 +238,17 @@ func (p *ascensionPlanner) observeProgress(s progressionState, wall int, now tim
 	if p.active || !s.Known || s.Zone <= 0 {
 		return
 	}
-	if s.Enabled || s.Zone > p.highestZone || wall != p.wallZone {
+	// First-run progression must not restart a completed preflight before its early Ascension.
+	if !p.firstRun && (s.Enabled || s.Zone > p.highestZone || wall != p.wallZone) {
 		p.relicsChecked = false
 	}
 	if !s.observedAt.IsZero() {
 		now = s.observedAt
 	}
 	if p.highestZone == 0 || s.Zone < p.highestZone-1 {
+		if p.highestZone != 0 {
+			p.firstRun, p.relicsChecked = false, false
+		}
 		p.highestZone, p.wallZone = s.Zone, 0
 		p.lastProgress = now
 	}
@@ -238,6 +268,20 @@ func (p *ascensionPlanner) observeProgress(s progressionState, wall int, now tim
 func (p *ascensionPlanner) due(now time.Time, stall time.Duration) bool {
 	return !p.active && p.wallZone > 0 && now.Sub(p.lastObservation) <= 10*time.Second &&
 		(p.fullCombatFailed || !now.Before(p.lastProgress.Add(stall))) && !now.Before(p.nextCheck)
+}
+
+func (p *gamePipeline) ascensionCandidate(now time.Time) bool {
+	if p.ascension.due(now, p.options.ascensionStall) {
+		return true
+	}
+	progress := p.state[progressionAnalysis]
+	return p.ascension.firstRun && !p.ascension.active && !now.Before(p.ascension.nextCheck) &&
+		p.startup == noStartup && !p.startupCheck && p.frame.context.heroes &&
+		progress.progression.Known && progress.progression.Zone > 130 &&
+		progress.frame.id != 0 && progress.frame.id <= p.frame.id && progress.frame.id >= p.barriers[progressionAnalysis] &&
+		progress.frame.generation == p.generation && progress.frame.layout == p.layout && progress.frame.context == p.frame.context &&
+		!progress.frame.at.After(now) && now.Sub(progress.frame.at) <= 10*time.Second &&
+		p.ascension.lastObservation.Equal(progress.frame.at)
 }
 
 func (p *ascensionPlanner) observe(out ascensionObservation, err error, now time.Time) (reset bool) {

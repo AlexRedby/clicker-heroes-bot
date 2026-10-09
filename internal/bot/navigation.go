@@ -175,7 +175,7 @@ func (p *gamePipeline) planNavigation(now time.Time) (recovering bool) {
 			return false
 		}
 		if p.ascension.active {
-			p.ascension.interrupt()
+			p.ascension.resetAttempt()
 			p.ascension.nextCheck = now.Add(time.Minute)
 		}
 		step = navigationAscension

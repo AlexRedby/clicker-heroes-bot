@@ -446,7 +446,7 @@ func (p *gamePipeline) reset(generation uint64) {
 	p.ancient.interrupt()
 	p.export.suspend()
 	p.navigation.nextAction = time.Time{}
-	p.ascension.interrupt()
+	p.ascension.resetAttempt()
 	p.relic.interrupt()
 	if relicExport {
 		// A relic-only retry still belongs to equipment planning, never to the
@@ -881,7 +881,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			replaceJob(jobs[outsiderAnalysis], analysisJob{frame: p.frame, outsiderBase: p.outsiderBase})
 			p.nextOutsider = now.Add(5 * time.Second)
 		}
-		if p.options.ascension && c.heroes && p.ascension.due(now, p.options.ascensionStall) && p.ascension.jobFrame == 0 && !now.Before(p.ascension.nextRead) {
+		if p.options.ascension && c.heroes && p.ascensionCandidate(now) && p.ascension.jobFrame == 0 && !now.Before(p.ascension.nextRead) {
 			p.ascension.jobFrame = p.frame.id
 			replaceJob(jobs[ascensionAnalysis], analysisJob{frame: p.frame, economy: true})
 			p.ascension.nextRead = now.Add(5 * time.Second)
@@ -987,6 +987,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.controls.pauseLocked("Transcension receipt rejected: "+err.Error(), false)
 			return nil
 		}
+		p.ascension.observeSave(out.export)
 		if p.export.gildsOnly {
 			p.acceptGildSave(out.export, out.frame, now)
 			p.export.interrupt()
@@ -2196,7 +2197,7 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 		if !p.ascensionReady(now) {
 			// Let an in-flight reward read finish without another purchase/skill
 			// changing the damage baseline. Fish collection can still run.
-			if p.ascension.jobFrame != 0 && p.ascension.due(now, p.options.ascensionStall) && !p.progression.wantAction && p.progression.pending == nil && p.hero.pending == nil && p.skill.pending == nil && !p.mercenary.active && p.mercenary.pending == nil {
+			if p.ascension.jobFrame != 0 && p.ascensionCandidate(now) && !p.progression.wantAction && p.progression.pending == nil && p.hero.pending == nil && p.skill.pending == nil && !p.mercenary.active && p.mercenary.pending == nil {
 				for _, kind := range []actionKind{castSkill, buyHero, scrollHeroes, selectQuantity, handleMercenary, clickMonster} {
 					delete(p.queue, kind)
 				}
@@ -2224,7 +2225,7 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 		return false
 	}
 	if now.After(p.ascension.deadline) {
-		p.ascension.interrupt()
+		p.ascension.resetAttempt()
 		p.ascension.nextCheck = now.Add(time.Minute)
 		fmt.Println("Ascension transition timed out; recovering navigation and reassessing combat")
 		return p.planNavigation(now)
@@ -2256,7 +2257,7 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 }
 
 func (p *gamePipeline) ascensionReady(now time.Time) bool {
-	if !p.options.ascension || !p.frame.context.heroes || p.gild.active || p.mercenary.active || p.mercenary.pending != nil || p.hero.pending != nil || p.skill.pending != nil || p.progression.pending != nil || p.progression.wantAction || !p.ascension.due(now, p.options.ascensionStall) {
+	if !p.options.ascension || !p.frame.context.heroes || p.gild.active || p.mercenary.active || p.mercenary.pending != nil || p.hero.pending != nil || p.skill.pending != nil || p.progression.pending != nil || p.progression.wantAction || !p.ascensionCandidate(now) {
 		return false
 	}
 	progress := p.state[progressionAnalysis]

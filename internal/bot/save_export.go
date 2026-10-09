@@ -330,7 +330,8 @@ func readExport(job exportJob) (exportResult, error) {
 					result.prestige = value.Transcension
 				}
 			}
-		} else if !job.goalsOnly && !prestige {
+		}
+		if result.prestige == nil && !job.goalsOnly && !prestige {
 			// An advisory Outsider roster does not require owned Ancients and
 			// cannot block a valid relic-only export when metadata is absent.
 			value, err := ancientcalc.PreviewTranscension(job.ctx, data)

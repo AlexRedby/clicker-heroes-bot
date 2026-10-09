@@ -118,6 +118,11 @@ func (p *gamePipeline) acceptRelicSave(preview *ancientcalc.RelicPreview, now ti
 		if err != nil {
 			return err
 		}
+		if len(after.Items) == 0 {
+			p.finishRelics(now, true)
+			fmt.Println("relics: fresh inventory is empty; skipping Relics")
+			return nil
+		}
 		r.original, r.snapshot, r.move = after, after, move
 		r.snapshot.Items = append([]ancientcalc.Relic(nil), after.Items...)
 		r.step = relicOpenTab
@@ -241,7 +246,10 @@ func (p *gamePipeline) finishRelics(now time.Time, verified bool) {
 		p.ascension.nextCheck = r.nextCheck
 	}
 	if changed {
-		p.ascension.interrupt()
+		p.ascension.resetAttempt()
+		if p.ascension.firstRun {
+			p.ascension.relicsChecked = verified && !failed
+		}
 		p.progression = progressionPlanner{}
 		if verified && !failed {
 			fmt.Println("relics: equipment improved; retry combat before Ascension")

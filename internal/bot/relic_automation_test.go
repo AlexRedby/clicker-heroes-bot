@@ -805,3 +805,67 @@ func TestRelicTooltipPointerActionsRejectCoveringDialogs(t *testing.T) {
 		}
 	}
 }
+
+func TestRelicFreshEmptyExportSkipsAbsentTab(t *testing.T) {
+	now := time.Now()
+	screen := loadTestImage(t, "../../testdata/hero-post-transcension-start.png")
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{progression: true, export: &saveExportOptions{}})
+	p.startupCheck = false
+	p.frame = gameFrame{id: 2, at: now, image: screen, context: gameContext{known: true, heroes: true, window: "game", bounds: screen.Bounds()}}
+	p.startRelics(now)
+	p.export = saveExporter{requested: true, active: true, relicsOnly: true, step: exportReadFile, jobFrame: 2, window: "game"}
+	empty := &ancientcalc.RelicPreview{Snapshot: ancientcalc.RelicSnapshot{EquipmentSlots: 4, Transcendent: true, AncientLevels: map[int]string{}}}
+	if err := p.accept(context.Background(), observation{kind: exportAnalysis, frame: p.frame, export: exportResult{relics: empty}}, now); err != nil {
+		t.Fatal(err)
+	}
+	if p.relic.active || p.export.requested || !p.ascension.relicsChecked || len(p.queue) != 0 || p.controls.paused {
+		t.Fatal("fresh empty inventory did not finish preflight without input")
+	}
+	if p.planRelics(now) || len(p.queue) != 0 {
+		t.Fatal("absent Relics tab produced input")
+	}
+	// A later drop still starts a new acquisition; an empty save is not a permanent ban.
+	p.relic.notice = true
+	now = now.Add(time.Minute)
+	p.frame.id++
+	p.planRelics(now)
+	if !p.relic.active || !p.export.requested {
+		t.Fatal("empty preflight suppressed a later relic drop")
+	}
+	p.export.requested = false
+	if err := p.acceptRelicSave(&ancientcalc.RelicPreview{Snapshot: relicEquipmentFixture()}, now); err != nil {
+		t.Fatal(err)
+	}
+	p.planRelics(now)
+	if a, ok := p.queue[handleRelic]; !ok || a.relic.step != relicOpenTab {
+		t.Fatal("later nonempty inventory did not restore Relics handling")
+	}
+}
+
+func TestRelicMissingInventoryDoesNotAuthorizeEmptyPreflight(t *testing.T) {
+	for _, preview := range []*ancientcalc.RelicPreview{nil, {}} {
+		p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
+		p.relic = relicPlanner{active: true, step: relicAcquire}
+		if err := p.acceptRelicSave(preview, time.Now()); err == nil || p.ascension.relicsChecked || !p.relic.active {
+			t.Fatal("missing or invalid inventory counted as a verified empty preflight")
+		}
+	}
+}
+
+func TestRelicEquipmentOutcomePreservesFirstRunStrategy(t *testing.T) {
+	now := time.Now()
+	for _, verified := range []bool{false, true} {
+		p := firstAscensionPipeline(now)
+		p.relic = relicPlanner{active: true, changed: true}
+		p.finishRelics(now, verified)
+		if !p.ascension.firstRun || p.ascension.highestZone != 131 || p.ascension.relicsChecked != verified || p.ascensionCandidate(now) {
+			t.Fatal("equipment outcome lost first-run identity or retained old combat/input evidence")
+		}
+		p.frame.id++
+		p.state[progressionAnalysis] = observation{frame: p.frame, progression: progressionState{Known: true, Enabled: true, Zone: 132}}
+		p.ascension.observeProgress(p.state[progressionAnalysis].progression, 0, now, false)
+		if !p.ascensionCandidate(now) || p.ascension.relicsChecked != verified {
+			t.Fatal("fresh progression could not resume first Ascension after relic equipment")
+		}
+	}
+}

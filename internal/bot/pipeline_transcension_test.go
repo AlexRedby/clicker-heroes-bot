@@ -264,7 +264,7 @@ func TestPrestigeQueueModalAndRecoveredReset(t *testing.T) {
 	p.frame.context.heroes = true
 	p.export = saveExporter{requested: true, active: true, relicsOnly: true, step: exportReadFile, jobFrame: p.frame.id, window: p.frame.context.window}
 	p.relic = relicPlanner{active: true, step: relicAcquire}
-	preview := ancientcalc.RelicPreview{Snapshot: ancientcalc.RelicSnapshot{EquipmentSlots: 4, Items: []ancientcalc.Relic{}, AncientLevels: map[int]string{}, OutsiderLevels: map[int]string{}}}
+	preview := ancientcalc.RelicPreview{Snapshot: relicEquipmentFixture()}
 	observation := observation{kind: exportAnalysis, frame: p.frame, export: exportResult{transcension: &fresh, relics: &preview}}
 	if err := p.applyObservation(context.Background(), observation, fresh.ExportedAt); err != nil {
 		t.Fatal(err)
