@@ -24,6 +24,7 @@ func TestNavigationCancelsRecognizedOrphanModals(t *testing.T) {
 		{"mercenary-revive.png", navigationRecovery},
 		{"mercenary-bury.png", navigationRecovery},
 		{"gild-chest.png", navigationGildChest},
+		{"gild-chest-first-zone.png", navigationGildChest},
 		{"gild-reward.png", navigationGildReward},
 		{"gild-roster.png", navigationGildRoster},
 	} {

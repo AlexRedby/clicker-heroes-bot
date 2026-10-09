@@ -37,18 +37,18 @@ func readGildModal(screen image.Image) (gildModal, error) {
 	if !giftPanel && !rosterPanel {
 		return noGildModal, nil
 	}
-	found, err := vision.MatchControl(screen, image.Rect(523, 204, 757, 225), "gilds/reward-title.png")
-	if err != nil {
-		return unknownGildModal, err
-	}
-	if found {
+	if giftPanel {
+		// The zone number changes title wrapping; match the controls instead.
 		chest, err := vision.MatchControl(screen, image.Rect(599, 304, 681, 394), "gilds/chest.png")
-		if chest {
+		if err != nil || chest {
 			return gildChestModal, err
 		}
-		return gildRewardModal, err
+		close, err := vision.MatchControl(screen, image.Rect(982, 116, 1006, 140), "gilds/close.png")
+		if err != nil || close {
+			return gildRewardModal, err
+		}
 	}
-	found, err = vision.MatchControl(screen, image.Rect(293, 54, 408, 71), "gilds/roster-title.png")
+	found, err := vision.MatchControl(screen, image.Rect(293, 54, 408, 71), "gilds/roster-title.png")
 	if found {
 		return gildRosterModal, err
 	}

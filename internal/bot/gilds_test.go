@@ -34,18 +34,14 @@ func TestGildScreenshotWorkflow(t *testing.T) {
 	}{
 		{"hud", noGildModal, image.Pt(1217, 581)},
 		{"chest", gildChestModal, image.Pt(640, 349)},
+		{"chest-first-zone", gildChestModal, image.Pt(640, 349)},
 		{"reward", gildRewardModal, image.Pt(937, 556)},
 		{"roster", gildRosterModal, image.Pt(1149, 39)},
 	}
 	for _, tc := range cases {
 		for _, scale := range []int{1, 2} {
 			t.Run(tc.name+string(rune('0'+scale)), func(t *testing.T) {
-				img := gildFixture(t, tc.name)
-				if scale == 2 {
-					enlarged := image.NewRGBA(image.Rect(0, 0, 2560, 1440))
-					xdraw.CatmullRom.Scale(enlarged, enlarged.Bounds(), img, img.Bounds(), draw.Src, nil)
-					img = enlarged
-				}
+				img := exportFixture(t, "gild-"+tc.name+".png", 1280*scale)
 				c, err := recognizedGame(img)
 				if err != nil {
 					t.Fatal(err)
@@ -95,6 +91,41 @@ func TestGildScreenshotWorkflow(t *testing.T) {
 	point, found, err := gildActionPoint(gameFrame{image: single, context: gameContext{known: true, modal: gildRewardModal}})
 	if err != nil || !found || point != image.Pt(994, 128) {
 		t.Fatalf("single close=%v found=%v err=%v", point, found, err)
+	}
+}
+
+func TestGildDialogsIgnoreChangingTitle(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		modal gildModal
+	}{
+		{"chest", gildChestModal},
+		{"reward", gildRewardModal},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			img := gildFixture(t, test.name)
+			changed := image.NewRGBA(img.Bounds())
+			draw.Draw(changed, changed.Bounds(), img, img.Bounds().Min, draw.Src)
+			// The shorter zone number changes which words occupy the last title line.
+			first := gildFixture(t, "chest-first-zone")
+			title := image.Rect(290, 145, 990, 235)
+			xdraw.CatmullRom.Scale(changed, title, first, image.Rect(580, 290, 1980, 470), draw.Src, nil)
+			c, err := recognizedGame(changed)
+			if err != nil || !c.known || c.modal != test.modal {
+				t.Fatalf("context=%+v err=%v", c, err)
+			}
+			if _, found, err := gildActionPoint(gameFrame{image: changed, context: c}); err != nil || !found {
+				t.Fatalf("gift action found=%v err=%v", found, err)
+			}
+			if test.modal == gildRewardModal {
+				draw.Draw(changed, image.Rect(885, 528, 989, 583), image.NewUniform(color.RGBA{255, 252, 213, 255}), image.Point{}, draw.Src)
+				c, err = recognizedGame(changed)
+				point, found, actionErr := gildActionPoint(gameFrame{image: changed, context: c})
+				if err != nil || actionErr != nil || !c.known || c.modal != gildRewardModal || !found || point != image.Pt(994, 128) {
+					t.Fatalf("single reward context=%+v point=%v found=%v errors=%v/%v", c, point, found, err, actionErr)
+				}
+			}
+		})
 	}
 }
 
@@ -185,8 +216,8 @@ func TestPipelineGildBatchIsolationAndPause(t *testing.T) {
 		}
 	}
 	var stale gameFrame
-	for i, name := range []string{"hud", "chest", "reward", "roster"} {
-		img = gildFixture(t, name)
+	for i, name := range []string{"hud", "chest-first-zone", "reward", "roster"} {
+		img = exportFixture(t, "gild-"+name+".png", 1280)
 		now = now.Add(2 * time.Second)
 		if err := p.capture(ctx, now, jobs); err != nil {
 			t.Fatal(err)
@@ -216,7 +247,7 @@ func TestPipelineGildBatchIsolationAndPause(t *testing.T) {
 		if !ok || a.kind != collectGilds {
 			t.Fatalf("%s next action=%+v ok=%v", name, a, ok)
 		}
-		if name == "chest" {
+		if name == "chest-first-zone" {
 			controls.toggle()
 			if acted, err := p.execute(ctx, a); acted || err != nil {
 				t.Fatal("paused gift clicked")
