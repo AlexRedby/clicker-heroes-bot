@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"image"
 	"math"
 	"testing"
@@ -12,7 +13,7 @@ import (
 )
 
 func firstAscensionPipeline(now time.Time) *gamePipeline {
-	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{ascension: true, ascensionStall: 3 * time.Minute})
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{ascension: true, ascensionStall: 3 * time.Minute, ascensionMinGain: .25, ascensionCapital: math.Inf(-1)})
 	p.generation, p.layout = 1, 1
 	p.frame = testPipelineFrame()
 	p.frame.id, p.frame.generation, p.frame.at = 10, p.generation, now
@@ -211,5 +212,121 @@ func TestAscensionFirstRunTimeoutRetainsRunIdentity(t *testing.T) {
 		if !p.ascension.firstRun || p.ascension.highestZone != 131 || p.ascension.active || p.ascension.relicsChecked || !p.ascension.nextCheck.Equal(now.Add(time.Minute)) || p.ascensionCandidate(now) {
 			t.Fatalf("timeout lost run identity or kept input permission (navigation=%t): %+v", navigation, p.ascension)
 		}
+	}
+}
+
+func TestAscensionFirstRunOwnedDialogRetriesThenConfirms(t *testing.T) {
+	now := time.Now()
+	p := firstAscensionPipeline(now)
+	p.controls.generation = p.generation
+	p.frame.image = loadTestImage(t, "../../testdata/hero-panel-max.png")
+	p.frame.context.bounds = p.frame.image.Bounds()
+	p.state[progressionAnalysis].frame = p.frame
+	p.ascension.relicsChecked = true
+	p.options.ascensionCapital = 99
+	p.ascension.latest = ascensionObservation{frame: p.frame, economy: true, bank: math.Inf(-1), souls: math.Log10(390700)}
+	p.planAscension(now)
+	open, ok := p.nextAction(now)
+	if !ok || open.kind != handleAscension || open.ascension != openAscension {
+		t.Fatal("first Ascension did not open for positive reward", open, ok)
+	}
+	clicks := 0
+	p.input.click = func(image.Point) error { clicks++; return nil }
+	if acted, err := p.execute(context.Background(), open); err != nil || !acted {
+		t.Fatal("opening input failed", acted, err)
+	}
+	p.actionCompleted(actionResult{action: open, acted: true}, now)
+	screen := loadTestImage(t, "../../testdata/ascension-confirm.png")
+	p.input.capture = func() (image.Image, error) { return screen, nil }
+	p.readers.context = func(im image.Image) (gameContext, error) {
+		c, err := recognizedGame(im)
+		c.window = p.frame.context.window
+		return c, err
+	}
+	reads := 0
+	p.readers.ascension = func(ctx context.Context, f gameFrame) (ascensionObservation, error) {
+		reads++
+		if reads == 1 {
+			return ascensionObservation{frame: f}, errors.New("temporary reward OCR failure")
+		}
+		return readAscensionObservation(ctx, f)
+	}
+	jobs := mercenaryRecoveryJobs()
+	for attempt := 1; attempt <= 2; attempt++ {
+		at := now.Add(time.Duration(attempt) * time.Second)
+		if err := p.capture(context.Background(), at, jobs); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case job := <-jobs[ascensionAnalysis]:
+			if err := p.accept(context.Background(), p.analyze(context.Background(), ascensionAnalysis, job), at); err != nil {
+				t.Fatal(err)
+			}
+		default:
+			t.Fatal("owned dialog did not request a fresh reward frame", attempt)
+		}
+		p.plan(at)
+		a, ready := p.nextAction(at)
+		if attempt == 1 {
+			if ready || !p.ascension.active || p.ascension.step != openAscension || p.ascension.latest.frame.id != 0 || !p.ascension.deadline.Equal(now.Add(20*time.Second)) {
+				t.Fatal("temporary OCR failure cancelled or confirmed the dialog", a, ready)
+			}
+			continue
+		}
+		if !ready || a.kind != handleAscension || a.ascension != confirmAscension {
+			t.Fatal("fresh recognized reward did not confirm the owned dialog", a, ready)
+		}
+		if acted, err := p.execute(context.Background(), a); err != nil || !acted {
+			t.Fatal("confirmation input failed", acted, err)
+		}
+		p.actionCompleted(actionResult{action: a, acted: true}, at)
+	}
+	if clicks != 2 || p.ascension.step != waitAscensionReset || !p.ascension.active {
+		t.Fatal("confirmation not submitted exactly once", clicks, p.ascension.step)
+	}
+	screen = loadTestImage(t, "../../testdata/hero-post-transcension-start.png")
+	at := now.Add(3 * time.Second)
+	if err := p.capture(context.Background(), at, jobs); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case job := <-jobs[ascensionAnalysis]:
+		if err := p.accept(context.Background(), p.analyze(context.Background(), ascensionAnalysis, job), at); err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatal("post-reset frame was not analyzed")
+	}
+	if p.ascension.active || p.ascension.firstRun {
+		t.Fatal("confirmed first Ascension retained ownership or first-run identity")
+	}
+}
+
+func TestAscensionUnreadableDialogRevokesQueuedConfirmationAndTimesOut(t *testing.T) {
+	now := time.Now()
+	p := firstAscensionPipeline(now)
+	p.frame.image = loadTestImage(t, "../../testdata/ascension-confirm.png")
+	c, err := recognizedGame(p.frame.image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.frame.context = c
+	p.ascension.sent(openAscension, p.frame.id-1, now)
+	p.ascension.step = confirmAscension
+	p.queue[handleAscension] = gameAction{kind: handleAscension, frame: p.frame, ascension: confirmAscension}
+	deadline := p.ascension.deadline
+	for i := 1; i <= 19; i++ {
+		at := now.Add(time.Duration(i) * time.Second)
+		p.frame.id++
+		p.frame.at = at
+		p.ascension.observe(ascensionObservation{frame: p.frame}, errors.New("reward OCR unavailable"), at)
+		p.planAscension(at)
+		if len(p.queue) != 0 || !p.ascension.active || !p.ascension.deadline.Equal(deadline) {
+			t.Fatal("failed read retained old confirmation or renewed deadline", i)
+		}
+	}
+	p.planAscension(deadline.Add(time.Millisecond))
+	if a, ok := p.queue[navigateGame]; !ok || a.navigation != navigationAscension || p.ascension.active {
+		t.Fatal("persistent OCR failure did not cancel through bounded navigation", a, ok)
 	}
 }

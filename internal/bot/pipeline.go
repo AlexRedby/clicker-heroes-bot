@@ -2230,7 +2230,11 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 		fmt.Println("Ascension transition timed out; recovering navigation and reassessing combat")
 		return p.planNavigation(now)
 	}
-	if now.Before(p.ascension.nextAction) || p.ascension.latest.frame.id == 0 {
+	if p.ascension.latest.frame.id == 0 {
+		delete(p.queue, handleAscension)
+		return true
+	}
+	if now.Before(p.ascension.nextAction) {
 		return true
 	}
 	switch p.ascension.step {
@@ -2269,6 +2273,9 @@ func (p *gamePipeline) ascensionReady(now time.Time) bool {
 		return false
 	}
 	p.ascension.minimumReward = max(out.bank, p.options.ascensionCapital) + math.Log10(p.options.ascensionMinGain)
+	if p.ascension.firstRun {
+		p.ascension.minimumReward = math.Inf(-1)
+	}
 	if math.IsInf(out.souls, -1) || out.souls < p.ascension.minimumReward {
 		fmt.Println("Ascension deferred: small Hero Souls gain; review Ancient allocation and Transcension/Ancient Souls before another reset")
 		p.ascension.nextCheck = now.Add(time.Minute)

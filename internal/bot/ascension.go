@@ -332,12 +332,14 @@ func (p *ascensionPlanner) observe(out ascensionObservation, err error, now time
 		}
 	}
 	if (p.step == openAscension || p.step == confirmAscension) && out.frame.context.ascension {
-		if err != nil || math.IsInf(out.souls, -1) || out.souls < p.minimumReward {
-			reason := "Hero Souls reward below the minimum useful gain"
-			if err != nil {
-				reason = err.Error()
-			}
-			fmt.Printf("Ascension skipped: %s\n", reason)
+		if err != nil {
+			p.latest = ascensionObservation{}
+			p.nextRead = now.Add(time.Second)
+			fmt.Printf("Ascension reward unreadable: %v; retrying on a fresh dialog frame\n", err)
+			return false
+		}
+		if math.IsInf(out.souls, -1) || out.souls < p.minimumReward {
+			fmt.Println("Ascension skipped: Hero Souls reward below the minimum useful gain")
 			p.step = cancelAscension
 		} else {
 			p.step = confirmAscension

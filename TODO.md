@@ -76,7 +76,7 @@ Owners: Timelapse integration and Quick Ascension (purchase controller and forec
 
 ## Startup and unattended Ascension validation
 
-- Verify the first post-Transcension Ascension after beating boss 130: a fresh save confirms zero Ascensions in the current Transcension, positive souls allow the reset without waiting for a combat wall, and a validated empty relic inventory skips the missing Relics tab. Confirm later runs retain ordinary wall policy; include F8 and failed-dialog recovery.
+- Verify the first post-Transcension Ascension after beating boss 130: a fresh save confirms zero Ascensions in the current Transcension, positive souls allow the reset without waiting for a combat wall, and a validated empty relic inventory skips the missing Relics tab. Confirm later runs retain ordinary wall policy; include F8 and failed-dialog recovery. If the installed game still cancels the first reward dialog, retain its screenshot and the exact reward-read or navigation rejection log; the supplied HUD does not identify that rejection.
 
 - Verify an early growing list after Transcension: recognize its large thumb, reach the complete upgrade footer, visit heroes from bottom to top, give the latest affordable hire an x1 click followed by Q/MAX before earlier skill rows, and revisit unfinished skills while ordinary earning continues.
 

@@ -156,8 +156,8 @@ func TestAscensionTransactionOwnershipAndReset(t *testing.T) {
 		p.sent(openAscension, 1, now)
 		out = ascensionObservation{frame: dialog, souls: math.Inf(-1)}
 		p.observe(out, failure, now)
-		if p.step != cancelAscension {
-			t.Fatal("zero or unreadable reward allowed Yes")
+		if failure == nil && p.step != cancelAscension || failure != nil && (p.step != openAscension || !p.active || p.latest.frame.id != 0) {
+			t.Fatal("zero reward did not cancel or unreadable reward acquired input")
 		}
 	}
 	p.interrupt()
