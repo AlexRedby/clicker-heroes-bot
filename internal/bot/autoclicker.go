@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"image"
@@ -39,7 +40,7 @@ func readAutoClickerPool(ctx context.Context, frame gameFrame) (autoClickerPool,
 	if err != nil || !found {
 		return autoClickerPool{}, err
 	}
-	raw, err := readGameText(ctx, frame.image, autoClickerCountRegion(frame.image), max(2, 4096/frame.image.Bounds().Dx()), 7, 180, "0123456789/")
+	raw, err := readGameText(ctx, frame.image, autoClickerCountRegion(frame.image), max(2, 4096/frame.image.Bounds().Dx()), 7, -180, "0123456789/")
 	if err != nil {
 		return autoClickerPool{}, err
 	}
@@ -233,24 +234,14 @@ func autoClickerPoolStable(before, after image.Image) bool {
 	if before == nil || after == nil || before.Bounds() != after.Bounds() {
 		return false
 	}
-	// Counts are static outlined text: require the entire white glyph mask unchanged.
+	// Use the OCR mask here too; animated light scenery is not part of the count.
 	r := autoClickerCountRegion(before)
-	count := 0
-	for y := r.Min.Y; y < r.Max.Y; y++ {
-		for x := r.Min.X; x < r.Max.X; x++ {
-			white := func(s image.Image) bool {
-				r, g, b := rgb(s.At(x, y))
-				return min(r, g, b) > 180 && max(r, g, b)-min(r, g, b) < 55
-			}
-			if white(before) != white(after) {
-				return false
-			}
-			if white(before) {
-				count++
-			}
-		}
+	a, err := gameTextMask(before, r, -180)
+	if err != nil {
+		return false
 	}
-	return count > 0
+	b, err := gameTextMask(after, r, -180)
+	return err == nil && bytes.IndexByte(a.Pix, 255) >= 0 && bytes.Equal(a.Pix, b.Pix)
 }
 
 // Official 6144: footer mouse-up (39010) uses C to call Add...Button (28424),

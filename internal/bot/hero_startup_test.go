@@ -6,8 +6,6 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"os"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -337,7 +335,7 @@ func TestStartupLockedUpgradeRequestsMAXWithoutOCR(t *testing.T) {
 func TestStartupClippedHirePriceScrollsWithoutOCR(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-clipped-price.png")
 	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
-	if err != nil || out.found || !out.passiveReady || out.bottom || out.startupComplete || out.startupNeedsGold || out.startupScroll.Y <= out.thumb.Y {
+	if err != nil || out.found || !out.passiveReady || out.bottom || out.startupComplete || out.startupScroll.Y <= out.thumb.Y {
 		t.Fatalf("clipped dark HIRE price must scroll: %+v %v", out, err)
 	}
 }
@@ -351,7 +349,8 @@ func TestStartupHirePriceAtViewportBoundary(t *testing.T) {
 		{"complete top", 640, true},
 		{"partial top", 555, false},
 		{"complete bottom", 1354, true},
-		{"partial bottom", 1370, false},
+		{"complete short HIRE price", 1370, true},
+		{"partial bottom", 1400, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := startupTranslatedCard(t, "../../testdata/hero-startup-bottom-hire.png", 1337, tc.y, false)
@@ -364,13 +363,7 @@ func TestStartupHirePriceAtViewportBoundary(t *testing.T) {
 	}
 }
 
-func TestStartupCompleteUnavailableSuccessorUsesNativePrice(t *testing.T) {
-	if _, err := exec.LookPath("tesseract"); err != nil {
-		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
-			t.Fatal(err)
-		}
-		t.Skip("Tesseract is not installed")
-	}
+func TestStartupCompleteUnavailableSuccessorNeedsNoNumericalOCR(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-skogur-hire.png")
 	current, ok := findHeroLevelButton(f.image)
 	if !ok {
@@ -380,19 +373,9 @@ func TestStartupCompleteUnavailableSuccessorUsesNativePrice(t *testing.T) {
 	if !ok {
 		t.Fatal("missing Skogur HIRE")
 	}
-	read := noStartupOCR(t)
-	prices := 0
-	read.price = func(ctx context.Context, s image.Image, p image.Point) (float64, error) {
-		prices++
-		if p != next {
-			t.Fatalf("unexpected successor: %v, want %v", p, next)
-		}
-		return readHeroPrice(ctx, s, p)
-	}
-	read.gold = readHeroGold
-	out, err := readStartupHeroObservation(context.Background(), f, read, nil, startupSweep{top: true, y: next.Y})
-	if err != nil || prices != 1 || out.found || !out.passiveReady || !out.startupComplete || out.startupNeedsGold {
-		t.Fatalf("complete unavailable successor: %+v price reads=%d %v", out, prices, err)
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true, y: next.Y})
+	if err != nil || out.found || !out.passiveReady || !out.startupComplete {
+		t.Fatalf("complete unavailable successor: %+v %v", out, err)
 	}
 }
 
@@ -408,7 +391,7 @@ func TestStartupClippedHireCannotCompleteAtScrollbarBottom(t *testing.T) {
 		t.Fatal("translated thumb is not at bottom")
 	}
 	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
-	if err != nil || !out.bottom || !out.passiveReady || out.found || out.startupComplete || out.startupNeedsGold {
+	if err != nil || !out.bottom || !out.passiveReady || out.found || out.startupComplete {
 		t.Fatalf("scrollbar cannot complete a clipped HIRE: %+v %v", out, err)
 	}
 }
@@ -420,7 +403,7 @@ func TestStartupClippedHireNoMotionAndPause(t *testing.T) {
 		f.id++
 		f.at = f.at.Add(time.Second)
 		out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), p.before(), p.sweep)
-		if err != nil || out.found || out.startupComplete || out.startupNeedsGold {
+		if err != nil || out.found || out.startupComplete {
 			t.Fatalf("stationary clipped HIRE: %+v %v", out, err)
 		}
 		p.observe(out, observation{}, f.at)
@@ -455,7 +438,7 @@ func TestStartupClippedHireNoMotionAndPause(t *testing.T) {
 func TestStartupClippedHireBandScrollsWithoutOCR(t *testing.T) {
 	f := startupFrame(t, "../../testdata/hero-startup-clipped-price-band.png")
 	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true})
-	if err != nil || out.found || out.startupComplete || out.startupNeedsGold || out.startupScroll.Y <= out.thumb.Y {
+	if err != nil || out.found || out.startupComplete || out.startupScroll.Y <= out.thumb.Y {
 		t.Fatalf("clipped HIRE band must scroll before OCR: %+v %v", out, err)
 	}
 }
@@ -533,5 +516,18 @@ func TestStartupRevisitsUnaffordableLockedRowOnce(t *testing.T) {
 	p.beginStartup()
 	if p.hero.sweep.retry != 0 {
 		t.Fatal("Ascension retained the previous revisit")
+	}
+}
+
+func TestStartupSparseHeroesNeedsNoNumbers(t *testing.T) {
+	f := startupFrame(t, "../../testdata/hero-post-transcension-start.png")
+	for _, y := range []int{0, 655, 865, 1076} {
+		out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{top: true, y: y, attempts: 2})
+		if err != nil || out.passiveReady {
+			t.Fatalf("sparse row %d: %+v %v", y, out, err)
+		}
+		if y == 655 && (!out.found || absDiff(out.button.Y, 865) > 4 || out.owned) {
+			t.Fatalf("available Treebeast not hired: %+v", out)
+		}
 	}
 }

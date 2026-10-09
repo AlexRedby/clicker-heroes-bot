@@ -248,9 +248,7 @@ func heroRowUnowned(screen image.Image, y int) bool {
 }
 
 func heroCandidateKnown(screen image.Image, button image.Point) bool {
-	if !heroScrollbarAtBottom(screen) {
-		return false
-	}
+	// The caller establishes the end of the list before selecting a candidate.
 	if heroRowUnowned(screen, button.Y) {
 		return true
 	}

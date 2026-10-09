@@ -19,10 +19,9 @@ type heroReaders struct {
 }
 type heroObservation struct {
 	frame                                        gameFrame
-	button, thumb                                image.Point
+	button, thumb, footer                        image.Point
 	thumbFound, bottom, x1, found, owned, stable bool
 	startup, passiveReady, startupComplete       bool
-	startupNeedsGold                             bool
 	sweep                                        startupSweep
 	startupScroll                                image.Point
 	level                                        int
@@ -104,7 +103,7 @@ func readHeroObservation(ctx context.Context, frame gameFrame, read heroReaders,
 	out.x1 = heroQuantitySelected(frame.image, 122)
 	if before != nil {
 		out.button, out.found, out.owned = before.button, true, true
-		out.stable = heroListStable(before.frame.image, frame.image) && heroRowNameMatches(before.frame.image, frame.image, before.button, before.button)
+		out.stable = (heroViewportStable(*before, frame) || !before.owned && before.bottom) && heroRowNameMatches(before.frame.image, frame.image, before.button, before.button)
 		if !out.stable {
 			return out, nil
 		}
@@ -114,6 +113,15 @@ func readHeroObservation(ctx context.Context, frame gameFrame, read heroReaders,
 			err = fmt.Errorf("hero level at %v: %w", before.button, err)
 		}
 		return out, err
+	}
+	if !out.thumbFound {
+		var known bool
+		var err error
+		out.footer, known, _, err = readHeroUpgradeFooter(ctx, frame.image)
+		if err != nil {
+			return out, err
+		}
+		out.bottom = known
 	}
 	if !out.bottom || !out.x1 {
 		return out, nil
@@ -149,6 +157,14 @@ func readHeroObservation(ctx context.Context, frame gameFrame, read heroReaders,
 		levelErr = fmt.Errorf("hero level at %v: %w", out.button, levelErr)
 	}
 	return out, errors.Join(goldErr, priceErr, levelErr)
+}
+
+// A recognized footer proves a short list has no viewport to scroll.
+func heroViewportStable(before heroObservation, current gameFrame) bool {
+	_, _, thumbFound := heroScrollbarThumb(current.image)
+	return heroListStable(before.frame.image, current.image) ||
+		!before.thumbFound && !thumbFound && before.bottom && before.footer != (image.Point{}) &&
+			heroUpgradeButtonStable(before.frame.image, current.image, before.footer)
 }
 
 func (p *heroRunner) observe(out heroObservation, fish observation, now time.Time) {
@@ -277,7 +293,7 @@ func (p *heroRunner) action(now time.Time) (gameAction, bool) {
 		p.nextScan = now.Add(time.Second)
 		p.latest = heroObservation{}
 		return a, false
-	case !o.startup && !o.thumbFound:
+	case !o.startup && !o.thumbFound && !o.bottom:
 		if p.parked {
 			fmt.Println("hero scrollbar not recognized; retrying in 30s")
 			if o.frame.image != nil {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"image"
+	"image/color"
+	"image/draw"
 	"strings"
 	"testing"
 	"time"
@@ -219,5 +221,80 @@ func TestHeroTopScrollbarAfterAncientBatch(t *testing.T) {
 	pipeline.plan(now)
 	if queued, ok := pipeline.nextAction(now); !ok || queued.kind != scrollHeroes {
 		t.Fatalf("queue rejected ordinary top-list drag: %+v %t", queued, ok)
+	}
+}
+
+func TestOrdinarySparseHeroes(t *testing.T) {
+	screen := loadTestImage(t, "../../testdata/hero-post-transcension-start.png")
+	c, err := recognizedGame(screen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	f := gameFrame{id: 1, at: now, layout: 1, image: screen, context: c}
+	before, err := readHeroObservation(context.Background(), f, noStartupOCR(t), nil)
+	if err != nil || !before.bottom || before.thumbFound || !before.found || before.owned || absDiff(before.button.Y, 865) > 3 {
+		t.Fatalf("complete short list: %+v error=%v", before, err)
+	}
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
+	p.startupCheck, p.frame, p.layout = false, f, 1
+	p.hero.observe(before, observation{}, now)
+	a, ok := p.hero.action(now)
+	if !ok || a.kind != buyHero {
+		t.Fatalf("short-list action %+v %t", a, ok)
+	}
+	p.enqueue(a, now)
+	if a, ok = p.nextAction(now); !ok || a.kind != buyHero {
+		t.Fatalf("short-list dispatch %+v %t", a, ok)
+	}
+	covered := image.NewRGBA(screen.Bounds())
+	draw.Draw(covered, covered.Bounds(), screen, screen.Bounds().Min, draw.Src)
+	draw.Draw(covered, heroUpgradeButtonRegion(screen, before.footer), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	f.image = covered
+	if heroViewportStable(before, f) {
+		t.Fatal("covered footer authorized stale purchase")
+	}
+	out, err := readHeroObservation(context.Background(), f, noStartupOCR(t), nil)
+	if err != nil || out.bottom || out.found {
+		t.Fatalf("unproven end accepted: %+v %v", out, err)
+	}
+
+	// Hiring can create a scrollbar while the purchased row stays in place.
+	after := image.NewRGBA(screen.Bounds())
+	draw.Draw(after, after.Bounds(), screen, screen.Bounds().Min, draw.Src)
+	long := loadTestImage(t, "../../testdata/hero-tsuchi-x1.png")
+	track := image.Rect(1140, 560, 1200, 1440)
+	draw.Draw(after, track, long, track.Min, draw.Src)
+	f.image, f.id, f.at = after, 2, now.Add(time.Second)
+	if _, _, found := heroScrollbarThumb(after); !found {
+		t.Fatal("test did not introduce a scrollbar")
+	}
+	read := heroReaders{level: func(context.Context, image.Image, image.Point) (int, error) { return 1, nil }}
+	out, err = readHeroObservation(context.Background(), f, read, &before)
+	if err != nil || !out.stable || out.level != 1 {
+		t.Fatalf("hire expansion: %+v %v", out, err)
+	}
+	p.hero.sent(a, now)
+	unchanged := out
+	unchanged.level = 0
+	p.hero.observe(unchanged, observation{}, f.at)
+	if p.hero.pending == nil {
+		t.Fatal("unchanged level confirmed a hire")
+	}
+	p.hero.observe(out, observation{}, f.at)
+	if p.hero.pending != nil || p.hero.failures != 0 {
+		t.Fatal("hired row not confirmed")
+	}
+	// The exception belongs to HIRE, never a level-up on a moving list.
+	owned := before
+	owned.owned = true
+	out, err = readHeroObservation(context.Background(), f, noStartupOCR(t), &owned)
+	if err != nil || out.stable {
+		t.Fatal("owned moving row accepted")
+	}
+	draw.Draw(after, image.Rect(715, 790, 935, 820), image.NewUniform(color.White), image.Point{}, draw.Src)
+	out, err = readHeroObservation(context.Background(), f, noStartupOCR(t), &before)
+	if err != nil || out.stable {
+		t.Fatal("different row name accepted")
 	}
 }

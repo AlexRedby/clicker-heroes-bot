@@ -35,8 +35,8 @@ func TestAutoClickerSharedPipeline(t *testing.T) {
 	}
 	p.plan(now)
 	a, ok := p.nextAction(now)
-	if !ok || a.kind != placeOwnedClicker || a.clicker.target != autoClickerMonster {
-		t.Fatal("startup blocked monster placement", a, ok)
+	if !ok || a.kind != placeOwnedClicker || a.clicker.target != autoClickerUpgrades {
+		t.Fatal("startup blocked the visible footer placement", a, ok)
 	}
 	// The runtime records ownership before dispatch; acknowledgement uses a newer frame.
 	p.clickers.sent(a.clicker, now)
@@ -177,8 +177,8 @@ func TestAutoClickerFooterStartupHandoff(t *testing.T) {
 				if p.startup != startupUpgrades || p.clickers.upgrades || !p.clickers.footerAttempted {
 					t.Fatal("unconfirmed footer clicker skipped ordinary upgrade fallback")
 				}
-				if _, ok := p.nextAction(ackAt); ok {
-					t.Fatal("stale action ran before a fresh footer read")
+				if a, ok := p.nextAction(ackAt); ok && a.kind != clickMonster {
+					t.Fatal("stale footer action ran before a fresh footer read")
 				}
 				readAt := ackAt.Add(time.Second)
 				if err := p.capture(ctx, readAt, jobs); err != nil {
@@ -321,8 +321,8 @@ func TestStartupBulkWaitsForFooterPool(t *testing.T) {
 				p.frame, footer.frame = f, f
 				p.state[heroAnalysis] = footer
 				p.plan(f.at)
-				if _, ok := p.nextAction(f.at); ok || p.startupDeadline != deadline || p.startup != startupUpgrades {
-					t.Fatal("waiting pool repeated input or changed deadline")
+				if a, ok := p.nextAction(f.at); ok && a.kind != clickMonster || p.startupDeadline != deadline || p.startup != startupUpgrades {
+					t.Fatal("waiting pool repeated upgrade input or changed deadline")
 				}
 			}
 			pool := autoClickerPool{known: true, available: 1, total: 3}
@@ -397,5 +397,54 @@ func TestAutoClickerFooterPendingAfterMonsterFailure(t *testing.T) {
 	}
 	if p.clickers.pending != nil || !p.clickers.upgrades || !p.clickers.blocked || p.startup != startupProgression {
 		t.Fatal("footer acknowledgement lost monster failure ownership")
+	}
+}
+
+func TestAutoClickerVisibleFooterBeforeHeroSetup(t *testing.T) {
+	requireAncientOCR(t)
+	s := loadTestImage(t, "../../testdata/hero-post-transcension-start.png")
+	c, err := recognizedGame(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	f := gameFrame{id: 1, at: now, image: s, context: c}
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{autoClickers: readAutoClickerPool}, pipelineOptions{heroes: true, autoClickers: true})
+	p.frame, p.startup, p.startupCheck = f, startupHeroes, false
+	out := p.analyze(context.Background(), autoClickerAnalysis, analysisJob{frame: f, upgrades: true})
+	if out.err != nil || !out.found || out.clickerPool.available != 2 {
+		t.Fatalf("shared pool/footer read: %+v", out)
+	}
+	p.state[autoClickerAnalysis] = out
+	p.planAutoClickers(now)
+	a, ok := p.nextAction(now)
+	if !ok || a.kind != placeOwnedClicker || a.clicker.target != autoClickerUpgrades {
+		t.Fatalf("visible footer not assigned during hero setup: %+v %t", a, ok)
+	}
+	// Disabled upgrades still have a valid placement target.
+	disabled := image.NewRGBA(s.Bounds())
+	draw.Draw(disabled, disabled.Bounds(), s, s.Bounds().Min, draw.Src)
+	region := heroUpgradeButtonRegion(s, out.point)
+	for y := region.Min.Y; y < region.Max.Y; y++ {
+		for x := region.Min.X; x < region.Max.X; x++ {
+			r, g, b := rgb(s.At(x, y))
+			if g > 100 && g > r+50 && g > b+50 {
+				disabled.Set(x, y, color.RGBA{45, 60, 70, 255})
+			}
+		}
+	}
+	disabledFrame := f
+	disabledFrame.image = disabled
+	disabledOut := p.analyze(context.Background(), autoClickerAnalysis, analysisJob{frame: disabledFrame, upgrades: true})
+	if disabledOut.err != nil || !disabledOut.found || absDiff(disabledOut.point.Y, out.point.Y) > 4 {
+		t.Fatalf("disabled footer missed during hero setup: %+v", disabledOut)
+	}
+	p.clickers.upgrades, p.clickers.footerAttempted = true, true
+	out.found, out.clickerPool.available = false, 1
+	p.state[autoClickerAnalysis] = out
+	p.planAutoClickers(now)
+	a, ok = p.nextAction(now)
+	if !ok || a.kind != placeOwnedClicker || a.clicker.target != autoClickerMonster {
+		t.Fatalf("last remaining clicker left unused: %+v %t", a, ok)
 	}
 }

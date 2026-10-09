@@ -112,13 +112,13 @@ func runTesseract(ctx context.Context, encoded []byte, args ...string) (string, 
 	return string(output), nil
 }
 
-func readGameText(ctx context.Context, screen image.Image, region image.Rectangle, scale, psm int, whiteThreshold int, characters string, formats ...string) (string, error) {
+func gameTextMask(screen image.Image, region image.Rectangle, whiteThreshold int) (*image.Gray, error) {
 	if screen == nil {
-		return "", fmt.Errorf("nil OCR screen")
+		return nil, fmt.Errorf("nil OCR screen")
 	}
 	region = region.Intersect(screen.Bounds())
 	if region.Empty() {
-		return "", fmt.Errorf("empty OCR region %v", region)
+		return nil, fmt.Errorf("empty OCR region %v", region)
 	}
 	whiteOnly := whiteThreshold != 0
 	yellowThreshold := 0
@@ -160,7 +160,7 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 		// Remove light scenery touching the crop edge; outlined white text remains isolated.
 		mask, err := gocv.NewMatFromBytes(region.Dy(), region.Dx(), gocv.MatTypeCV8UC1, source.Pix)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		labels, stats, centroids := gocv.NewMat(), gocv.NewMat(), gocv.NewMat()
 		defer mask.Close()
@@ -184,6 +184,15 @@ func readGameText(ctx context.Context, screen image.Image, region image.Rectangl
 			}
 		}
 	}
+	return source, nil
+}
+
+func readGameText(ctx context.Context, screen image.Image, region image.Rectangle, scale, psm int, whiteThreshold int, characters string, formats ...string) (string, error) {
+	source, err := gameTextMask(screen, region, whiteThreshold)
+	if err != nil {
+		return "", err
+	}
+	whiteOnly := whiteThreshold != 0
 	padding := gameTextPadding
 	upscaled := image.NewGray(image.Rect(0, 0, source.Bounds().Dx()*scale+2*padding, source.Bounds().Dy()*scale+2*padding))
 	if !whiteOnly {
@@ -254,7 +263,38 @@ func readHeroPrice(ctx context.Context, screen image.Image, button image.Point) 
 	if w < 2048 {
 		scale = max(3, 6144/w)
 	}
-	return readGameNumber(ctx, screen, heroPriceRegion(screen, button), scale, 7, 0)
+	region := heroPriceRegion(screen, button)
+	psm := 7
+	if kind, _ := readHeroButtonKind(screen, button); kind == heroButtonHire {
+		mask, err := gameTextMask(screen, region, 0)
+		if err != nil {
+			return 0, err
+		}
+		ink := func(x int) bool {
+			for y := 0; y < mask.Bounds().Dy(); y++ {
+				if mask.GrayAt(x, y).Y == 0 {
+					return true
+				}
+			}
+			return false
+		}
+		// The cropped coin touches the left edge; a blank column separates its artwork from the price.
+		left := 0
+		for left < mask.Bounds().Dx() && ink(left) {
+			left++
+		}
+		if left > 0 && left < mask.Bounds().Dx() {
+			region.Min.X += left
+			last := mask.Bounds().Dx() - 1
+			for last > left && !ink(last) {
+				last--
+			}
+			if last-left < w*40/1000 {
+				psm = 13 // Short centered prices need raw-line segmentation rather than a full text line.
+			}
+		}
+	}
+	return readGameNumber(ctx, screen, region, scale, psm, 0)
 }
 
 // Retain the full region so callers can reject prices clipped by the viewport.
@@ -273,7 +313,8 @@ func heroPriceRegion(screen image.Image, button image.Point) image.Rectangle {
 		}
 		samples++
 	}
-	if bluePixels*10 < samples*3 {
+	kind, _ := readHeroButtonKind(screen, button)
+	if bluePixels*10 < samples*3 || kind == heroButtonHire {
 		// Stop above the gold border; it otherwise raises the disabled-text mask threshold.
 		top, bottom = 7, 35
 	}

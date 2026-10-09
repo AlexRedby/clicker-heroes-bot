@@ -15,8 +15,11 @@ type startupSweep struct {
 	retry       uint8 // 0: initial; 1: unaffordable locked row seen; 2: final pass.
 }
 
-func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroReaders, before *heroObservation, sweep startupSweep) (heroObservation, error) {
+func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroReaders, before *heroObservation, sweep startupSweep) (heroObservation, error) {
 	out := heroObservation{frame: frame, startup: true, sweep: sweep}
+	if err := ctx.Err(); err != nil {
+		return out, err
+	}
 	if !bootstrapHeroes(frame.context) || !heroQuantityBarPresent(frame.image) {
 		return out, nil
 	}
@@ -80,17 +83,12 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 			out.sweep.y = nearest
 		}
 	}
-	affordable, ownershipKnown := false, true
 	for i := range rows {
 		var err error
 		rows[i].kind, err = readHeroButtonKind(frame.image, rows[i].button)
 		if err != nil {
 			return out, err
 		}
-		// A clipped row is only a navigation anchor.
-		completeCaption := rows[i].band.Min.Y > viewport.Min.Y+edgeGap && rows[i].band.Max.Y < viewport.Max.Y-edgeGap
-		ownershipKnown = ownershipKnown && (rows[i].kind != heroButtonUnknown || !completeCaption)
-		affordable = affordable || rows[i].available
 		// At the top Cid is the first card; every subsequent owned row has DPS.
 		out.passiveReady = out.passiveReady || rows[i].kind == heroButtonLevelUp && (i > 0 || out.thumbFound && out.thumb.Y-height/2 > b.Min.Y+b.Dy()*435/1000)
 	}
@@ -143,16 +141,8 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, read heroR
 			out.button, out.found, out.owned = r.button, true, owned
 			return out, nil
 		}
-		price, err := read.price(ctx, frame.image, r.button)
-		if err != nil {
-			return out, fmt.Errorf("startup next hero price: %w", err)
-		}
-		gold, err := read.gold(ctx, frame.image)
-		if err != nil {
-			return out, fmt.Errorf("startup gold: %w", err)
-		}
-		out.startupComplete = price > gold && out.passiveReady
-		out.startupNeedsGold = price > gold && !out.passiveReady && !affordable && ownershipKnown
+		// The disabled HIRE button already proves this row cannot be bought.
+		out.startupComplete = out.passiveReady
 		return out, nil
 	}
 	if out.bottom && !clipped {

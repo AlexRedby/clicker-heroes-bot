@@ -327,8 +327,8 @@ func TestAscensionOCRFailureRetainsHistoryButNeedsFreshProgress(t *testing.T) {
 		if kind == progressionAnalysis && p.ascension.due(now, time.Minute) {
 			t.Fatal("failed progression remained fresh")
 		}
-		if action, ok := p.nextAction(now); ok {
-			t.Fatalf("automation failure triggered input: %+v", action)
+		if action, ok := p.nextAction(now); ok && action.kind != clickMonster {
+			t.Fatalf("OCR failure authorized a purchase or reset: %+v", action)
 		}
 	}
 }

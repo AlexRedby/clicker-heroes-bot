@@ -342,6 +342,9 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 	switch kind {
 	case autoClickerAnalysis:
 		out.clickerPool, out.err = p.readers.autoClickers(ctx, job.frame)
+		if out.err == nil && job.upgrades && out.clickerPool.known && out.clickerPool.available > 0 && out.clickerPool.total > 1 {
+			out.point, out.found, _, _ = readHeroUpgradeFooter(ctx, job.frame.image)
+		}
 	case relicAnalysis:
 		out.relic, out.err = readRelicObservation(ctx, job.frame, job.relicSnapshot, job.relicHover)
 	case gildRedistributionAnalysis:
@@ -777,7 +780,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		}
 		if !p.relic.active && p.options.autoClickers && p.readers.autoClickers != nil && p.startup != startupSave && bootstrapHeroes(c) && p.clickerJobFrame == 0 && !now.Before(p.nextClickerRead) {
 			p.clickerJobFrame = p.frame.id
-			replaceJob(jobs[autoClickerAnalysis], analysisJob{frame: p.frame})
+			replaceJob(jobs[autoClickerAnalysis], analysisJob{frame: p.frame, upgrades: p.options.heroes && !p.clickers.upgrades && !p.clickers.footerAttempted})
 			p.nextClickerRead = now.Add(5 * time.Second)
 			if p.clickers.pending != nil {
 				p.nextClickerRead = now.Add(300 * time.Millisecond)
@@ -839,7 +842,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 					p.heroJobFrame = p.frame.id
 					replaceJob(jobs[heroAnalysis], analysisJob{frame: p.frame, startup: p.startup, heroBefore: p.hero.before(), sweep: p.hero.sweep})
 				}
-				if p.options.progression && p.startupPassive && !now.Before(p.nextProgression) {
+				if p.options.progression && !now.Before(p.nextProgression) {
 					replaceJob(jobs[progressionAnalysis], analysisJob{frame: p.frame, modeOnly: true})
 					p.nextProgression = now.Add(300 * time.Millisecond)
 				}
@@ -1495,10 +1498,7 @@ func (p *gamePipeline) plan(now time.Time) {
 			p.enqueue(action, now)
 		}
 	}
-	if p.options.monster && !now.Before(p.nextMonster) {
-		p.enqueue(gameAction{kind: clickMonster, frame: p.frame, point: p.options.monsterPoint}, now)
-		p.nextMonster = now.Add(p.options.clickInterval)
-	}
+	p.planMonsterAssist(now)
 }
 
 func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
@@ -1568,7 +1568,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			delete(p.queue, kind)
 			continue
 		}
-		if kind == clickMonster && p.startup != noStartup && !p.startupNeedsSeedClicks() {
+		if kind == clickMonster && !p.options.monster && !p.monsterAssistReady() {
 			delete(p.queue, kind)
 			continue
 		}
@@ -1696,7 +1696,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 				if action.hero.startup {
 					stable = p.startup == startupHeroes && startupHeroStable(action.hero, p.frame)
 				} else {
-					stable = p.startup == noStartup && heroListStable(action.frame.image, p.frame.image) && heroRowNameMatches(action.frame.image, p.frame.image, action.point, action.point)
+					stable = p.startup == noStartup && heroViewportStable(action.hero, p.frame) && heroRowNameMatches(action.frame.image, p.frame.image, action.point, action.point)
 				}
 			}
 			if kind == buyHero && (!stable || !heroQuantitySelected(p.frame.image, 122)) {

@@ -34,7 +34,7 @@ func TestStartupClippedPriceSharedPipeline(t *testing.T) {
 			t.Fatal(err)
 		}
 		out := p.analyze(ctx, heroAnalysis, <-jobs[heroAnalysis])
-		if out.err != nil || out.hero.startupComplete || out.hero.startupNeedsGold || out.hero.startupScroll == (image.Point{}) {
+		if out.err != nil || out.hero.startupComplete || out.hero.startupScroll == (image.Point{}) {
 			t.Fatalf("clipped price did not request navigation: %+v %v", out.hero, out.err)
 		}
 		if err := p.accept(ctx, out, at); err != nil {

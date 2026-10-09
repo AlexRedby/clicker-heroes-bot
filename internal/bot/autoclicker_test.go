@@ -324,3 +324,39 @@ func TestAutoClickerFailureDoesNotSaveOtherContext(t *testing.T) {
 		t.Fatal("saved a frame from another context", err)
 	}
 }
+
+func TestAutoClickerNativePlacedPoolAndScenery(t *testing.T) {
+	requireAncientOCR(t)
+	s := loadTestImage(t, "../../testdata/hero-post-transcension-start.png")
+	c, err := recognizedGame(s)
+	if err != nil || !bootstrapHeroes(c) {
+		t.Fatalf("sparse Heroes context: %+v %v", c, err)
+	}
+	now := time.Now()
+	f := gameFrame{id: 2, at: now.Add(time.Second), image: s, context: c}
+	pool, err := readAutoClickerPool(context.Background(), f)
+	if err != nil || pool != (autoClickerPool{known: true, available: 2, total: 3}) {
+		t.Fatalf("placed count: %+v %v", pool, err)
+	}
+	p := autoClickerPlanner{}
+	before := f
+	before.id, before.at = 1, now
+	p.sent(autoClickerCommand{frame: before, pool: autoClickerPool{known: true, available: 3, total: 3}}, now)
+	p.observe(f, pool, f.at)
+	if p.pending != nil || p.blocked {
+		t.Fatalf("native placement not confirmed: %+v", p)
+	}
+	changed := image.NewRGBA(s.Bounds())
+	draw.Draw(changed, changed.Bounds(), s, s.Bounds().Min, draw.Src)
+	r := autoClickerCountRegion(s)
+	draw.Draw(changed, image.Rect(r.Max.X-8, r.Min.Y, r.Max.X, r.Max.Y), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	f.image = changed
+	got, err := readAutoClickerPool(context.Background(), f)
+	if err != nil || got != pool || !autoClickerPoolStable(s, changed) {
+		t.Fatalf("scenery changed the count: %+v %v", got, err)
+	}
+	draw.Draw(changed, r, image.NewUniform(color.Black), image.Point{}, draw.Src)
+	if autoClickerPoolStable(s, changed) {
+		t.Fatal("covered count retained placement authorization")
+	}
+}

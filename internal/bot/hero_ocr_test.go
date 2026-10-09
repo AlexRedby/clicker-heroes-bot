@@ -71,6 +71,23 @@ func TestGameNumberAndCroppedOCR(t *testing.T) {
 	}
 }
 
+func TestHeroShortHirePrices(t *testing.T) {
+	requireAncientOCR(t)
+	screen := loadTestImage(t, "../../testdata/hero-post-transcension-start.png")
+	for _, tc := range []struct {
+		button image.Point
+		price  float64
+	}{
+		{image.Pt(204, 865), 50},
+		{image.Pt(204, 1076), 250},
+	} {
+		got, err := readHeroPrice(context.Background(), screen, tc.button)
+		if err != nil || math.Abs(got-math.Log10(tc.price)) > 0.001 {
+			t.Fatalf("button=%v price=%v err=%v, want %v", tc.button, got, err, tc.price)
+		}
+	}
+}
+
 func TestHeroLevelOnRealScreensAndOverlay(t *testing.T) {
 	if _, err := exec.LookPath("tesseract"); err != nil {
 		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {

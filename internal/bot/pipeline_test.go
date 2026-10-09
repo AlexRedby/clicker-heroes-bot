@@ -233,7 +233,7 @@ func TestPipelineQueueAndInputGuards(t *testing.T) {
 func TestPipelineHeroPurchaseSharedConfirmation(t *testing.T) {
 	screen := loadTestImage(t, "../../testdata/hero-tsuchi-x1.png")
 	var clicked atomic.Bool
-	var captures, fish, levels, prices, gold atomic.Int32
+	var captures, fish, levels, prices, gold, purchases, assists atomic.Int32
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	read := pipelineReaders{
@@ -260,9 +260,10 @@ func TestPipelineHeroPurchaseSharedConfirmation(t *testing.T) {
 		},
 	}
 	p := newGamePipeline(&pauseControl{}, heroInput{
-		capture: func() (image.Image, error) { captures.Add(1); return screen, nil },
-		click:   func(image.Point) error { clicked.Store(true); return nil },
-		move:    func(image.Point) error { return nil }, keyToggle: func(string, string) error { return nil },
+		capture:      func() (image.Image, error) { captures.Add(1); return screen, nil },
+		click:        func(image.Point) error { purchases.Add(1); clicked.Store(true); return nil },
+		monsterClick: func(image.Point) error { assists.Add(1); return nil },
+		move:         func(image.Point) error { return nil }, keyToggle: func(string, string) error { return nil },
 	}, read, pipelineOptions{heroes: true, fishInterval: time.Hour})
 	p.startupCheck = false // This test begins after initial hero setup.
 	p.nextUpgrades = time.Now().Add(time.Hour)
@@ -274,7 +275,7 @@ func TestPipelineHeroPurchaseSharedConfirmation(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if !clicked.Load() || p.hero.pending != nil || p.hero.failures != 0 || p.metrics.actions != 1 {
+	if !clicked.Load() || p.hero.pending != nil || p.hero.failures != 0 || purchases.Load() != 1 || assists.Load() == 0 {
 		t.Fatalf("purchase/confirmation: %+v %s", p.hero, p.metrics.String())
 	}
 	if fish.Load() != 1 || gold.Load() != 2 || prices.Load() != 2 || levels.Load() < 2 || captures.Load() < 2 {

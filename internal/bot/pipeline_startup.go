@@ -2,7 +2,6 @@ package bot
 
 import (
 	"fmt"
-	"image"
 	"time"
 )
 
@@ -74,8 +73,8 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 		return true
 	}
 	progress := p.state[progressionAnalysis]
-	if p.startupPassive && (!p.options.progression || progress.progression.Known) {
-		if p.startup == startupProgression && (!p.options.progression || progress.progression.Enabled) {
+	if !p.options.progression || progress.progression.Known {
+		if p.startupPassive && p.startup == startupProgression && (!p.options.progression || progress.progression.Enabled) {
 			p.startup = noStartup
 			p.startupDeadline = time.Time{}
 			p.progression = progressionPlanner{}
@@ -90,15 +89,11 @@ func (p *gamePipeline) planStartup(now time.Time) bool {
 			p.enqueue(gameAction{kind: enableProgression, frame: progress.frame, progression: progress.progression}, now)
 		}
 	}
+	p.planMonsterAssist(now)
 	switch p.startup {
 	case startupHeroes:
 		if action, ok := p.hero.action(now); ok {
 			p.enqueue(action, now)
-		}
-		if p.startupNeedsSeedClicks() && !now.Before(p.nextMonster) {
-			point := p.frame.context.bounds.Min.Add(image.Pt(p.frame.context.bounds.Dx()*3/4, p.frame.context.bounds.Dy()/2))
-			p.enqueue(gameAction{kind: clickMonster, frame: p.frame, point: point}, now)
-			p.nextMonster = now.Add(time.Second)
 		}
 	case startupUpgrades:
 		if p.clickers.pending != nil && p.clickers.pending.target == autoClickerUpgrades {
@@ -129,15 +124,6 @@ func (p *gamePipeline) startupFooterGrace(now time.Time) bool {
 	return p.startup == startupUpgrades && now.Before(p.startupDeadline.Add(2*time.Second)) &&
 		(p.hero.pending != nil && p.hero.pending.action.kind == scrollHeroes ||
 			foot.frame.id != 0 && now.Sub(foot.frame.at) < 2*time.Second && foot.upgradesKnown)
-}
-
-// Seed clicks earn starter gold only after a successful read proves it is needed.
-func (p *gamePipeline) startupNeedsSeedClicks() bool {
-	out := p.state[heroAnalysis]
-	return p.startup == startupHeroes && !p.startupPassive && p.hero.pending == nil &&
-		bootstrapHeroes(p.frame.context) && out.err == nil && out.frame.id != 0 &&
-		out.frame.layout == p.layout && out.frame.generation == p.generation &&
-		out.hero.startupNeedsGold && !out.hero.found && out.hero.startupScroll == (image.Point{})
 }
 
 // The footer pass buys upgrades unlocked by the bounded level sweep.

@@ -143,7 +143,7 @@ func TestStartupF8FishAndModal(t *testing.T) {
 	p.startupCheck = false
 	p.export.requested = false
 	p.hero.startStartup()
-	p.state[heroAnalysis] = observation{frame: f, hero: heroObservation{frame: f, startup: true, startupNeedsGold: true}}
+	p.state[heroAnalysis] = observation{frame: f, hero: heroObservation{frame: f, startup: true}}
 	p.plan(now)
 	if _, ok := p.queue[clickMonster]; !ok {
 		t.Fatal("zero-DPS startup cannot earn gold")
