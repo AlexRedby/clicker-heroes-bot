@@ -506,7 +506,7 @@ func (c *Controller) AcceptExport(ctx context.Context, now time.Time, s Snapshot
 			if c.stage != AwaitAncients || !s.ExportedAt.After(c.summon.InputAt) {
 				return fail(errors.New("fresh pending Ancient summon receipt required"))
 			}
-			if err := VerifyAncientSummonReceipt(ctx, c.snapshot.State, s.State, c.summon.Pending.Offer); err != nil {
+			if err := verifySummonReceipt(ctx, c.snapshot.State, s.State, c.summon.Pending); err != nil {
 				return fail(err)
 			}
 		}

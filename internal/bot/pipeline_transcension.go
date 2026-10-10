@@ -328,6 +328,10 @@ func (p *gamePipeline) planTranscension(now time.Time) bool {
 			}
 		}
 		t.summon.Observe(nativeAncientSummonObservation(p.frame))
+		if now.Sub(t.snapshot.ExportedAt) > 30*time.Second {
+			p.requestPrestigeExport()
+			return p.planExport(now)
+		}
 		if t.summon.NeedsMoreSouls(now) {
 			if err := t.summon.ContinueEarning(now); err != nil {
 				t.report(err.Error())
@@ -350,6 +354,9 @@ func (p *gamePipeline) planTranscension(now time.Time) bool {
 			return p.planExport(now)
 		}
 		if a, found := nativeAncientSummonAction(cmd, p.frame); found {
+			if cmd.Action == transcension.SummonAllAncients {
+				t.report("summoning all missing Ancients for " + cmd.Offer.Cost + " Hero Souls")
+			}
 			a.kind, a.summon = handleSummon, cmd
 			p.enqueue(a, now)
 		} else if p.frame.context.ancients && (cmd.Action == transcension.OpenSummonOffers || cmd.Action == transcension.NoSummonAction) {

@@ -24,10 +24,11 @@ const (
 	navigationGildRoster
 	navigationHeroes
 	navigationTranscension
+	navigationSummon
 )
 
 func (s navigationStep) String() string {
-	return [...]string{"restore game focus", "close Settings", "cancel Ancient quantity", "cancel Ascension", "cancel junk salvage", "close quest selection", "cancel Mercenary recovery", "open earned gild chest", "close gild reward", "close gild roster", "return to Heroes", "cancel Transcension"}[s]
+	return [...]string{"restore game focus", "close Settings", "cancel Ancient quantity", "cancel Ascension", "cancel junk salvage", "close quest selection", "cancel Mercenary recovery", "open earned gild chest", "close gild reward", "close gild roster", "return to Heroes", "cancel Transcension", "close Ancient offers"}[s]
 }
 
 type gameNavigation struct {
@@ -58,6 +59,13 @@ func navigationControl(f gameFrame, step navigationStep) (image.Point, bool, err
 	case navigationTranscension:
 		if c.transcension {
 			return transcensionControl(f.image, transcensionNo)
+		}
+	case navigationSummon:
+		if c.ancientSummon {
+			region = image.Rect(1024, 28, 1074, 78)
+			found, err := vision.MatchControl(f.image, region, "ancient-summon/close.png")
+			rect := vision.Rect(f.image, region)
+			return rect.Min.Add(rect.Size().Div(2)), found, err
 		}
 	case navigationQuantity:
 		if c.ancientDialog {
@@ -92,7 +100,7 @@ func navigationControl(f gameFrame, step navigationStep) (image.Point, bool, err
 			region = image.Rect(1137, 27, 1161, 51)
 		}
 	case navigationHeroes:
-		if c.known && !c.heroes && !c.saveMenu && !c.transcension && !c.ancientDialog && !c.ascension && !c.relicJunk && !c.questDialog && !c.mercenaryDialog && c.modal == noGildModal {
+		if c.known && !c.heroes && !c.ancientSummon && !c.saveMenu && !c.transcension && !c.ancientDialog && !c.ascension && !c.relicJunk && !c.questDialog && !c.mercenaryDialog && c.modal == noGildModal {
 			return ancientTabPoint(f.image, true), true, nil
 		}
 	}
@@ -156,6 +164,8 @@ func (p *gamePipeline) planNavigation(now time.Time) (recovering bool) {
 			return false
 		}
 		step = navigationSettings
+	case c.ancientSummon:
+		step = navigationSummon
 	case c.ancientDialog:
 		if p.ancient.active && !p.ancient.blocked && (p.ancient.deadline.IsZero() || now.Before(p.ancient.deadline)) {
 			return false

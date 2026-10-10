@@ -43,6 +43,9 @@ func listScrollAction(a gameAction) (listScrollCommand, bool) {
 		s.mode = listScrollPage
 	case (a.kind == handleAncient || a.kind == handleSummon) && a.ancient.step == scrollAncients:
 		s.mode, s.direction = listScrollRecord, a.ancient.direction
+		if a.kind == handleSummon && a.target != (image.Point{}) {
+			s.mode = listScrollEdge
+		}
 		if a.ancient.fine {
 			s.mode = listScrollFine
 		}

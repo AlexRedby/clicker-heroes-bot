@@ -1,3 +1,7 @@
+## Bulk Ancient summon native acceptance
+
+- Verify automatic Summon All after the first post-Transcension Ascension: affordable input, fresh roster/debit export, immediate level allocation and return to progression. Check a partial roster and an interrupted paid input on the installed client; fixture/controller tests cover these transitions and prevent replay.
+
 ## Shared save snapshot native acceptance
 
 - Check an installed-game startup/export trace: unchanged hero scrolling and footer/relic preflight should reuse accepted facts; every new acquisition prints its reason. Changed inventory, reset assessment and transaction receipts can legitimately request another export. If an unexpected duplicate remains, retain the lines from `save export: requested for` through the next action.
@@ -10,7 +14,6 @@
 
 - Validate the opt-in reset/FEED path in the installed game: a fresh positive reward at a combat wall, unchecked respec, exact Ancient Soul accounting, fixed-quantity sequential purchases, F8/restart reconciliation and return to the zero-soul hero/bootstrap loop. Fixture checks establish software behavior only.
 - Calibrate the conservative wall/AS-rate decision against live progression and compare reward/TP/cost estimates with the installed UI. Validate middle Outsider cards, selected fixed quantities and bounded shared scrolling.
-- Implement native Ancient summon/offer/confirmation/cancel controls when that unsupported step is reached. The required-only planner and exact Hero Soul receipts exist; owned-Ancient leveling cannot summon missing Ancients. Save a diagnostic and request only the missing screen then. Integrate the unaffordable-offer handoff with ordinary earning and a funded Ascension. Respec remains excluded.
 
 ## Automatic gild redistribution native acceptance
 

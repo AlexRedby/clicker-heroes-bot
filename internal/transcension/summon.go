@@ -20,6 +20,8 @@ const (
 	ChooseAncientOffer
 	ConfirmAncientSummon
 	ExportSummonReceipt
+	SummonAllAncients
+	ScrollSummonAncientsDown
 )
 
 type SummonScreen uint8
@@ -49,6 +51,7 @@ type SummonObservation struct {
 	Wallet                    string
 	Offers                    []SummonOffer
 	OpenKnown, UpKnown        bool
+	AllKnown, DownKnown       bool
 	ConfirmKnown, CancelKnown bool
 }
 
@@ -75,7 +78,7 @@ func cloneSummonReservation(s *summonReservation) *summonReservation {
 
 func validateSummonReservation(s Snapshot, r summonReservation) error {
 	cmd := r.Pending
-	if cmd.Action != ConfirmAncientSummon || cmd.Offer != r.Selected || cmd.SaveHash != s.State.SaveHash || cmd.Generation != s.Generation || cmd.Frame == 0 || r.InputAt.IsZero() || r.InputAt.Before(s.ExportedAt) || !s.State.Transcendent || s.State.AscensionsThisTranscension <= 0 {
+	if !paidSummon(cmd.Action) || cmd.Offer != r.Selected || cmd.SaveHash != s.State.SaveHash || cmd.Generation != s.Generation || cmd.Frame == 0 || r.InputAt.IsZero() || r.InputAt.Before(s.ExportedAt) || !s.State.Transcendent || s.State.AscensionsThisTranscension <= 0 {
 		return errors.New("invalid pending Ancient summon ownership")
 	}
 	missing, err := ancientcalc.MissingActiveAncients(context.Background(), s.State, 1, true)
@@ -83,6 +86,13 @@ func validateSummonReservation(s Snapshot, r summonReservation) error {
 		return err
 	}
 	p := SummonPlanner{missing: missing}
+	if cmd.Action == SummonAllAncients {
+		plan, err := ancientcalc.PlanSummonAll(context.Background(), s.State)
+		if err != nil || !plan.Eligible || r.Selected != allSummonOffer(plan) {
+			return errors.New("invalid pending bulk Ancient summon")
+		}
+		return nil
+	}
 	wallet, err := exactSummonAmount(s.State.HeroSouls, false)
 	if err != nil || !p.required(r.Selected) {
 		return errors.New("pending summon is not a known missing Active Ancient")
@@ -163,11 +173,15 @@ func (p *SummonPlanner) MissingAncients() []ancientcalc.AncientRequirement {
 	return append([]ancientcalc.AncientRequirement(nil), p.missing...)
 }
 
-// NeedsMoreSouls yields to ordinary earning only when current exact offer
-// evidence proves every observed required offer unaffordable. Unknown prices
-// remain a blocker; missing offers never acquire an invented aggregate cost.
+// NeedsMoreSouls yields to earning when the verified client bulk quote or
+// every identified required offer exceeds the saved wallet.
 func (p *SummonPlanner) NeedsMoreSouls(now time.Time) bool {
 	o := p.latest
+	if p.ownsSource() && p.active && !p.uncertain && p.pending.Action == NoSummonAction && o.Known && o.Screen == SummonAncientsScreen && p.native.Build == p.snapshot.State.Build && p.owner.native.Build == p.snapshot.State.Build && o.Frame > p.lastFrame && o.Generation == p.snapshot.Generation && fresh(now, o.At, 5*time.Second) && fresh(now, p.snapshot.ExportedAt, 30*time.Second) {
+		plan, err := ancientcalc.PlanSummonAll(context.Background(), p.snapshot.State)
+		return err == nil && len(plan.Missing) > 0 && !plan.Eligible
+	}
+
 	if !p.ownsSource() || !p.active || p.uncertain || p.pending.Action != NoSummonAction || p.selected != (SummonOffer{}) || !p.native.AncientSummon || !p.owner.native.AncientSummon || p.native.Build != p.snapshot.State.Build || p.owner.native.Build != p.snapshot.State.Build || !o.Known || o.Screen != SummonOffersScreen || o.Frame == 0 || o.Frame <= p.lastFrame || o.Generation != p.snapshot.Generation || !fresh(now, o.At, 5*time.Second) || !fresh(now, p.snapshot.ExportedAt, 30*time.Second) {
 		return false
 	}
@@ -279,7 +293,7 @@ func (p *SummonPlanner) Next(now time.Time) SummonCommand {
 	if !p.ownsSource() || !p.active || p.uncertain || len(p.missing) == 0 {
 		return cmd
 	}
-	if p.pending.Action == ConfirmAncientSummon {
+	if paidSummon(p.pending.Action) {
 		if !p.exportRequested {
 			cmd.Action = ExportSummonReceipt
 		}
@@ -288,11 +302,23 @@ func (p *SummonPlanner) Next(now time.Time) SummonCommand {
 	if o.Frame == 0 || o.Frame <= p.lastFrame || !o.Known || o.Generation != p.snapshot.Generation || !fresh(now, o.At, 5*time.Second) || !fresh(now, p.snapshot.ExportedAt, 30*time.Second) {
 		return cmd
 	}
+	if p.NeedsMoreSouls(now) {
+		return cmd
+	}
 	switch o.Screen {
 	case SummonGameScreen:
 		cmd.Action = OpenAncientTab
 	case SummonAncientsScreen:
-		if o.OpenKnown {
+		if o.AllKnown && p.native.Build == p.snapshot.State.Build && p.owner.native.Build == p.snapshot.State.Build {
+			plan, err := ancientcalc.PlanSummonAll(context.Background(), p.snapshot.State)
+			if err == nil && plan.Eligible && len(plan.Missing) > 0 {
+				cmd.Action, cmd.Offer = SummonAllAncients, allSummonOffer(plan)
+			}
+			return cmd
+		}
+		if o.DownKnown && p.scrolls < 40 {
+			cmd.Action = ScrollSummonAncientsDown
+		} else if o.OpenKnown {
 			cmd.Action = OpenSummonOffers
 		} else if o.UpKnown && p.scrolls < 12 {
 			cmd.Action = ScrollSummonAncientsUp
@@ -336,19 +362,21 @@ func (p *SummonPlanner) Allowed(now time.Time, cmd SummonCommand) bool {
 	return cmd.Action != NoSummonAction && cmd == p.Next(now)
 }
 
-// Reserve precedes shared-queue input. Selection cannot also authorize a
-// purchase; only a later fully identified confirmation can reserve the debit.
+// Reserve persists the one-shot debit before shared-queue purchase input.
 func (p *SummonPlanner) Reserve(now time.Time, cmd SummonCommand) error {
 	if !p.Allowed(now, cmd) {
 		return errors.New("stale or unauthorized Ancient summon command")
 	}
 	p.lastFrame = cmd.Frame
 	switch cmd.Action {
-	case ScrollSummonAncientsUp:
+	case ScrollSummonAncientsUp, ScrollSummonAncientsDown:
 		p.scrolls++
 	case ChooseAncientOffer:
 		p.selected = cmd.Offer
-	case ConfirmAncientSummon:
+	case ConfirmAncientSummon, SummonAllAncients:
+		if cmd.Action == SummonAllAncients {
+			p.selected = cmd.Offer
+		}
 		p.pending, p.inputAt, p.exportRequested = cmd, now, false
 		p.owner.summon = &summonReservation{Selected: p.selected, Pending: cmd, InputAt: now}
 		p.owner.inputAt = now
@@ -377,7 +405,7 @@ func (p *SummonPlanner) AcceptExport(ctx context.Context, now time.Time, after S
 		}
 		return err
 	}
-	if p.pending.Action != ConfirmAncientSummon {
+	if !paidSummon(p.pending.Action) {
 		return errors.New("no reserved Ancient summon receipt expected")
 	}
 	if p.uncertain || !p.ownsSource() || p.owner.summon == nil || p.owner.summon.Pending != p.pending {
@@ -399,7 +427,7 @@ func (p *SummonPlanner) refresh(s Snapshot, missing []ancientcalc.AncientRequire
 // Reconcile proves a pending one-shot debit after an interruption. A missing or
 // rejected receipt leaves the planner uncertain; the purchase is never replayed.
 func (p *SummonPlanner) Reconcile(ctx context.Context, now time.Time, after Snapshot) error {
-	if !p.uncertain || p.pending.Action != ConfirmAncientSummon {
+	if !p.uncertain || !paidSummon(p.pending.Action) {
 		return errors.New("no pending Ancient summon to reconcile")
 	}
 	return p.Recover(ctx, now, after)
@@ -413,7 +441,7 @@ func (p *SummonPlanner) Recover(ctx context.Context, now time.Time, after Snapsh
 	if p.owner == nil || p.owner.summonPlanner != p || !p.uncertain && p.owner.stage != Uncertain {
 		return errors.New("no interrupted Ancient summon to recover")
 	}
-	if p.pending.Action != ConfirmAncientSummon {
+	if !paidSummon(p.pending.Action) {
 		if err := p.verifyUnchanged(ctx, now, after); err != nil {
 			return err
 		}
@@ -485,4 +513,26 @@ func VerifyAncientSummonReceipt(ctx context.Context, before, after ancientcalc.T
 		}
 	}
 	return ctx.Err()
+}
+
+func paidSummon(action SummonAction) bool {
+	return action == ConfirmAncientSummon || action == SummonAllAncients
+}
+
+func allSummonOffer(plan ancientcalc.SummonAllPlan) SummonOffer {
+	return SummonOffer{Name: "Summon All", Cost: plan.Cost, InitialLevel: "1", Known: true}
+}
+
+func verifySummonReceipt(ctx context.Context, before, after ancientcalc.TranscensionState, cmd SummonCommand) error {
+	if cmd.Action == SummonAllAncients {
+		plan, err := ancientcalc.PlanSummonAll(ctx, before)
+		if err != nil {
+			return err
+		}
+		if cmd.Offer != allSummonOffer(plan) || !plan.Eligible {
+			return errors.New("bulk Ancient summon does not match its reserved cost")
+		}
+		return ancientcalc.VerifySummonAllReceipt(ctx, before, after, plan)
+	}
+	return VerifyAncientSummonReceipt(ctx, before, after, cmd.Offer)
 }

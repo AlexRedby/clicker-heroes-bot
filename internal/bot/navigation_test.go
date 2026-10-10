@@ -15,6 +15,8 @@ func TestNavigationCancelsRecognizedOrphanModals(t *testing.T) {
 		step navigationStep
 	}{
 		{"save-menu.png", navigationSettings},
+		{"ancient-summon-offers.png", navigationSummon},
+		{"ancient-summon-tooltip.png", navigationSummon},
 		{"ancient-quantity.png", navigationQuantity},
 		{"ancient-quantity-filled.png", navigationQuantity},
 		{"ascension-confirm.png", navigationAscension},

@@ -62,7 +62,7 @@ const (
 
 type gameContext struct {
 	known, heroes, mercenaries, questDialog, ascension, ancients, ancientDialog, saveMenu, outsiders bool
-	mercenaryDialog, relicJunk, relics, transcension                                                 bool
+	ancientSummon, mercenaryDialog, relicJunk, relics, transcension                                  bool
 	modal                                                                                            gildModal
 	window                                                                                           string
 	bounds                                                                                           image.Rectangle
@@ -282,6 +282,10 @@ func recognizedGame(screen image.Image) (gameContext, error) {
 	}
 	if saveMenu(screen) {
 		c.known, c.saveMenu = true, true
+		return c, nil
+	}
+	if ancientSummonDialog(screen) {
+		c.known, c.ancientSummon = true, true
 		return c, nil
 	}
 	if ancientQuantityDialog(screen) {
@@ -676,7 +680,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		c.window = p.readers.window()
 		if c.window == "!outside-game" {
 			c.outsiders, c.transcension = false, false
-			c.ancients, c.ancientDialog, c.saveMenu, c.relicJunk, c.relics = false, false, false, false, false
+			c.ancientSummon, c.ancients, c.ancientDialog, c.saveMenu, c.relicJunk, c.relics = false, false, false, false, false, false
 			c.known, c.heroes, c.mercenaries, c.questDialog, c.mercenaryDialog, c.ascension, c.modal = false, false, false, false, false, false, noGildModal
 		}
 		if c.window == "" && !p.focusFallback {
@@ -708,7 +712,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.ancient.fail("game window or display changed")
 			p.ancient.interrupt()
 		}
-		if c.transcension != old.transcension || c.relics != old.relics || c.relicJunk != old.relicJunk || c.outsiders != old.outsiders || c.saveMenu != old.saveMenu || c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.mercenaryDialog != old.mercenaryDialog || geometryChanged {
+		if c.ancientSummon != old.ancientSummon || c.transcension != old.transcension || c.relics != old.relics || c.relicJunk != old.relicJunk || c.outsiders != old.outsiders || c.saveMenu != old.saveMenu || c.ancients != old.ancients || c.ancientDialog != old.ancientDialog || c.ascension != old.ascension || c.known != old.known || c.modal != old.modal || c.heroes != old.heroes || c.mercenaries != old.mercenaries || c.questDialog != old.questDialog || c.mercenaryDialog != old.mercenaryDialog || geometryChanged {
 			if geometryChanged || !p.mercenary.expects(c, now) {
 				p.mercenary.interrupt()
 			}
@@ -1478,7 +1482,7 @@ func (p *gamePipeline) waitReason(now time.Time) actionWaitReason {
 	if !p.frame.context.known {
 		return waitUnknownContext
 	}
-	if p.frame.context.transcension || p.frame.context.questDialog || p.frame.context.mercenaryDialog || p.frame.context.relicJunk || p.frame.context.saveMenu || p.frame.context.ancientDialog || p.frame.context.ascension || p.frame.context.modal != noGildModal {
+	if p.frame.context.ancientSummon || p.frame.context.transcension || p.frame.context.questDialog || p.frame.context.mercenaryDialog || p.frame.context.relicJunk || p.frame.context.saveMenu || p.frame.context.ancientDialog || p.frame.context.ascension || p.frame.context.modal != noGildModal {
 		return waitCoveringModal
 	}
 	if p.hero.pending != nil || p.clickers.pending != nil || p.skill.pending != nil || p.mercenary.pending != nil || p.ascension.active || p.ancient.pending != nil || p.progression.pending != nil {
@@ -1487,14 +1491,14 @@ func (p *gamePipeline) waitReason(now time.Time) actionWaitReason {
 	return waitNoDueAction
 }
 func gameScreenVisible(c gameContext) bool {
-	return c.known && c.window != "!outside-game" && !c.transcension && !c.ancientDialog && !c.ascension && !c.saveMenu && !c.questDialog && !c.mercenaryDialog && !c.relicJunk && c.modal == noGildModal
+	return c.known && c.window != "!outside-game" && !c.ancientSummon && !c.transcension && !c.ancientDialog && !c.ascension && !c.saveMenu && !c.questDialog && !c.mercenaryDialog && !c.relicJunk && c.modal == noGildModal
 }
 
 func (p *gamePipeline) plan(now time.Time) {
 	if now.Before(p.settleUntil) {
 		return
 	}
-	if p.prestige.exclusive() && p.frame.context.known && !p.frame.context.saveMenu && (p.prestige.stage() != transcension.Uncertain || gameScreenVisible(p.frame.context)) && p.planTranscension(now) {
+	if p.prestige.exclusive() && p.frame.context.known && !p.frame.context.ancientSummon && !p.frame.context.saveMenu && (p.prestige.stage() != transcension.Uncertain || gameScreenVisible(p.frame.context)) && p.planTranscension(now) {
 		return
 	}
 	if p.gildMoving && !p.export.requested && p.planGildRedistribution(now) {

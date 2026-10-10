@@ -374,6 +374,7 @@ func TestInitialRelicSaveSkipsEmptyJunkAndKeepsEquipmentAndSalvage(t *testing.T)
 					t.Fatal("empty junk emitted relic input")
 				}
 				p.relic.notice = true
+				p.save.relicsDirty = true
 				p.planRelics(now)
 				if !p.relic.active || !p.export.requested || !p.export.relicsOnly {
 					t.Fatal("startup skip suppressed a later notification check")

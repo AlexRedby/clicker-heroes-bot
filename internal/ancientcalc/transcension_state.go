@@ -396,6 +396,9 @@ func MissingActiveAncients(ctx context.Context, state TranscensionState, skillRa
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		if state.Transcendent && (def.ID == 3 || def.ID == 6 || def.ID == 7 || def.ID == 30) {
+			continue
+		}
 		if !owned[def.ID] && ancientGoal(def.Name, aConst("10"), aConst("1"), aConst("1"), rate, beyond8k) != nil {
 			out = append(out, AncientRequirement{def.ID, def.Name})
 		}

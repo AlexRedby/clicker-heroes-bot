@@ -3,6 +3,7 @@ package transcension
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -126,6 +127,7 @@ func TestSummonOnlyRequiredKnownAffordableOffers(t *testing.T) {
 
 func TestSummonNativeGateAndSafeBoundedNavigation(t *testing.T) {
 	s, offer := summonFixture()
+	s.State.HeroSouls = "1000000"
 	p := newSummon(t, s, false)
 	p.Observe(offerObservation(s, offer))
 	if p.Next(s.ExportedAt).Action != NoSummonAction || len(p.MissingAncients()) == 0 {
@@ -468,5 +470,93 @@ func TestJournalRejectsInvalidSummonOwnership(t *testing.T) {
 		if validateJournalState(s, s.ProfileID) == nil {
 			t.Fatal("invalid durable summon ownership accepted")
 		}
+	}
+}
+
+func TestSummonAllJournalReceiptAndRestart(t *testing.T) {
+	for _, restart := range []bool{false, true} {
+		t.Run(fmt.Sprint(restart), func(t *testing.T) {
+			s, _ := summonFixture()
+			s.State.Ancients = []ancientcalc.Level{}
+			s.State.HeroSouls = "1000000"
+			p := newSummon(t, s, false)
+			p.Observe(SummonObservation{Frame: 1, Generation: s.Generation, Layout: 3, At: s.ExportedAt, Known: true, Screen: SummonAncientsScreen, AllKnown: true})
+			cmd := reserveSummon(t, p, s.ExportedAt, SummonAllAncients)
+			if cmd.Offer.Cost != "184161" || p.owner.summon == nil {
+				t.Fatal("bulk reservation not durable", cmd)
+			}
+			reserveSummon(t, p, s.ExportedAt, ExportSummonReceipt)
+			plan, err := ancientcalc.PlanSummonAll(context.Background(), s.State)
+			if err != nil {
+				t.Fatal(err)
+			}
+			after := cloneSnapshot(s)
+			after.State.SaveHash = strings.Repeat("b", 64)
+			after.ExportedAt = after.ExportedAt.Add(time.Second)
+			after.State.HeroSouls = "815839"
+			after.State.Ancients = plan.Missing
+			if restart {
+				after.Generation++
+				journal := p.owner.journal
+				path := journal.path
+				profile := s.State.ProfileID
+				if err := journal.Close(); err != nil {
+					t.Fatal(err)
+				}
+				j, err := OpenJournal(path, profile)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer j.Close()
+				c := NewController(p.policy, p.native)
+				if err := c.BindJournal(j); err != nil {
+					t.Fatal(err)
+				}
+				p = NewSummonPlanner(p.policy, p.native)
+				if err := p.BindController(c); err != nil {
+					t.Fatal(err)
+				}
+				if err := p.Reconcile(context.Background(), after.ExportedAt, after); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := p.AcceptExport(context.Background(), after.ExportedAt, after); err != nil {
+				t.Fatal(err)
+			}
+			if p.owner.Stage() != ReadyForAllocation || p.owner.summon != nil || !p.Complete() {
+				t.Fatal("bulk receipt did not hand off allocation", p.owner.Stage(), p.Reason())
+			}
+			if p.Next(after.ExportedAt).Action != NoSummonAction {
+				t.Fatal("paid input replayed")
+			}
+		})
+	}
+}
+
+func TestSummonAllUnaffordableAndMissedInput(t *testing.T) {
+	s, _ := summonFixture()
+	s.State.Ancients = []ancientcalc.Level{}
+	s.State.HeroSouls = "184160"
+	p := newSummon(t, s, false)
+	o := SummonObservation{Frame: 1, Generation: s.Generation, At: s.ExportedAt, Known: true, Screen: SummonAncientsScreen, DownKnown: true}
+	p.Observe(o)
+	if !p.NeedsMoreSouls(s.ExportedAt) || p.Next(s.ExportedAt).Action != NoSummonAction {
+		t.Fatal("unfunded bulk purchase authorized")
+	}
+	if err := p.ContinueEarning(s.ExportedAt); err != nil {
+		t.Fatal(err)
+	}
+	s.State.HeroSouls = "184161"
+	o.AllKnown = true
+	p = newSummon(t, s, false)
+	p.Observe(o)
+	reserveSummon(t, p, s.ExportedAt, SummonAllAncients)
+	after := cloneSnapshot(s)
+	after.ExportedAt = after.ExportedAt.Add(time.Second)
+	after.State.SaveHash = strings.Repeat("b", 64)
+	if err := p.AcceptExport(context.Background(), after.ExportedAt, after); err == nil || !p.uncertain {
+		t.Fatal("missed paid input accepted", err)
+	}
+	if p.Next(after.ExportedAt).Action != NoSummonAction {
+		t.Fatal("uncertain debit replayed")
 	}
 }

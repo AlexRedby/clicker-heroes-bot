@@ -1,7 +1,9 @@
 package bot
 
 import (
+	"clicker-heroes-bot/internal/vision"
 	"fmt"
+	"image"
 	"testing"
 	"time"
 
@@ -76,5 +78,56 @@ func TestAncientSummonDoesNotNavigateThroughOtherModals(t *testing.T) {
 	}
 	if nativeTranscensionEvidence("1.0e12-6144").AncientSummon {
 		t.Fatal("owned-Ancient navigation enabled native summon acceptance")
+	}
+}
+
+func TestNativeSummonAllFromEmptyPanel(t *testing.T) {
+	for _, width := range []int{1280, 1920, 2560} {
+		screen := exportFixture(t, "ancient-summon-empty.png", width)
+		c, err := recognizedGame(screen)
+		if err != nil || !c.ancients {
+			t.Fatalf("empty panel context=%+v err=%v", c, err)
+		}
+		f := gameFrame{id: 1, generation: 2, layout: 3, image: screen, context: c}
+		o := nativeAncientSummonObservation(f)
+		if !o.Known || !o.AllKnown || len(o.Offers) != 0 || o.Wallet != "" {
+			t.Fatal("bulk control requires no price OCR", o)
+		}
+		cmd := transcension.SummonCommand{Action: transcension.SummonAllAncients, Frame: f.id, Generation: f.generation, Layout: f.layout}
+		a, ok := nativeAncientSummonAction(cmd, f)
+		if !ok || !nativeAncientSummonActionStable(cmd, a, f) {
+			t.Fatal("bulk action missing", a, ok)
+		}
+		want := vision.Rect(screen, image.Rect(204, 323, 205, 324)).Min
+		if a.point.X < want.X-3 || a.point.X > want.X+3 || a.point.Y < want.Y-3 || a.point.Y > want.Y+3 {
+			t.Fatal("wrong Summon All coordinate", a.point, want)
+		}
+	}
+	for _, fixture := range []string{"ascension-ancients.png", "hero-startup-zero.png", "ancient-summon-offers.png", "ancient-summon-tooltip.png"} {
+		screen := exportFixture(t, fixture, 1280)
+		c, _ := recognizedGame(screen)
+		f := gameFrame{id: 1, image: screen, context: c}
+		if o := nativeAncientSummonObservation(f); o.AllKnown {
+			t.Fatal("bulk input through another screen", fixture, o)
+		}
+		if c.ancientSummon && gameScreenVisible(c) {
+			t.Fatal("fish input through offer popup", fixture)
+		}
+	}
+}
+
+func TestSummonFooterSeekUsesSharedScrollbar(t *testing.T) {
+	screen := exportFixture(t, "ascension-ancients.png", 2560)
+	c, _ := recognizedGame(screen)
+	f := gameFrame{id: 1, generation: 2, layout: 3, image: screen, context: c}
+	cmd := transcension.SummonCommand{Action: transcension.ScrollSummonAncientsDown, Frame: 1, Generation: 2, Layout: 3}
+	a, found := nativeAncientSummonAction(cmd, f)
+	if !found {
+		t.Fatal("owned roster has no footer seek")
+	}
+	a.kind = handleSummon
+	scroll, ok := listScrollAction(a)
+	if !ok || scroll.mode != listScrollEdge || scroll.to.Y != screen.Bounds().Max.Y-1 {
+		t.Fatal("footer did not reuse bottom drag", scroll, ok)
 	}
 }

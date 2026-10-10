@@ -8,6 +8,8 @@ import (
 
 	"clicker-heroes-bot/internal/ancientcalc"
 	"clicker-heroes-bot/internal/vision"
+
+	"gocv.io/x/gocv"
 )
 
 var ancientLevelLabel = regexp.MustCompile(`(?i)^[li]?v[li1][li]*\s*`)
@@ -102,6 +104,25 @@ func ancientButtons(screen image.Image) []image.Point {
 func ancientLevelRegion(screen image.Image, p image.Point) image.Rectangle {
 	b := screen.Bounds()
 	return image.Rect(b.Min.X+b.Dx()*35/1280, p.Y-b.Dy()*100/1000, b.Min.X+b.Dx()*195/1280, p.Y-b.Dy()*58/1000)
+}
+
+func ancientLevelOne(screen image.Image, point image.Point) (bool, error) {
+	region := ancientLevelRegion(screen, point)
+	mask, err := gameTextMask(screen, region.Inset(-max(2, screen.Bounds().Dx()/640)), 0)
+	if err != nil {
+		return false, err
+	}
+	scene, err := gocv.ImageToMatRGB(mask)
+	if err != nil {
+		return false, err
+	}
+	defer scene.Close()
+	reference, err := vision.Template("ancients/level-one.png")
+	if err != nil {
+		return false, err
+	}
+	score, err := vision.ControlScore(scene, reference, region.Size())
+	return score >= 0.90, err
 }
 func ancientNameRegion(screen image.Image, p image.Point) image.Rectangle {
 	b := screen.Bounds()
@@ -204,6 +225,15 @@ func readAncientObservation(ctx context.Context, frame gameFrame) (ancientObserv
 			}
 		}
 		if name == "" {
+			continue
+		}
+		// Short Lvl1 text loses its final digit in OCR; match the complete level crop.
+		one, err := ancientLevelOne(screen, point)
+		if err != nil {
+			return out, err
+		}
+		if one {
+			out.rows = append(out.rows, ancientScreenRow{name, "1", point})
 			continue
 		}
 		raw, err := readGameText(ctx, screen, ancientLevelRegion(screen, point), max(2, 2560/screen.Bounds().Dx()), 7, 0, "0123456789.eElLvViI")
