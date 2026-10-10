@@ -15,8 +15,9 @@ func (p *gamePipeline) reportGildMove(message string) {
 
 func (p *gamePipeline) acceptGildSave(out exportResult, source gameFrame, now time.Time) {
 	if !p.options.progression || out.gilds == nil {
-		if p.export.gildsOnly {
+		if p.options.progression {
 			p.gildMove.active, p.gildMoving = false, false
+			p.gildRefreshDue = time.Time{}
 			p.reportGildMove(fmt.Sprintf("fresh distribution unavailable; continuing ordinary play: %v", out.gildErr))
 		}
 		return
@@ -27,6 +28,7 @@ func (p *gamePipeline) acceptGildSave(out exportResult, source gameFrame, now ti
 	wasPending := p.gildMove.awaitingExport
 	if err := p.gildMove.install(*out.gilds, source); err != nil {
 		p.gildMove.active, p.gildMoving = false, false
+		p.gildRefreshDue = time.Time{}
 		p.reportGildMove(err.Error() + "; continuing ordinary play")
 		return
 	}

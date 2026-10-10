@@ -18,7 +18,7 @@ func TestAscensionJunkOwnedContinuation(t *testing.T) {
 	}
 	for _, initialStep := range []ascensionStep{openAscension, confirmAscension, waitAscensionReset} {
 		for _, directDialog := range []bool{false, true} {
-			p := ascensionPlanner{minimumReward: 60}
+			p := ascensionPlanner{}
 			p.sent(openAscension, 1, now)
 			p.step = initialStep
 			p.observe(out, nil, now)
@@ -51,15 +51,15 @@ func TestAscensionJunkOwnedContinuation(t *testing.T) {
 			if !directDialog {
 				heroes := gameFrame{id: 8, context: gameContext{known: true, heroes: true}}
 				p.observe(ascensionObservation{frame: heroes, zone: 19059}, nil, now)
-				if p.step != openAscension || !p.junkReopened || p.minimumReward != 60 {
-					t.Fatal("did not reopen with original minimum reward")
+				if p.step != openAscension || !p.junkReopened || !p.junkSalvaged {
+					t.Fatal("did not reopen while retaining salvage ownership")
 				}
 				p.sent(openAscension, heroes.id, now)
 			}
 			dialog := gameFrame{id: 9, context: gameContext{known: true, ascension: true}}
-			p.observe(ascensionObservation{frame: dialog, confirm: true, no: true, souls: 65}, nil, now)
+			p.observe(ascensionObservation{frame: dialog, confirm: true, no: true}, nil, now)
 			if p.step != confirmAscension {
-				t.Fatal("normal reward not independently verified after salvage")
+				t.Fatal("normal controls not independently verified after salvage")
 			}
 			p.sent(confirmAscension, dialog.id, now)
 			reset := gameFrame{id: 10, context: gameContext{known: true, heroes: true}}
@@ -116,7 +116,7 @@ func TestAscensionJunkOrphanPauseAndSecondBlocker(t *testing.T) {
 	if p.active {
 		t.Fatal("closed orphan retained ownership")
 	}
-	p = ascensionPlanner{minimumReward: 60, junkSalvaged: true, junkReopened: true}
+	p = ascensionPlanner{junkSalvaged: true, junkReopened: true}
 	p.sent(openAscension, 4, now)
 	out.frame.id = 5
 	p.observe(out, nil, now)

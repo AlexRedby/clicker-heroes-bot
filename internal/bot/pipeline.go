@@ -87,7 +87,6 @@ type analysisJob struct {
 	unlock        bool
 	unlockFromTop bool
 	ancientNames  bool
-	economy       bool
 	skills        [9]skillState
 	outsiderBase  *ancientcalc.TranscensionPreview
 	relicSnapshot *ancientcalc.RelicSnapshot
@@ -149,20 +148,19 @@ type actionResult struct {
 }
 
 type pipelineReaders struct {
-	context          func(image.Image) (gameContext, error)
-	fish             func(image.Image) (image.Point, bool, error)
-	skills           func(context.Context, image.Image) ([9]skillState, error)
-	progression      func(context.Context, image.Image, [9]skillState, bool) (progressionState, error)
-	mercenaries      func(context.Context, gameFrame) (mercenaryObservation, error)
-	ascension        func(context.Context, gameFrame) (ascensionObservation, error)
-	ascensionEconomy func(context.Context, gameFrame) (ascensionObservation, error)
-	ancients         func(context.Context, gameFrame) (ancientObservation, error)
-	ancientNames     func(context.Context, gameFrame) (ancientObservation, error)
-	outsiders        func(context.Context, gameFrame) (outsiderObservation, error)
-	transcension     func(context.Context, gameFrame) (transcensionObservation, error)
-	heroes           heroReaders
-	autoClickers     func(context.Context, gameFrame) (autoClickerPool, error)
-	window           func() string
+	context      func(image.Image) (gameContext, error)
+	fish         func(image.Image) (image.Point, bool, error)
+	skills       func(context.Context, image.Image) ([9]skillState, error)
+	progression  func(context.Context, image.Image, [9]skillState, bool) (progressionState, error)
+	mercenaries  func(context.Context, gameFrame) (mercenaryObservation, error)
+	ascension    func(context.Context, gameFrame) (ascensionObservation, error)
+	ancients     func(context.Context, gameFrame) (ancientObservation, error)
+	ancientNames func(context.Context, gameFrame) (ancientObservation, error)
+	outsiders    func(context.Context, gameFrame) (outsiderObservation, error)
+	transcension func(context.Context, gameFrame) (transcensionObservation, error)
+	heroes       heroReaders
+	autoClickers func(context.Context, gameFrame) (autoClickerPool, error)
+	window       func() string
 }
 type pipelineOptions struct {
 	windowed, autoClickers                                              bool
@@ -219,6 +217,7 @@ type gamePipeline struct {
 	ascension                                           ascensionPlanner
 	ancient                                             ancientPlanner
 	export                                              saveExporter
+	save                                                saveSnapshot
 	relicMessage                                        string
 	relic                                               relicPlanner
 	outsiderMessage                                     string
@@ -390,11 +389,7 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 	case mercenaryAnalysis:
 		out.mercenary, out.err = p.readers.mercenaries(ctx, job.frame)
 	case ascensionAnalysis:
-		if job.economy {
-			out.ascension, out.err = p.readers.ascensionEconomy(ctx, job.frame)
-		} else {
-			out.ascension, out.err = p.readers.ascension(ctx, job.frame)
-		}
+		out.ascension, out.err = p.readers.ascension(ctx, job.frame)
 	case ancientAnalysis:
 		if job.modeOnly {
 			out.ancient = ancientObservation{frame: job.frame}
@@ -730,6 +725,10 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 				p.invalidateAchievementGoals()
 			}
 			if geometryChanged && !exportFocus {
+				if old.known && c.known && old.window != c.window {
+					p.save = saveSnapshot{}
+					p.ascension.firstRun = false
+				}
 				p.fishTarget = nil
 				p.ascension.interrupt()
 				if p.relic.active {
@@ -869,7 +868,13 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		}
 		if p.options.progression && c.heroes {
 			alert := relicNotification(p.frame.image)
-			if alert && p.relic.previousAlert {
+			if !alert {
+				p.save.relicAlertHandled = false
+			}
+			if alert && p.relic.previousAlert && !p.save.relicAlertHandled {
+				if !p.relic.notice {
+					p.save.relicsDirty = true
+				}
 				p.relic.notice = true
 				p.ascension.relicsChecked = false
 			}
@@ -904,11 +909,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 				p.ascension.nextUnlockRead = now.Add(5 * time.Second)
 			}
 		}
-		if p.options.ascension && c.heroes && p.ascensionCandidate(now) && p.ascension.jobFrame == 0 && !now.Before(p.ascension.nextRead) {
-			p.ascension.jobFrame = p.frame.id
-			replaceJob(jobs[ascensionAnalysis], analysisJob{frame: p.frame, economy: true})
-			p.ascension.nextRead = now.Add(5 * time.Second)
-		}
+
 		p.scheduleMercenaryRead(now, jobs)
 		// No clicks or hotkeys may reach controls hidden underneath a dialog.
 		if c.questDialog || c.mercenaryDialog {
@@ -1010,7 +1011,25 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.controls.pauseLocked("Transcension receipt rejected: "+err.Error(), false)
 			return nil
 		}
+		p.save.accept(out.export, p.ascension.wallZone, p.ascension.highestZone)
 		p.ascension.observeSave(out.export)
+		if out.export.ascensionErr != nil || out.export.ascension == nil || !out.export.ascension.CapitalKnown {
+			fmt.Printf("Ascension save assessment unavailable: %v; reassessing after a relevant change or in one minute\n", ascensionSaveError(out.export))
+			p.save.rewardDirty = true
+			p.ascension.nextRead = now.Add(time.Minute)
+			if !p.ascension.firstRun {
+				p.ascension.nextCheck = now.Add(time.Minute)
+			}
+		} else {
+			p.ascension.nextRead = time.Time{}
+		}
+		if goals := p.options.achievements; goals != nil {
+			delete(p.queue, handleMercenary)
+			if err := goals.acceptSnapshot(out.export.achievements, out.export.achievementErr); err != nil {
+				fmt.Printf("achievement goals unavailable: %v; using normal quest priorities until the next fresh export\n", err)
+			}
+			goals.dirty = false
+		}
 		if p.export.gildsOnly {
 			p.acceptGildSave(out.export, out.frame, now)
 			p.export.interrupt()
@@ -1027,13 +1046,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		if !p.prestige.exclusive() && !p.prestige.holdAncients() {
 			p.acceptGildSave(out.export, out.frame, now)
 		}
-		if goals := p.options.achievements; goals != nil {
-			delete(p.queue, handleMercenary)
-			if err := goals.acceptSnapshot(out.export.achievements, out.export.achievementErr); err != nil {
-				fmt.Printf("achievement goals unavailable: %v; using normal quest priorities until the next fresh export\n", err)
-			}
-			goals.dirty = false
-		}
+
 		if p.export.goalsOnly {
 			p.export.interrupt()
 			p.export.requested, p.export.goalsOnly = false, false
@@ -1064,7 +1077,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			p.ascension.invalidate()
 			// This records an advisory check, never live relic readiness.
 			p.ascension.relicsChecked = true
-			p.ascension.nextRead, p.nextFish, p.nextProgression = time.Time{}, time.Time{}, time.Time{}
+			p.nextFish, p.nextProgression = time.Time{}, time.Time{}
 			return nil
 		}
 		p.export.prestigeOnly = false
@@ -1239,6 +1252,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 	}
 	if out.kind == ascensionAnalysis {
 		if p.ascension.observe(out.ascension, out.err, now) {
+			p.save = saveSnapshot{}
 			if out.frame.image != nil {
 				path := fmt.Sprintf("artifacts/ascension-start-%s.png", now.Format("20060102-150405.000"))
 				if err := saveImage(path, out.frame.image); err != nil {
@@ -1350,6 +1364,8 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 	if out.kind == progressionAnalysis {
 		out.progression.observedAt = out.frame.at
 		if out.progression.Known && out.progression.Zone == 1 && p.progression.lastZone > 2 {
+			p.save = saveSnapshot{}
+			p.ascension.firstRun = false
 			p.skill.reset()
 		}
 	}
@@ -1426,6 +1442,10 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 			}
 		}
 	case progressionAnalysis:
+		if out.progression.Known && out.progression.Zone > p.save.highestZone {
+			p.save.rewardDirty = true
+			p.save.highestZone = out.progression.Zone
+		}
 		p.progression.observeFrame(out.progression, out.frame.id, now)
 		if p.options.ascension && (p.startup == noStartup || p.ascension.firstRun) && out.frame.context.heroes {
 			p.ascension.observeProgress(out.progression, p.progression.wallZone, now, p.progression.wallFullCombat)
@@ -1975,6 +1995,10 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 	invalidate := func(kind analysisKind) { p.barriers[kind] = p.frame.id + 1; p.state[kind] = observation{} }
 	switch a.kind {
 	case handleGildRedistribution:
+		if a.gildMove.action == gildTransferAll {
+			p.save.rewardDirty = true
+			p.gildRefreshDue = now
+		}
 		p.gildMove.submitted(a.gildMove, now, nil)
 		p.gildJobFrame, p.nextGildRead = 0, time.Time{}
 		p.queue = make(map[actionKind]gameAction)
@@ -1994,6 +2018,9 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.settleUntil = now.Add(listScrollSettle)
 		fmt.Printf("Transcension input submitted: stage=%d at (%d, %d)\n", p.prestige.stage(), a.point.X, a.point.Y)
 	case handleRelic:
+		if a.relic.step == relicEquip || a.relic.step == relicConfirmSalvage {
+			p.save.relicsDirty = true
+		}
 		p.relic.sent(a, now)
 		invalidate(relicAnalysis)
 		p.queue = make(map[actionKind]gameAction)
@@ -2002,6 +2029,11 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.queue = make(map[actionKind]gameAction)
 		p.state = [analysisCount]observation{}
 	case handleAncient:
+		if a.ancient.step == confirmAncientQuantity {
+			p.save.rewardDirty = true
+			p.gildRefreshDue = now
+			p.save.relicsDirty = true
+		}
 		if a.ancient.step == confirmAncientQuantity && p.gildMove.active {
 			// Ancient spending invalidates the saved gild-transfer wallet.
 			p.gildMove.interrupt()
@@ -2017,6 +2049,9 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.progression.pending = nil
 		p.progression.wantAction = false
 	case handleAscension:
+		if a.ascension == salvageAscensionJunk {
+			p.save.relicsDirty = true
+		}
 		p.ascension.sent(a.ascension, a.frame.id, now)
 		ascension := p.ascension
 		p.reset(p.generation)
@@ -2024,6 +2059,7 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		p.frame.context = gameContext{bounds: a.frame.context.bounds, window: a.frame.context.window, geometry: a.frame.context.geometry}
 		fmt.Printf("Ascension %s at (%d, %d)\n", [...]string{"dialog opened", "confirmed", "cancelled", "waiting for reset", "junk salvaged", "waiting for junk"}[a.ascension], a.point.X, a.point.Y)
 	case collectGilds:
+		p.gildRefreshDue = now
 		p.gild.active = true
 		p.gild.opening = a.frame.context.modal == noGildModal
 		if a.point == p.gild.lastPoint {
@@ -2044,6 +2080,9 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		fmt.Printf("clicked gild gift control at (%d, %d)\n", a.point.X, a.point.Y)
 
 	case handleMercenary:
+		if a.mercenary.step == claimMercenaryReward || a.mercenary.step == claimAndOpenMercenaryQuest {
+			p.save.rewardDirty, p.save.relicsDirty = true, true
+		}
 		if goals := p.options.achievements; goals != nil && goals.priority.GoalID != 0 && (a.mercenary.step == claimMercenaryReward || a.mercenary.step == claimAndOpenMercenaryQuest) {
 			goals.dirty = true
 		}
@@ -2115,6 +2154,9 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		invalidate(heroAnalysis)
 
 	case buyHero, scrollHeroes, selectQuantity, parkPointer:
+		if a.kind == buyHero {
+			p.save.rewardDirty = true
+		}
 		if a.unlock {
 			p.ascension.unlock.hero = heroObservation{}
 			p.ascension.nextUnlockRead = now.Add(500 * time.Millisecond)
@@ -2246,15 +2288,18 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 		if p.frame.context.ascension || p.frame.context.relicJunk {
 			return true // A manually opened dialog is never permission to confirm it.
 		}
-		if !p.ascensionReady(now) {
-			// Let an in-flight reward read finish without another purchase/skill
-			// changing the damage baseline. Fish collection can still run.
-			if p.ascension.jobFrame != 0 && p.ascensionCandidate(now) && !p.progression.wantAction && p.progression.pending == nil && p.hero.pending == nil && p.skill.pending == nil && !p.mercenary.active && p.mercenary.pending == nil {
-				for _, kind := range []actionKind{castSkill, buyHero, scrollHeroes, selectQuantity, handleMercenary, clickMonster} {
-					delete(p.queue, kind)
-				}
-				return true
+		if p.ascensionCandidate(now) && !p.ascension.firstRun && !p.save.ascensionCurrent(p.ascension.wallZone) && !p.export.requested && !now.Before(p.ascension.nextRead) {
+			if p.options.export == nil {
+				fmt.Println("Ascension: a fresh save is required for the reward decision")
+				p.ascension.nextRead = now.Add(time.Minute)
+				return false
 			}
+			p.export.requested, p.export.relicsOnly = true, true
+			p.export.reason = "Ascension reward and relic preflight"
+			p.export.goalsOnly, p.export.gildsOnly, p.export.prestigeOnly = false, false, false
+			return p.planExport(now)
+		}
+		if !p.ascensionReady(now) {
 			return false
 		}
 		if p.options.export != nil && !p.ascension.relicsChecked {
@@ -2263,10 +2308,18 @@ func (p *gamePipeline) planAscension(now time.Time) bool {
 					return false
 				}
 				p.startRelics(now)
+				if p.export.requested {
+					return p.planExport(now)
+				}
+				return true
+			}
+			if p.save.relicsCurrent() {
+				p.ascension.relicsChecked = true
+			} else {
+				p.export.requested, p.export.relicsOnly = true, true
+				p.export.reason = "Ascension relic preflight"
 				return p.planExport(now)
 			}
-			p.export.requested, p.export.relicsOnly = true, true
-			return p.planExport(now)
 		}
 		point, found, err := ascensionControl(p.frame.image, ascensionSpiral)
 		if found && err == nil {
@@ -2320,20 +2373,28 @@ func (p *gamePipeline) ascensionReady(now time.Time) bool {
 	if progress.frame.id == 0 || progress.frame.id < p.barriers[progressionAnalysis] || now.Sub(progress.frame.at) > 10*time.Second {
 		return false
 	}
-	out := p.ascension.latest
-	if !out.economy || out.frame.id == 0 || out.frame.context != p.frame.context || now.Sub(out.frame.at) > 10*time.Second {
+	if p.ascension.firstRun {
+		return true
+	}
+	if !p.save.ascensionCurrent(p.ascension.wallZone) {
 		return false
 	}
-	p.ascension.minimumReward = max(out.bank, p.options.ascensionCapital) + math.Log10(p.options.ascensionMinGain)
-	if p.ascension.firstRun {
-		p.ascension.minimumReward = math.Inf(-1)
+	facts := p.save.result.ascension
+	if !facts.CapitalKnown {
+		return false
 	}
-	if math.IsInf(out.souls, -1) || out.souls < p.ascension.minimumReward {
-		fmt.Println("Ascension deferred: small Hero Souls gain; review Ancient allocation and Transcension/Ancient Souls before another reset")
+	reward, rewardOK := parseGameNumber(facts.PendingHeroSouls)
+	capital, capitalOK := parseGameNumber(facts.SoulCapital)
+	if !rewardOK || !capitalOK || math.IsInf(reward, -1) {
+		return false
+	}
+	minimum := capital + math.Log10(p.options.ascensionMinGain)
+	if reward < minimum {
+		fmt.Println("Ascension deferred: small saved Hero Souls gain; review Ancient allocation and Transcension before another reset")
 		p.ascension.nextCheck = now.Add(time.Minute)
 		return false
 	}
-	return ascensionBudgetStable(out.frame.image, p.frame.image)
+	return true
 }
 
 func (p *gamePipeline) planAncients(now time.Time) bool {

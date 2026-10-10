@@ -826,6 +826,7 @@ func TestRelicFreshEmptyExportSkipsAbsentTab(t *testing.T) {
 	}
 	// A later drop still starts a new acquisition; an empty save is not a permanent ban.
 	p.relic.notice = true
+	p.save.relicsDirty = true // The notification observation invalidates the old inventory.
 	now = now.Add(time.Minute)
 	p.frame.id++
 	p.planRelics(now)

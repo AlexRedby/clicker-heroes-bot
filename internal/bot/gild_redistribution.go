@@ -31,17 +31,17 @@ type gildRedistributionCommand struct {
 // Only the queue owner installs fresh exports and submits commands. This
 // planner never captures frames, writes a journal, or dispatches input.
 type gildRedistribution struct {
-	plan                            ancientcalc.GildPlan
-	source                          gameFrame
-	stopAfterClose, blocked         bool
-	ui                              gildRedistributionObservation
-	active, awaitingExport          bool
-	nextAction, attemptedAt         time.Time
-	scrolls, attempts, preparations int
-	closeAttempts                   int
-	lastRoster                      [32]byte
-	waitFrame                       uint64
-	reason                          string
+	plan                    ancientcalc.GildPlan
+	source                  gameFrame
+	stopAfterClose, blocked bool
+	ui                      gildRedistributionObservation
+	active, awaitingExport  bool
+	nextAction, attemptedAt time.Time
+	scrolls, attempts       int
+	closeAttempts           int
+	lastRoster              [32]byte
+	waitFrame               uint64
+	reason                  string
 }
 
 func (g *gildRedistribution) install(plan ancientcalc.GildPlan, source gameFrame) error {
@@ -51,7 +51,7 @@ func (g *gildRedistribution) install(plan ancientcalc.GildPlan, source gameFrame
 	if g.awaitingExport && !source.at.After(g.attemptedAt) {
 		return fmt.Errorf("gild outcome requires a newer export")
 	}
-	attempts, preparations := g.attempts, g.preparations
+	attempts := g.attempts
 	same := sameGildDistribution(plan, g.plan)
 	blocked := same && g.blocked
 	reason := ""
@@ -59,9 +59,9 @@ func (g *gildRedistribution) install(plan ancientcalc.GildPlan, source gameFrame
 		reason = g.reason
 	}
 	if !same {
-		attempts, preparations = 0, 0
+		attempts = 0
 	}
-	*g = gildRedistribution{plan: plan, source: source, attempts: attempts, preparations: preparations, blocked: blocked, reason: reason}
+	*g = gildRedistribution{plan: plan, source: source, attempts: attempts, blocked: blocked, reason: reason}
 	g.active = plan.Eligible && plan.MoveGilds > 0 && plan.Target.ID >= 28 && plan.Target.ID <= 46 && attempts < 2 && !blocked
 	if attempts >= 2 {
 		g.reason = "two transfer attempts left the same distribution; continuing ordinary play"
@@ -117,14 +117,7 @@ func (g *gildRedistribution) next(now time.Time) (gildRedistributionCommand, boo
 	if u.frame.generation != g.source.generation || u.frame.context.window != g.source.context.window || u.frame.context.bounds != g.source.context.bounds {
 		g.interrupt()
 	}
-	if !g.awaitingExport && (now.Sub(g.source.at) > 30*time.Second || now.Before(g.source.at)) {
-		g.preparations++
-		if g.preparations >= 2 {
-			g.stopAfterClose, g.blocked = true, true
-		}
-		g.awaitingExport = true
-		g.reason = "gild preparation export expired"
-	}
+
 	if g.awaitingExport {
 		if u.roster && g.closeAttempts >= 3 {
 			g.active, g.blocked = false, true

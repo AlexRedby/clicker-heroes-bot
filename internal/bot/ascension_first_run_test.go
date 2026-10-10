@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"math"
 	"testing"
 	"time"
 
@@ -14,7 +13,7 @@ import (
 )
 
 func firstAscensionPipeline(now time.Time) *gamePipeline {
-	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{ascension: true, ascensionStall: 3 * time.Minute, ascensionMinGain: .25, ascensionCapital: math.Inf(-1)})
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{ascension: true, ascensionStall: 3 * time.Minute, ascensionMinGain: .25})
 	p.generation, p.layout = 1, 1
 	p.frame = testPipelineFrame()
 	p.frame.id, p.frame.generation, p.frame.at = 10, p.generation, now
@@ -142,8 +141,8 @@ func TestAscensionFirstRunPauseAndResetEvidence(t *testing.T) {
 }
 
 func TestAscensionFirstRunSharedAnalysisAndInputGate(t *testing.T) {
-	for _, positive := range []bool{false, true} {
-		t.Run(map[bool]string{false: "zero reward", true: "positive reward"}[positive], func(t *testing.T) {
+	for _, reward := range []string{"", "0", "390700"} {
+		t.Run("save reward "+reward, func(t *testing.T) {
 			now := time.Now()
 			screen := loadTestImage(t, "../../testdata/hero-panel-max.png")
 			c := gameContext{known: true, heroes: true, window: "game", bounds: screen.Bounds()}
@@ -155,35 +154,21 @@ func TestAscensionFirstRunSharedAnalysisAndInputGate(t *testing.T) {
 			p.options.progression = true
 			p.frame.image, p.frame.context = screen, c
 			p.state[progressionAnalysis].frame = p.frame
+			p.save.result.ascension = &ancientcalc.AscensionState{PendingHeroSouls: reward}
 			jobs := mercenaryRecoveryJobs()
 			if err := p.capture(context.Background(), now, jobs); err != nil {
 				t.Fatal(err)
 			}
-			var job analysisJob
-			select {
-			case job = <-jobs[ascensionAnalysis]:
-				if !job.economy {
-					t.Fatal("first-run candidate did not schedule soul analysis")
-				}
-			default:
-				t.Fatal("first-run candidate still waits for a boss wall")
+			if len(jobs[ascensionAnalysis]) != 0 {
+				t.Fatal("first-run candidate scheduled obsolete soul OCR")
 			}
 			p.queue[buyHero] = gameAction{kind: buyHero, frame: p.frame}
-			if !p.planAscension(now) || len(p.queue) != 0 {
-				t.Fatal("pending candidate read did not arbitrate gameplay inputs")
+			if !p.planAscension(now) {
+				t.Fatal("first-run candidate did not arbitrate gameplay inputs")
 			}
-			reward := math.Inf(-1)
-			if positive {
-				reward = math.Log10(390700)
-			}
-			out := observation{kind: ascensionAnalysis, frame: job.frame, ascension: ascensionObservation{frame: job.frame, economy: true, bank: math.Inf(-1), souls: reward}}
-			if err := p.accept(context.Background(), out, now); err != nil {
-				t.Fatal(err)
-			}
-			p.planAscension(now)
 			a, ok := p.queue[handleAscension]
-			if ok != positive || ok && a.ascension != openAscension {
-				t.Fatalf("first-run input with positive=%t: %+v, queued=%t", positive, a, ok)
+			if !ok || a.ascension != openAscension || len(p.queue) != 1 {
+				t.Fatalf("first-run input depends on save reward %q: %+v, queue=%+v", reward, a, p.queue)
 			}
 		})
 	}
@@ -227,7 +212,6 @@ func TestAscensionFirstRunOwnedDialogRetriesThenConfirms(t *testing.T) {
 	p.state[progressionAnalysis].frame = p.frame
 	p.ascension.relicsChecked = true
 	p.options.ascensionCapital = 99
-	p.ascension.latest = ascensionObservation{frame: p.frame, economy: true, bank: math.Inf(-1), souls: math.Log10(390700)}
 	p.startup = startupHeroes
 	p.plan(now)
 	if p.startup != noStartup {
@@ -235,7 +219,7 @@ func TestAscensionFirstRunOwnedDialogRetriesThenConfirms(t *testing.T) {
 	}
 	open, ok := p.nextAction(now)
 	if !ok || open.kind != handleAscension || open.ascension != openAscension {
-		t.Fatal("first Ascension did not open for positive reward", open, ok)
+		t.Fatal("first Ascension did not open after boss 130", open, ok)
 	}
 	clicks := 0
 	p.input.click = func(image.Point) error { clicks++; return nil }
@@ -254,7 +238,7 @@ func TestAscensionFirstRunOwnedDialogRetriesThenConfirms(t *testing.T) {
 	p.readers.ascension = func(ctx context.Context, f gameFrame) (ascensionObservation, error) {
 		reads++
 		if reads == 1 {
-			return ascensionObservation{frame: f}, errors.New("temporary reward OCR failure")
+			return ascensionObservation{frame: f}, errors.New("temporary native controls failure")
 		}
 		return readAscensionObservation(ctx, f)
 	}
@@ -270,18 +254,18 @@ func TestAscensionFirstRunOwnedDialogRetriesThenConfirms(t *testing.T) {
 				t.Fatal(err)
 			}
 		default:
-			t.Fatal("owned dialog did not request a fresh reward frame", attempt)
+			t.Fatal("owned dialog did not request a fresh controls frame", attempt)
 		}
 		p.plan(at)
 		a, ready := p.nextAction(at)
 		if attempt == 1 {
 			if ready || !p.ascension.active || p.ascension.step != openAscension || p.ascension.latest.frame.id != 0 || !p.ascension.deadline.Equal(now.Add(20*time.Second)) {
-				t.Fatal("temporary OCR failure cancelled or confirmed the dialog", a, ready)
+				t.Fatal("temporary controls failure cancelled or confirmed the dialog", a, ready)
 			}
 			continue
 		}
 		if !ready || a.kind != handleAscension || a.ascension != confirmAscension {
-			t.Fatal("fresh recognized reward did not confirm the owned dialog", a, ready)
+			t.Fatal("fresh recognized controls did not confirm the owned dialog", a, ready)
 		}
 		if acted, err := p.execute(context.Background(), a); err != nil || !acted {
 			t.Fatal("confirmation input failed", acted, err)
@@ -326,7 +310,7 @@ func TestAscensionUnreadableDialogRevokesQueuedConfirmationAndTimesOut(t *testin
 		at := now.Add(time.Duration(i) * time.Second)
 		p.frame.id++
 		p.frame.at = at
-		p.ascension.observe(ascensionObservation{frame: p.frame}, errors.New("reward OCR unavailable"), at)
+		p.ascension.observe(ascensionObservation{frame: p.frame}, errors.New("native controls unavailable"), at)
 		p.planAscension(at)
 		if len(p.queue) != 0 || !p.ascension.active || !p.ascension.deadline.Equal(deadline) {
 			t.Fatal("failed read retained old confirmation or renewed deadline", i)
@@ -334,7 +318,7 @@ func TestAscensionUnreadableDialogRevokesQueuedConfirmationAndTimesOut(t *testin
 	}
 	p.planAscension(deadline.Add(time.Millisecond))
 	if a, ok := p.queue[navigateGame]; !ok || a.navigation != navigationAscension || p.ascension.active {
-		t.Fatal("persistent OCR failure did not cancel through bounded navigation", a, ok)
+		t.Fatal("persistent controls failure did not cancel through bounded navigation", a, ok)
 	}
 }
 
@@ -348,7 +332,6 @@ func TestFirstAscensionPreemptsIncompleteStartup(t *testing.T) {
 			p.state[progressionAnalysis].frame = p.frame
 			p.startup = phase
 			p.ascension.relicsChecked = true
-			p.ascension.latest = ascensionObservation{frame: p.frame, economy: true, bank: math.Inf(-1), souls: 5}
 			p.progression.wantAction = true
 			p.ancient.plan = &ancientPlan{}
 			for _, kind := range []actionKind{buyHero, buyHeroUpgrades, scrollHeroes, castSkill, handleAncient} {
@@ -409,7 +392,7 @@ func TestFirstAscensionObservesZoneDuringStartup(t *testing.T) {
 	}
 }
 
-func TestFirstAscensionWaitsForSubmittedInputAndKeepsEarning(t *testing.T) {
+func TestFirstAscensionWaitsForSubmittedInputThenOpensWithoutReward(t *testing.T) {
 	now := time.Now()
 	p := firstAscensionPipeline(now)
 	p.frame.image = loadTestImage(t, "../../testdata/hero-panel-max.png")
@@ -424,10 +407,9 @@ func TestFirstAscensionWaitsForSubmittedInputAndKeepsEarning(t *testing.T) {
 		t.Fatal("first Ascension replayed unrelated input while a submitted input is pending")
 	}
 	p.hero.pending = nil
-	p.ascension.latest = ascensionObservation{frame: p.frame, economy: true, bank: math.Inf(-1), souls: math.Inf(-1)}
 	p.plan(now)
-	if _, ok := p.queue[clickMonster]; !ok || !p.ascension.firstRun || p.ascension.active || p.startup != noStartup {
-		t.Fatal("unavailable reward froze gold earning or lost the first Ascension goal")
+	if a, ok := p.queue[handleAscension]; !ok || a.ascension != openAscension || !p.ascension.firstRun || p.ascension.active || p.startup != noStartup {
+		t.Fatal("finished input did not resume mandatory first Ascension", a, ok)
 	}
 }
 

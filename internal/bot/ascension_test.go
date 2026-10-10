@@ -7,8 +7,6 @@ import (
 	"image/color"
 	"image/draw"
 	"math"
-	"os"
-	"os/exec"
 	"testing"
 	"time"
 
@@ -18,13 +16,8 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-func TestAscensionRealControlsAndReward(t *testing.T) {
-	if _, err := exec.LookPath("tesseract"); err != nil {
-		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
-			t.Fatal(err)
-		}
-		t.Skip("Tesseract is not installed")
-	}
+func TestAscensionRealControlsWithoutRewardOCR(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
 	modal := loadTestImage(t, "../../testdata/ascension-confirm.png")
 	for _, width := range []int{2560, 1280} {
 		var screen image.Image = modal
@@ -38,22 +31,36 @@ func TestAscensionRealControlsAndReward(t *testing.T) {
 			t.Fatalf("width%d context=%+v err=%v", width, c, err)
 		}
 		out, err := readAscensionObservation(context.Background(), gameFrame{image: screen, context: c})
-		if err != nil || !out.confirm || !out.no || math.Abs(out.souls-(65+math.Log10(1.588))) > .001 {
-			t.Fatalf("width%d reward=%+v err=%v", width, out, err)
+		if err != nil || !out.confirm || !out.no {
+			t.Fatalf("width%d controls=%+v err=%v", width, out, err)
 		}
 		yes, found, err := ascensionControl(screen, 2)
 		if err != nil || !found || yes.Y >= screen.Bounds().Dy()*75/100 {
 			t.Fatal("Yes must be above the paid Quick Ascension control")
 		}
-		covered := image.NewRGBA(screen.Bounds())
-		draw.Draw(covered, covered.Bounds(), screen, screen.Bounds().Min, draw.Src)
-		draw.Draw(covered, vision.Rect(screen, ascensionRewardRegion), image.NewUniform(color.Black), image.Point{}, draw.Src)
-		if _, err := readAscensionObservation(context.Background(), gameFrame{image: covered, context: c}); err == nil {
-			t.Fatal("covered reward accepted")
-		}
 		a := gameAction{kind: handleAscension, frame: gameFrame{image: screen, context: c}, ascension: confirmAscension, point: yes}
-		if ascensionActionStable(a, gameFrame{image: covered, context: c}) {
-			t.Fatal("changed reward retained a confirmation")
+		for _, fill := range []color.Color{color.Black, color.RGBA{245, 230, 0, 255}} {
+			covered := image.NewRGBA(screen.Bounds())
+			draw.Draw(covered, covered.Bounds(), screen, screen.Bounds().Min, draw.Src)
+			draw.Draw(covered, vision.Rect(screen, image.Rect(675, 307, 887, 329)), image.NewUniform(fill), image.Point{}, draw.Src)
+			out, err := readAscensionObservation(context.Background(), gameFrame{image: covered, context: c})
+			if err != nil || !out.confirm || !out.no {
+				t.Fatalf("unreadable reward hid native controls: %+v %v", out, err)
+			}
+			if !ascensionActionStable(a, gameFrame{image: covered, context: c}) {
+				t.Fatal("changed reward revoked an owned native confirmation")
+			}
+		}
+		for _, control := range []image.Rectangle{image.Rect(485, 468, 625, 530), image.Rect(655, 468, 796, 530)} {
+			covered := image.NewRGBA(screen.Bounds())
+			draw.Draw(covered, covered.Bounds(), screen, screen.Bounds().Min, draw.Src)
+			draw.Draw(covered, vision.Rect(screen, control), image.NewUniform(color.Black), image.Point{}, draw.Src)
+			if _, err := readAscensionObservation(context.Background(), gameFrame{image: covered, context: c}); err == nil {
+				t.Fatal("missing native control accepted")
+			}
+			if ascensionActionStable(a, gameFrame{image: covered, context: c}) {
+				t.Fatal("missing native control retained a confirmation")
+			}
 		}
 	}
 	for _, path := range []string{"../../testdata/hero-skogur-hire.png", "../../testdata/ascension-ancients.png"} {
@@ -124,7 +131,7 @@ func TestAscensionTransactionOwnershipAndReset(t *testing.T) {
 	now := time.Now()
 	dialog := gameFrame{id: 2, at: now, context: gameContext{known: true, ascension: true}}
 	p := ascensionPlanner{}
-	out := ascensionObservation{frame: dialog, confirm: true, no: true, souls: 65}
+	out := ascensionObservation{frame: dialog, confirm: true, no: true}
 	p.observe(out, nil, now)
 	if p.active || p.step == confirmAscension {
 		t.Fatal("manual dialog acquired automatic confirmation")
@@ -132,7 +139,7 @@ func TestAscensionTransactionOwnershipAndReset(t *testing.T) {
 	p.sent(openAscension, 1, now)
 	p.observe(out, nil, now)
 	if p.step != confirmAscension {
-		t.Fatal("verified reward did not allow confirmation")
+		t.Fatal("verified native controls did not allow confirmation")
 	}
 	p.sent(confirmAscension, 2, now)
 	if p.observe(out, nil, now) || p.step != waitAscensionReset {
@@ -152,16 +159,17 @@ func TestAscensionTransactionOwnershipAndReset(t *testing.T) {
 	if !p.observe(out, nil, now) || p.active {
 		t.Fatal("confirmed reset did not finish transaction")
 	}
-	for _, failure := range []error{errors.New("OCR failed"), nil} {
-		p.sent(openAscension, 1, now)
-		out = ascensionObservation{frame: dialog, souls: math.Inf(-1)}
-		p.observe(out, failure, now)
-		if failure == nil && p.step != cancelAscension || failure != nil && (p.step != openAscension || !p.active || p.latest.frame.id != 0) {
-			t.Fatal("zero reward did not cancel or unreadable reward acquired input")
+	for _, controls := range []ascensionObservation{{frame: dialog, confirm: true}, {frame: dialog, no: true}, {frame: dialog}} {
+		for _, failure := range []error{nil, errors.New("native controls unavailable")} {
+			p.sent(openAscension, 1, now)
+			p.observe(controls, failure, now)
+			if p.step != openAscension || !p.active || failure != nil && p.latest.frame.id != 0 {
+				t.Fatal("unrecognized native controls acquired confirmation input")
+			}
 		}
 	}
 	p.interrupt()
-	p.observe(ascensionObservation{frame: dialog, souls: 65}, nil, now)
+	p.observe(ascensionObservation{frame: dialog, confirm: true, no: true}, nil, now)
 	if p.active {
 		t.Fatal("F8 lost ownership but automatic transaction resumed")
 	}
@@ -280,7 +288,8 @@ func TestAscensionStaleDecisionAndTimeout(t *testing.T) {
 	p.frame = gameFrame{id: 1, layout: 1, at: now, image: screen, context: c}
 	p.ascension = ascensionPlanner{highestZone: 14780, wallZone: 14780, lastProgress: now.Add(-2 * time.Minute), lastObservation: now}
 	p.state[heroAnalysis] = observation{frame: p.frame, hero: heroObservation{found: true}}
-	p.ascension.latest = ascensionObservation{frame: p.frame, economy: true, bank: 60, souls: 65}
+	p.save.result.ascension = &ancientcalc.AscensionState{PendingHeroSouls: "1e65", HeroSouls: "1e60", SoulCapital: "1e62", CapitalKnown: true}
+	p.save.wallZone = p.ascension.wallZone
 	p.state[progressionAnalysis] = observation{frame: p.frame, progression: progressionState{Known: true, Zone: 14779}}
 	p.state[fishAnalysis] = observation{frame: p.frame}
 	p.plan(now)
@@ -403,20 +412,33 @@ func TestAscensionCombatWallAndRewardPolicy(t *testing.T) {
 	frame := gameFrame{id: 2, at: now, image: screen, context: c}
 	for _, tc := range []struct {
 		name                  string
-		bank, capital, reward float64
+		bank, capital, reward string
 		eligible              bool
+		change                func(*gamePipeline)
 	}{
-		{"large gain", 60, 62, 65, true}, {"small gain", 60, 62, 60, false}, {"empty bank", math.Inf(-1), math.Inf(-1), 0, true}, {"zero reward", math.Inf(-1), math.Inf(-1), math.Inf(-1), false},
+		{"large gain", "1e60", "1e62", "1e65", true, nil},
+		{"small gain", "1e60", "1e62", "1e60", false, nil},
+		{"empty bank", "0", "0", "1", true, nil},
+		{"zero reward", "0", "0", "0", false, nil},
+		{"unknown capital", "1e60", "1e62", "1e65", false, func(p *gamePipeline) { p.save.result.ascension.CapitalKnown = false }},
+		{"dirty reward", "1e60", "1e62", "1e65", false, func(p *gamePipeline) { p.save.rewardDirty = true }},
+		{"different wall", "1e60", "1e62", "1e65", false, func(p *gamePipeline) { p.save.wallZone = 105 }},
+		{"missing save", "1e60", "1e62", "1e65", false, func(p *gamePipeline) { p.save.result.ascension = nil }},
+		{"failed save read", "1e60", "1e62", "1e65", false, func(p *gamePipeline) { p.save.result.ascensionErr = errors.New("unsupported save") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{ascension: true, ascensionStall: 3 * time.Minute, ascensionMinGain: .25, ascensionCapital: tc.capital, fishInterval: time.Second})
+			p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{ascension: true, ascensionStall: 3 * time.Minute, ascensionMinGain: .25, fishInterval: time.Second})
 			p.frame = frame
 			p.ascension = ascensionPlanner{highestZone: 110, wallZone: 110, fullCombatFailed: true, lastObservation: now, lastProgress: now}
-			p.ascension.latest = ascensionObservation{frame: frame, economy: true, bank: tc.bank, souls: tc.reward}
+			p.save.result.ascension = &ancientcalc.AscensionState{PendingHeroSouls: tc.reward, HeroSouls: tc.bank, SoulCapital: tc.capital, CapitalKnown: true}
+			p.save.wallZone = 110
 			p.state[fishAnalysis] = observation{frame: frame}
 			p.state[progressionAnalysis] = observation{frame: frame, progression: farm}
+			if tc.change != nil {
+				tc.change(p)
+			}
 			if p.ascensionReady(now) != tc.eligible {
-				t.Fatal("wrong reward decision")
+				t.Fatal("wrong save reward decision")
 			}
 			if tc.eligible {
 				p.plan(now)
@@ -430,9 +452,9 @@ func TestAscensionCombatWallAndRewardPolicy(t *testing.T) {
 				p.barriers[progressionAnalysis] = 0
 				p.ascension.sent(openAscension, frame.id, now)
 				dialog := gameFrame{id: 3, at: now, context: gameContext{known: true, ascension: true}}
-				p.ascension.observe(ascensionObservation{frame: dialog, souls: math.Inf(-1)}, nil, now)
-				if p.ascension.step != cancelAscension {
-					t.Fatal("lower dialog reward still confirmed")
+				p.ascension.observe(ascensionObservation{frame: dialog, confirm: true, no: true}, nil, now)
+				if p.ascension.step != confirmAscension {
+					t.Fatal("save-approved dialog did not confirm native controls")
 				}
 			}
 		})
@@ -499,30 +521,20 @@ func TestCombatRunResetClearsSkills(t *testing.T) {
 	}
 }
 
-func TestAscensionHUDRealBudget(t *testing.T) {
-	if _, err := exec.LookPath("tesseract"); err != nil {
-		if os.Getenv("REQUIRE_OCR_TESTS") == "1" {
-			t.Fatal(err)
-		}
-		t.Skip("Tesseract not installed")
-	}
-	original := loadTestImage(t, "../../testdata/ascension-ancients.png")
+func TestAscensionDialogIgnoresHUDBudget(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	original := loadTestImage(t, "../../testdata/ascension-confirm.png")
 	for _, width := range []int{2560, 1280} {
 		screen := image.NewRGBA(image.Rect(0, 0, width, width*9/16))
 		xdraw.CatmullRom.Scale(screen, screen.Bounds(), original, original.Bounds(), draw.Src, nil)
-		frame := gameFrame{image: screen}
-		out, err := readAscensionEconomy(context.Background(), frame)
-		if err != nil || !out.economy || math.Abs(out.bank-(58+math.Log10(1.755))) > .001 || math.Abs(out.souls-(65+math.Log10(1.719))) > .001 {
-			t.Fatalf("%d HUD=%+v err=%v", width, out, err)
+		draw.Draw(screen, vision.Rect(screen, image.Rect(405, 172, 600, 218)), image.NewUniform(color.Black), image.Point{}, draw.Src)
+		c, err := recognizedGame(screen)
+		if err != nil || !c.ascension {
+			t.Fatalf("covered HUD changed native dialog context: %+v %v", c, err)
 		}
-		covered := image.NewRGBA(screen.Bounds())
-		draw.Draw(covered, covered.Bounds(), screen, image.Point{}, draw.Src)
-		draw.Draw(covered, vision.Rect(screen, ascensionSoulRegions[1]), image.NewUniform(color.Black), image.Point{}, draw.Src)
-		if _, err := readAscensionEconomy(context.Background(), gameFrame{image: covered}); err == nil {
-			t.Fatal("covered reward accepted")
-		}
-		if ascensionBudgetStable(screen, covered) {
-			t.Fatal("changed budget accepted")
+		out, err := readAscensionObservation(context.Background(), gameFrame{image: screen, context: c})
+		if err != nil || !out.confirm || !out.no {
+			t.Fatalf("%d covered HUD controls=%+v err=%v", width, out, err)
 		}
 	}
 }
@@ -578,13 +590,8 @@ func TestAscensionCapitalAndPipelineRecovery(t *testing.T) {
 	if err := p.capture(context.Background(), now.Add(2*time.Second), jobs); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case job := <-jobs[ascensionAnalysis]:
-		if !job.economy || job.frame.id != p.frame.id {
-			t.Fatal("budget did not reuse the shared capture")
-		}
-	default:
-		t.Fatal("wall budget not scheduled")
+	if len(jobs[ascensionAnalysis]) != 0 {
+		t.Fatal("ordinary wall scheduled obsolete soul OCR")
 	}
 	// Repeated successful purchases/skill casts may require fresh damage, but
 	// cannot indefinitely push the wall decision ten seconds into the future.

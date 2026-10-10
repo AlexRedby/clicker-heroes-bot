@@ -74,6 +74,8 @@ type exportJob struct {
 	generation              uint64
 }
 type exportResult struct {
+	ascension           *ancientcalc.AscensionState
+	ascensionErr        error
 	at                  time.Time
 	transcension        *transcension.Snapshot
 	transcensionErr     error
@@ -98,6 +100,7 @@ func (p *gamePipeline) reportRelics(preview *ancientcalc.RelicPreview, err error
 }
 
 type saveExporter struct {
+	reason                     string
 	requested, active, waiting bool
 	relicsOnly                 bool
 	prestigeOnly               bool
@@ -118,13 +121,15 @@ func (e *saveExporter) interrupt() {
 		e.cancel()
 		e.cancel = nil
 	}
+	e.reason = ""
 	e.active, e.waiting = false, false
 	e.before = nil
 	e.lastFrame, e.jobFrame = 0, 0
 }
 func (e *saveExporter) suspend() {
-	step, window, before := e.step, e.window, e.before
+	step, window, before, reason := e.step, e.window, e.before, e.reason
 	e.interrupt()
+	e.reason = reason
 	if step >= exportRestoreGame && step < exportReadFile && before != nil {
 		e.step, e.window, e.before = exportCloseMenu, window, before
 	} else {
@@ -183,6 +188,7 @@ func (p *gamePipeline) planExport(now time.Time) bool {
 			e.active, e.step, e.window = true, exportOpenMenu, p.frame.context.window
 		}
 		e.deadline = now.Add(20 * time.Second)
+		fmt.Printf("save export: requested for %s\n", p.exportReason())
 		p.queue = make(map[actionKind]gameAction)
 		if e.relicsOnly && p.relic.active {
 			fmt.Println("save export: checking relic equipment")
@@ -277,6 +283,11 @@ func readExport(job exportJob) (exportResult, error) {
 			return exportResult{}, fmt.Errorf("waiting for new or changed clickerHeroSave*.txt in %q: %w", job.options.dir, err)
 		}
 		result := exportResult{at: time.Now()}
+		facts, err := ancientcalc.ReadAscensionState(job.ctx, data)
+		result.ascensionErr = err
+		if err == nil {
+			result.ascension = &facts
+		}
 		prestige := job.prestige || job.prestigeOnly || job.restoreAllocation
 		if prestige {
 			value, err := transcension.ReadSnapshot(job.ctx, data, time.Now().UTC(), job.generation)
@@ -344,14 +355,14 @@ func readExport(job exportJob) (exportResult, error) {
 		}
 		if result.plan != nil {
 			result.gilds = result.plan.Gilds
-		} else if !job.goalsOnly && !job.prestigeOnly {
+		} else {
 			value, err := ancientcalc.CalculateGilds(job.ctx, data, job.options.reserve)
 			result.gildErr = err
 			if err == nil {
 				result.gilds = &value
 			}
 		}
-		if !job.goalsOnly {
+		{
 			preview, err := ancientcalc.PreviewRelics(job.ctx, data)
 			if err == nil {
 				result.relics = &preview

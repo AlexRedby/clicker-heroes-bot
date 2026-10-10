@@ -90,9 +90,13 @@ func (p *gamePipeline) startRelics(now time.Time) {
 	r := &p.relic
 	*r = relicPlanner{active: true, step: relicAcquire, deadline: now.Add(90 * time.Second), window: p.frame.context.window}
 	p.ascension.relicsChecked = false
-	p.export.requested, p.export.relicsOnly = true, true
 	p.queue = make(map[actionKind]gameAction)
 	fmt.Println("relics: checking equipment for Active play")
+	if p.reuseRelicSave(now) {
+		return
+	}
+	p.export.requested, p.export.relicsOnly = true, true
+	p.export.reason = "changed relic inventory or Ascension preflight"
 }
 
 // Unknown mapping defers destruction, but does not repeatedly pause ordinary play.
@@ -239,6 +243,7 @@ func (r *relicPlanner) observe(out relicObservation, err error) error {
 func (p *gamePipeline) finishRelics(now time.Time, verified bool) {
 	r := &p.relic
 	changed, failed := r.changed, r.failed
+	p.save.relicAlertHandled = verified && !failed
 	*r = relicPlanner{nextCheck: now.Add(time.Minute)}
 	p.ascension.invalidate()
 	p.ascension.relicsChecked = verified && !failed

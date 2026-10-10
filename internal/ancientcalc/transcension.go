@@ -225,15 +225,10 @@ func PreviewTranscension(ctx context.Context, exported []byte) (TranscensionPrev
 		}
 		capital.Add(capital, spent)
 	}
-	primal, err := exactPrestigeNumber(save.PrimalSouls, "pending primal Hero Souls")
+	primal, err := ascensionReward(save)
 	if err != nil {
 		return p, err
 	}
-	heroLevels, err := prestigeInteger(save.TotalHeroLevels, "total hero levels")
-	if err != nil {
-		return p, err
-	}
-	primal.Add(primal, new(big.Rat).SetInt64(int64(heroLevels/2000)))
 	base := new(big.Rat).Add(sacrificed, capital)
 	without := max(p.AncientSoulsTotal, soulsToAS(base))
 	projectedTotal := max(p.AncientSoulsTotal, soulsToAS(new(big.Rat).Add(base, primal)))

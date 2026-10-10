@@ -17,12 +17,12 @@ func TestPipelineRelicJunkSalvageAndResumeAscension(t *testing.T) {
 			if f.context.relicJunk {
 				return readAscensionObservation(ctx, f)
 			}
-			return ascensionObservation{frame: f, zone: 549, souls: 20, confirm: f.context.ascension, no: f.context.ascension}, nil
+			return ascensionObservation{frame: f, zone: 549, confirm: f.context.ascension, no: f.context.ascension}, nil
 		},
 	}, pipelineOptions{ascension: true, fishInterval: time.Hour})
 	now := time.Now()
 	p.frame.context = gameContext{bounds: current.Bounds(), window: "game"}
-	p.ascension = ascensionPlanner{active: true, step: openAscension, minimumReward: 10, deadline: now.Add(20 * time.Second)}
+	p.ascension = ascensionPlanner{active: true, step: openAscension, deadline: now.Add(20 * time.Second)}
 	point := image.Pt(2000, 300)
 	p.fishTarget = &point
 	jobs := mercenaryRecoveryJobs()

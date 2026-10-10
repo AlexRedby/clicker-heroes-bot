@@ -278,7 +278,7 @@ func TestReadOnlyRelicExportWaitsForCompleteSaveAndSkipsAncients(t *testing.T) {
 	}
 }
 
-func TestRelicCheckPrecedesAscensionAndRequiresFreshReward(t *testing.T) {
+func TestRelicCheckPrecedesAscensionAndRequiresFreshProgress(t *testing.T) {
 	now := time.Now()
 	screen := loadTestImage(t, "../../testdata/hero-skogur-hire.png")
 	c, err := recognizedGame(screen)
@@ -293,7 +293,6 @@ func TestRelicCheckPrecedesAscensionAndRequiresFreshReward(t *testing.T) {
 	oldPlan := &ancientPlan{}
 	p.ancient = ancientPlanner{plan: oldPlan, finished: true}
 	p.ascension = ascensionPlanner{highestZone: 110, wallZone: 110, fullCombatFailed: true, lastObservation: now, lastProgress: now}
-	p.ascension.latest = ascensionObservation{frame: frame, economy: true, bank: 60, souls: 65}
 	p.state[fishAnalysis] = observation{frame: frame}
 	p.state[progressionAnalysis] = observation{frame: frame}
 	p.plan(now)
@@ -306,24 +305,24 @@ func TestRelicCheckPrecedesAscensionAndRequiresFreshReward(t *testing.T) {
 	p.frame.id++
 	p.export.step, p.export.jobFrame = exportReadFile, p.frame.id
 	preview := &ancientcalc.RelicPreview{Readiness: "unknown", Reason: "snapshot only"}
-	if err := p.accept(context.Background(), observation{kind: exportAnalysis, frame: p.frame, export: exportResult{relics: preview}}, now); err != nil {
+	facts := &ancientcalc.AscensionState{PendingHeroSouls: "1e65", HeroSouls: "1e60", SoulCapital: "1e62", CapitalKnown: true}
+	if err := p.accept(context.Background(), observation{kind: exportAnalysis, frame: p.frame, export: exportResult{relics: preview, ascension: facts}}, now); err != nil {
 		t.Fatal(err)
 	}
 	if p.controls.isPaused() || p.export.requested || !p.ascension.relicsChecked || p.ancient.plan != oldPlan || !p.ancient.finished || p.options.ascensionCapital != 62 {
 		t.Fatal("read-only export changed Ancient spending or failed to finish")
 	}
-	if p.ascension.latest.frame.id != 0 || p.state[progressionAnalysis].frame.id != 0 || len(p.queue) != 0 || p.ascensionReady(now) {
-		t.Fatal("pre-export combat/reward evidence survived")
+	if p.ascension.latest.frame.id != 0 || p.state[progressionAnalysis].frame.id != 0 || len(p.queue) != 0 || p.ascensionReady(now) || p.save.result.ascension != facts || !p.save.ascensionCurrent(110) {
+		t.Fatal("pre-export combat survived or fresh save facts were lost")
 	}
-	// Fresh combat/fish/reward observations allow the original reset policy,
+	// Fresh combat/fish observations allow the reset with the accepted save,
 	// without re-exporting the same inventory on every planning iteration.
 	p.ascension.observeProgress(progressionState{Known: true, Zone: 109}, 110, now, true)
-	p.ascension.latest = ascensionObservation{frame: p.frame, economy: true, bank: 60, souls: 65}
 	p.state[fishAnalysis] = observation{frame: p.frame}
 	p.state[progressionAnalysis] = observation{frame: p.frame}
 	p.plan(now)
 	if p.export.requested || p.queue[handleAscension].kind != handleAscension {
-		t.Fatal("fresh reward did not resume Ascension without a second export")
+		t.Fatal("fresh combat did not resume Ascension with the accepted save")
 	}
 	p.controls.toggle()
 	p.reset(p.controls.snapshot())

@@ -138,7 +138,11 @@ func TestProgressionCycleResumesAllWorkers(t *testing.T) {
 	// A subsequent observed combat wall can still schedule a reset assessment.
 	p.ascension = ascensionPlanner{highestZone: 5, wallZone: 5, fullCombatFailed: true, lastObservation: now.Add(time.Second), lastProgress: now}
 	capture()
-	if job := take(ascensionAnalysis); !job.economy {
-		t.Fatal("combat wall did not schedule an Ascension reward read")
+	if len(jobs[ascensionAnalysis]) != 0 {
+		t.Fatal("combat wall scheduled obsolete soul OCR")
+	}
+	p.planAscension(now)
+	if !p.export.requested || !p.export.relicsOnly {
+		t.Fatal("combat wall did not request a fresh Ascension save")
 	}
 }

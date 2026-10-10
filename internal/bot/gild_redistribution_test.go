@@ -163,7 +163,7 @@ func TestGildRedistributionBoundsRetriesAndFailedSearch(t *testing.T) {
 }
 
 func TestGildRedistributionStaleAndRevokedPreparationOnlyRefresh(t *testing.T) {
-	for _, change := range []string{"expired", "generation", "window", "bounds", "interrupt"} {
+	for _, change := range []string{"generation", "window", "bounds", "interrupt"} {
 		t.Run(change, func(t *testing.T) {
 			now := time.Now()
 			source := gildMoveFrame(t, now, 1, 1, false)
@@ -173,8 +173,6 @@ func TestGildRedistributionStaleAndRevokedPreparationOnlyRefresh(t *testing.T) {
 			}
 			frame := gildMoveFrame(t, now.Add(time.Second), 2, 2, false)
 			switch change {
-			case "expired":
-				frame.at = now.Add(31 * time.Second)
 			case "generation":
 				frame.generation++
 			case "window":
@@ -193,7 +191,7 @@ func TestGildRedistributionStaleAndRevokedPreparationOnlyRefresh(t *testing.T) {
 	}
 }
 
-func TestGildRedistributionMissingControlsAndRepeatedExpiryReleaseOwnership(t *testing.T) {
+func TestGildRedistributionMissingControlsReleaseOwnership(t *testing.T) {
 	now := time.Now()
 	source := gildMoveFrame(t, now, 1, 1, false)
 	plan := gildMovePlan()
@@ -220,25 +218,6 @@ func TestGildRedistributionMissingControlsAndRepeatedExpiryReleaseOwnership(t *t
 		if g.active {
 			t.Fatal("missing controls retained modal ownership")
 		}
-	}
-	var g gildRedistribution
-	for i := 0; i < 2; i++ {
-		if err := g.install(plan, source); err != nil {
-			t.Fatal(err)
-		}
-		frame := gildMoveFrame(t, source.at.Add(31*time.Second), uint64(2+i), 2, false)
-		g.observe(gildRedistributionObservation{frame: frame})
-		cmd, ok := g.next(frame.at)
-		if i == 0 {
-			if !ok || cmd.action != gildRefreshSave {
-				t.Fatal(cmd, ok)
-			}
-			g.submitted(cmd, frame.at, nil)
-		} else if ok || g.active || !g.blocked {
-			t.Fatal("repeated expiry restarted preparation", cmd, ok, g)
-		}
-		source.id = frame.id + 1
-		source.at = frame.at.Add(time.Second)
 	}
 }
 
@@ -336,5 +315,20 @@ func TestGildRedistributionReleasesQOnClickErrorAndCancellation(t *testing.T) {
 		if err == nil || strings.Join(keys, ",") != "q down,q up" {
 			t.Fatal("held key stranded", keys, err)
 		}
+	}
+}
+
+func TestGildRedistributionNavigationDoesNotExpireSaveFacts(t *testing.T) {
+	now := time.Now()
+	source := gildMoveFrame(t, now, 1, 1, false)
+	var g gildRedistribution
+	if err := g.install(gildMovePlan(), source); err != nil {
+		t.Fatal(err)
+	}
+	frame := gildMoveFrame(t, now.Add(2*time.Minute), 2, 2, false)
+	g.observe(gildRedistributionObservation{frame: frame, entry: image.Pt(116, 434)})
+	cmd, ok := g.next(frame.at)
+	if !ok || cmd.action != gildOpenRoster {
+		t.Fatal("unchanged navigation forced another export", cmd, ok)
 	}
 }

@@ -6,15 +6,11 @@ import (
 	"image"
 	"math"
 	"math/big"
-	"regexp"
-	"strings"
 	"time"
 
 	"clicker-heroes-bot/internal/ancientcalc"
 	"clicker-heroes-bot/internal/vision"
 )
-
-var ascensionRewardLabel = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?(?:[eE][0-9]+)?)\s+Hero Souls?$`)
 
 const (
 	ascensionSpiral = iota
@@ -22,11 +18,6 @@ const (
 	ascensionYes
 	ascensionNo
 )
-
-var ascensionPendingLabel = regexp.MustCompile(`^Ascend for \+([0-9]+(?:\.[0-9]+)?(?:[eE][0-9]+)?)(?:\s+Hero Souls?)?$`)
-var ascensionSoulRegions = [...]image.Rectangle{image.Rect(410, 172, 591, 199), image.Rect(405, 198, 600, 218)}
-
-var ascensionRewardRegion = image.Rect(675, 307, 887, 329)
 
 func ascensionControl(screen image.Image, control int) (image.Point, bool, error) {
 	if screen == nil || screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 {
@@ -75,10 +66,7 @@ type ascensionObservation struct {
 	frame       gameFrame
 	confirm, no bool
 	junk        bool
-	souls       float64
 	zone        int
-	economy     bool
-	bank        float64
 }
 
 func readAscensionObservation(ctx context.Context, frame gameFrame) (ascensionObservation, error) {
@@ -98,19 +86,7 @@ func readAscensionObservation(ctx context.Context, frame gameFrame) (ascensionOb
 		if !out.confirm || !out.no {
 			return out, fmt.Errorf("Ascension confirmation controls not recognized")
 		}
-		raw, err := readGameText(ctx, frame.image, vision.Rect(frame.image, ascensionRewardRegion), max(1, 2048/frame.image.Bounds().Dx()), 7, 0, "0123456789.eEabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ")
-		if err != nil {
-			return out, fmt.Errorf("Ascension reward: %w", err)
-		}
-		match := ascensionRewardLabel.FindStringSubmatch(strings.TrimSpace(raw))
-		if match == nil {
-			return out, fmt.Errorf("unreadable Ascension reward %q", strings.TrimSpace(raw))
-		}
-		value, ok := parseGameNumber(match[1])
-		if !ok {
-			return out, fmt.Errorf("%w in Ascension reward %q", errUnreadableGameNumber, match[1])
-		}
-		out.souls = value
+
 		return out, nil
 	}
 	// The initial HUD can lack an unlocked progression control. Verify the hero
@@ -119,35 +95,6 @@ func readAscensionObservation(ctx context.Context, frame gameFrame) (ascensionOb
 		var err error
 		out.zone, err = readProgressionZone(ctx, frame.image)
 		return out, err
-	}
-	return out, nil
-}
-
-// Read the two fixed HUD lines only when a reset candidate exists.
-func readAscensionEconomy(ctx context.Context, frame gameFrame) (ascensionObservation, error) {
-	out := ascensionObservation{frame: frame, economy: true}
-	for i, region := range ascensionSoulRegions {
-		raw, err := readGameText(ctx, frame.image, vision.Rect(frame.image, region), max(1, 2560/frame.image.Bounds().Dx()), 7, 180, "0123456789.eEabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ +")
-		if err != nil {
-			return out, err
-		}
-		label := ascensionRewardLabel
-		if i == 1 {
-			label = ascensionPendingLabel
-		}
-		match := label.FindStringSubmatch(strings.TrimSpace(raw))
-		if match == nil {
-			return out, fmt.Errorf("unreadable Ascension soul budget %q", strings.TrimSpace(raw))
-		}
-		value, ok := parseGameNumber(match[1])
-		if !ok {
-			return out, errUnreadableGameNumber
-		}
-		if i == 0 {
-			out.bank = value
-		} else {
-			out.souls = value
-		}
 	}
 	return out, nil
 }
@@ -192,7 +139,6 @@ type ascensionPlanner struct {
 	firstRun                       bool // Run identity from an accepted fresh save, not input permission.
 	fullCombatFailed               bool
 	relicsChecked                  bool // Advisory save check, not permission to move or salvage items.
-	minimumReward                  float64
 	step                           ascensionStep
 	lastInputFrame, jobFrame       uint64
 	nextRead, nextAction, deadline time.Time
@@ -215,6 +161,11 @@ func (p *ascensionPlanner) resetAttempt() {
 
 func (p *ascensionPlanner) observeSave(out exportResult) {
 	p.firstRun = false
+	if out.ascension != nil && out.ascensionErr == nil {
+		s := out.ascension
+		p.firstRun = s.SaveHash != "" && s.Transcendent && s.AscensionsThisTranscension == 0
+		return
+	}
 	if out.transcension != nil && out.transcensionErr == nil {
 		s := out.transcension.State
 		p.firstRun = s.SaveHash != "" && s.Transcendent && s.AscensionsThisTranscension == 0
@@ -342,14 +293,7 @@ func (p *ascensionPlanner) observe(out ascensionObservation, err error, now time
 			p.deadline = now.Add(20 * time.Second)
 			return false
 		}
-		if out.economy {
-			p.latest = out
-			if err != nil {
-				p.latest = ascensionObservation{}
-				p.nextRead = now.Add(30 * time.Second)
-				fmt.Printf("Ascension soul budget unreadable: %v; retrying in 30s\n", err)
-			}
-		}
+
 		return false
 	}
 	if out.frame.id <= p.lastInputFrame {
@@ -375,7 +319,7 @@ func (p *ascensionPlanner) observe(out ascensionObservation, err error, now time
 			return true
 		}
 		if out.frame.context.ascension {
-			p.step = openAscension // Fall through to independent Hero Souls reward validation.
+			p.step = openAscension // Fall through to the owned Ascension confirmation controls.
 		} else if out.frame.context.heroes && !p.junkReopened {
 			p.step, p.junkReopened = openAscension, true
 			return false
@@ -385,15 +329,11 @@ func (p *ascensionPlanner) observe(out ascensionObservation, err error, now time
 		if err != nil {
 			p.latest = ascensionObservation{}
 			p.nextRead = now.Add(time.Second)
-			fmt.Printf("Ascension reward unreadable: %v; retrying on a fresh dialog frame\n", err)
+			fmt.Printf("Ascension controls unreadable: %v; retrying on a fresh dialog frame\n", err)
 			return false
 		}
-		if math.IsInf(out.souls, -1) || out.souls < p.minimumReward {
-			fmt.Println("Ascension skipped: Hero Souls reward below the minimum useful gain")
-			p.step = cancelAscension
-		} else {
+		if out.confirm && out.no {
 			p.step = confirmAscension
-			fmt.Printf("Ascension reward verified: %.3fe%.0f Hero Souls\n", math.Pow(10, out.souls-math.Floor(out.souls)), math.Floor(out.souls))
 		}
 	}
 	if p.step == waitAscensionReset && err == nil && !out.frame.context.ascension && out.zone == 1 {
@@ -461,39 +401,9 @@ func ascensionActionStable(a gameAction, current gameFrame) bool {
 	if err != nil || !found || point != a.point {
 		return false
 	}
-	if a.ascension != confirmAscension {
-		return true
-	}
-	// The pending reward must still be visible, unchanged since its single OCR read.
-	r := vision.Rect(current.image, ascensionRewardRegion)
-	for y := r.Min.Y; y < r.Max.Y; y++ {
-		for x := r.Min.X; x < r.Max.X; x++ {
-			yellow := func(screen image.Image) bool {
-				r, g, b := rgb(screen.At(x, y))
-				return min(r, g) > 170 && r-b > 40 && g-b > 25
-			}
-			if yellow(a.frame.image) != yellow(current.image) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func ascensionBudgetStable(before, after image.Image) bool {
-	if before == nil || after == nil || before.Bounds() != after.Bounds() {
-		return false
-	}
-	for _, region := range ascensionSoulRegions {
-		r := vision.Rect(after, region)
-		for y := r.Min.Y; y < r.Max.Y; y++ {
-			for x := r.Min.X; x < r.Max.X; x++ {
-				bright := func(im image.Image) bool { r, g, b := rgb(im.At(x, y)); return min(r, min(g, b)) > 180 }
-				if bright(before) != bright(after) {
-					return false
-				}
-			}
-		}
+	if a.ascension == confirmAscension {
+		_, no, err := ascensionControl(current.image, ascensionNo)
+		return no && err == nil
 	}
 	return true
 }
