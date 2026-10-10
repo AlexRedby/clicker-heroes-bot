@@ -1,3 +1,7 @@
+## First Ascension native acceptance
+
+- After Transcension, confirm that passing boss 130 interrupts incomplete hero setup and immediately opens/finishes the first Ascension with a positive reward. If its control is unavailable, confirm that the focused Amenhotep HIRE/MAX path reaches level 150 and exposes it; exact-name/level calibration currently uses native neighboring-name fixtures plus a synthetic target, not an installed-game Amenhotep frame.
+
 ## Priority milestone: autonomous Transcension and Outsiders
 
 - Validate the opt-in reset/FEED path in the installed game: a fresh positive reward at a combat wall, unchecked respec, exact Ancient Soul accounting, fixed-quantity sequential purchases, F8/restart reconciliation and return to the zero-soul hero/bootstrap loop. Fixture checks establish software behavior only.

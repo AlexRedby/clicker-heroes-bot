@@ -83,6 +83,9 @@ type analysisJob struct {
 	sweep         startupSweep
 	upgrades      bool
 	modeOnly      bool
+	zoneOnly      bool
+	unlock        bool
+	unlockFromTop bool
 	ancientNames  bool
 	economy       bool
 	skills        [9]skillState
@@ -92,6 +95,8 @@ type analysisJob struct {
 	gildTarget    ancientcalc.GildHero
 }
 type observation struct {
+	unlock        bool
+	unlockHero    ascensionUnlockObservation
 	kind          analysisKind
 	startup       startupPhase
 	upgrades      bool
@@ -116,6 +121,7 @@ type observation struct {
 	err           error
 }
 type gameAction struct {
+	unlock        bool
 	kind          actionKind
 	frame         gameFrame
 	point, target image.Point
@@ -337,7 +343,7 @@ func (p *gamePipeline) scheduleMercenaryRead(now time.Time, jobs []chan analysis
 }
 
 func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analysisJob) observation {
-	out := observation{kind: kind, startup: job.startup, upgrades: job.upgrades, frame: job.frame}
+	out := observation{kind: kind, startup: job.startup, upgrades: job.upgrades, frame: job.frame, unlock: job.unlock}
 	start := time.Now()
 	switch kind {
 	case autoClickerAnalysis:
@@ -354,9 +360,14 @@ func (p *gamePipeline) analyze(ctx context.Context, kind analysisKind, job analy
 	case skillAnalysis:
 		out.skills, out.err = p.readers.skills(ctx, job.frame.image)
 	case progressionAnalysis:
-		out.progression, out.err = p.readers.progression(ctx, job.frame.image, job.skills, job.modeOnly)
+		out.progression, out.err = p.readers.progression(ctx, job.frame.image, job.skills, job.modeOnly || job.zoneOnly)
+		if out.err == nil && job.zoneOnly {
+			out.progression.Zone, out.err = readProgressionZone(ctx, job.frame.image)
+		}
 	case heroAnalysis:
-		if job.startup == startupUpgrades || job.upgrades {
+		if job.unlock {
+			out.unlockHero, out.err = readAscensionUnlockObservation(ctx, job.frame, p.readers.heroes, job.unlockFromTop)
+		} else if job.startup == startupUpgrades || job.upgrades {
 			out.hero = heroObservation{frame: job.frame, startup: true, x1: heroQuantitySelected(job.frame.image, 122)}
 			var height int
 			out.hero.thumb, height, out.hero.thumbFound = heroScrollbarThumb(job.frame.image)
@@ -836,13 +847,17 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			}
 			return nil
 		}
+		if p.options.ascension && p.ascension.firstRun && c.heroes && !p.ascension.active && !now.Before(p.nextProgression) {
+			replaceJob(jobs[progressionAnalysis], analysisJob{frame: p.frame, zoneOnly: true})
+			p.nextProgression = now.Add(time.Second)
+		}
 		if !p.relic.active && p.startup != noStartup && p.startup != startupSave {
 			if bootstrapHeroes(c) {
 				if p.startup != startupProgression && p.hero.due(now) && p.heroJobFrame == 0 && (p.hero.latest.frame.id == 0 || p.hero.pending != nil) {
 					p.heroJobFrame = p.frame.id
 					replaceJob(jobs[heroAnalysis], analysisJob{frame: p.frame, startup: p.startup, heroBefore: p.hero.before(), sweep: p.hero.sweep})
 				}
-				if p.options.progression && !now.Before(p.nextProgression) {
+				if p.options.progression && !(p.options.ascension && p.ascension.firstRun) && !now.Before(p.nextProgression) {
 					replaceJob(jobs[progressionAnalysis], analysisJob{frame: p.frame, modeOnly: true})
 					p.nextProgression = now.Add(300 * time.Millisecond)
 				}
@@ -870,7 +885,7 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			replaceJob(jobs[ancientAnalysis], analysisJob{frame: p.frame, modeOnly: p.ancient.pending != nil && p.ancient.pending.ancient.step == confirmAncientQuantity, ancientNames: p.ancient.selected < 0 && !p.ancient.needFullRead})
 			p.ancient.nextRead = now.Add(300 * time.Millisecond)
 		}
-		if c.ancientDialog || p.ancient.active || (p.ancient.plan != nil && !p.ancient.finished && !p.ancient.blocked) {
+		if c.ancientDialog || p.ancient.active || (p.ancient.plan != nil && !p.ancient.finished && !p.ancient.blocked && !p.firstAscensionRequired()) {
 			return nil
 		}
 		if c.ascension || p.ascension.active || !c.known || c.modal != noGildModal || p.gild.active {
@@ -880,6 +895,14 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 			p.outsiderJobFrame = p.frame.id
 			replaceJob(jobs[outsiderAnalysis], analysisJob{frame: p.frame, outsiderBase: p.outsiderBase})
 			p.nextOutsider = now.Add(5 * time.Second)
+		}
+		if p.firstAscensionRequired() && c.heroes && p.hero.pending == nil && p.heroJobFrame == 0 && !now.Before(p.ascension.nextUnlockRead) {
+			_, spiral, err := ascensionControl(p.frame.image, ascensionSpiral)
+			if err == nil && !spiral {
+				p.heroJobFrame = p.frame.id
+				replaceJob(jobs[heroAnalysis], analysisJob{frame: p.frame, unlock: true, unlockFromTop: p.ascension.unlock.fromTop})
+				p.ascension.nextUnlockRead = now.Add(5 * time.Second)
+			}
 		}
 		if p.options.ascension && c.heroes && p.ascensionCandidate(now) && p.ascension.jobFrame == 0 && !now.Before(p.ascension.nextRead) {
 			p.ascension.jobFrame = p.frame.id
@@ -898,11 +921,11 @@ func (p *gamePipeline) capture(ctx context.Context, now time.Time, jobs []chan a
 		if p.options.skills || p.options.progression {
 			replaceJob(jobs[skillAnalysis], analysisJob{frame: p.frame})
 		}
-		if p.options.heroes && c.heroes && p.hero.due(now) && p.heroJobFrame == 0 && (p.hero.latest.frame.id == 0 || p.hero.pending != nil) {
+		if p.options.heroes && c.heroes && (!p.firstAscensionRequired() || p.ascension.unlock.unavailable || p.ascension.unlock.ready || p.hero.pending != nil) && p.hero.due(now) && p.heroJobFrame == 0 && (p.hero.latest.frame.id == 0 || p.hero.pending != nil) {
 			p.heroJobFrame = p.frame.id
 			footerRetry := p.state[heroAnalysis].upgrades && p.state[heroAnalysis].hero.startupScroll.Y != 0 &&
 				p.hero.scrollFailures < 3 && now.Before(p.nextUpgrades)
-			upgrades := footerRetry || p.hero.pending != nil && p.hero.pending.action.hero.startup ||
+			upgrades := p.ascension.unlock.ready && p.firstAscensionRequired() || footerRetry || p.hero.pending != nil && p.hero.pending.action.hero.startup ||
 				p.hero.pending == nil && (!p.clickers.upgrades || !p.clickerFooterUntil.IsZero()) && !now.Before(p.nextUpgrades)
 			if upgrades && p.hero.pending == nil && !footerRetry {
 				p.nextUpgrades = now.Add(30 * time.Second)
@@ -1282,6 +1305,18 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		}
 		return nil
 	}
+	if out.kind == heroAnalysis && out.unlock {
+		if !p.firstAscensionRequired() || out.frame.context != p.frame.context {
+			return nil
+		}
+		if out.err != nil {
+			p.ascension.unlock.hero = heroObservation{}
+			fmt.Printf("Ascension unlock unreadable: %v; retrying in 5s\n", out.err)
+		} else {
+			p.ascension.unlock = out.unlockHero
+		}
+		return nil
+	}
 	if out.kind == heroAnalysis && out.startup != p.startup {
 		p.metrics.dropped++
 		return nil
@@ -1339,7 +1374,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 				fmt.Printf("saved skill failure screenshot: %s\n", path)
 			}
 		}
-		if p.options.progression && p.progression.pending == nil && !now.Before(p.nextProgression) && p.progressionJobs != nil {
+		if p.options.progression && !(p.options.ascension && p.ascension.firstRun) && p.progression.pending == nil && !now.Before(p.nextProgression) && p.progressionJobs != nil {
 			replaceJob(p.progressionJobs, analysisJob{frame: out.frame, skills: out.skills, modeOnly: p.progression.pending != nil})
 			delay := 2 * time.Second
 			if p.progression.pending != nil {
@@ -1392,7 +1427,7 @@ func (p *gamePipeline) applyObservation(ctx context.Context, out observation, no
 		}
 	case progressionAnalysis:
 		p.progression.observeFrame(out.progression, out.frame.id, now)
-		if p.options.ascension && p.startup == noStartup && out.frame.context.heroes {
+		if p.options.ascension && (p.startup == noStartup || p.ascension.firstRun) && out.frame.context.heroes {
 			p.ascension.observeProgress(out.progression, p.progression.wallZone, now, p.progression.wallFullCombat)
 		}
 		if !p.progression.wantAction {
@@ -1475,6 +1510,9 @@ func (p *gamePipeline) plan(now time.Time) {
 		} else {
 			p.planRelics(now)
 		}
+		return
+	}
+	if p.planFirstAscension(now) {
 		return
 	}
 	if p.startup != startupSave && (p.startup != startupUpgrades || !p.clickers.footerAttempted) {
@@ -1570,6 +1608,10 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 		if kind != collectFish && ((p.mercenary.pending != nil && p.frame.id <= p.mercenary.pending.action.frame.id) || (p.ascension.active && p.frame.id <= p.ascension.lastInputFrame) || p.ancient.pending != nil) {
 			continue
 		}
+		if action.unlock && !p.firstAscensionRequired() {
+			delete(p.queue, kind)
+			continue
+		}
 		if action.frame.layout != p.layout || action.frame.generation != p.generation || (!p.frame.context.known && !(kind == handleExport && action.export.step == exportRestoreGame)) || ((p.frame.context.modal != noGildModal || p.gild.active) && kind != collectGilds && kind != collectFish) {
 			delete(p.queue, kind)
 			continue
@@ -1614,7 +1656,7 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			p.relic.nextRead = now
 			continue
 		}
-		if (p.ancient.active || p.frame.context.ancientDialog || (p.startup == noStartup && !p.startupCheck && p.ancient.plan != nil && !p.ancient.finished && !p.ancient.blocked)) && kind != handleAncient && kind != collectFish && !(p.relic.active && (kind == handleRelic || kind == handleExport)) {
+		if (p.ancient.active || p.frame.context.ancientDialog || (p.startup == noStartup && !p.startupCheck && p.ancient.plan != nil && !p.ancient.finished && !p.ancient.blocked && !p.firstAscensionRequired())) && kind != handleAncient && kind != collectFish && !(p.relic.active && (kind == handleRelic || kind == handleExport)) {
 			delete(p.queue, kind)
 			continue
 		}
@@ -1703,7 +1745,9 @@ func (p *gamePipeline) nextAction(now time.Time) (gameAction, bool) {
 			}
 			stable := true
 			if kind == buyHero {
-				if action.hero.startup {
+				if action.unlock {
+					stable = p.firstAscensionRequired() && ascensionUnlockHeroStable(action.hero, p.frame)
+				} else if action.hero.startup {
 					stable = p.startup == startupHeroes && startupHeroStable(action.hero, p.frame)
 				} else {
 					stable = p.startup == noStartup && heroViewportStable(action.hero, p.frame) && heroRowNameMatches(action.frame.image, p.frame.image, action.point, action.point)
@@ -2071,6 +2115,14 @@ func (p *gamePipeline) actionCompleted(done actionResult, now time.Time) {
 		invalidate(heroAnalysis)
 
 	case buyHero, scrollHeroes, selectQuantity, parkPointer:
+		if a.unlock {
+			p.ascension.unlock.hero = heroObservation{}
+			p.ascension.nextUnlockRead = now.Add(500 * time.Millisecond)
+			p.heroJobFrame = 0
+			invalidate(heroAnalysis)
+			fmt.Printf("first Ascension: preparing Amenhotep at (%d, %d)\n", a.point.X, a.point.Y)
+			break
+		}
 		if a.kind == buyHero && !a.hero.startup && (!a.hero.owned || p.gildRefreshDue.IsZero() && p.gildMove.plan.Target.ID >= 28 && p.gildMove.plan.Target.ID <= 46 && p.gildMove.plan.Target.Level < 1000 && a.hero.level >= 1000) {
 			p.gildMove.active = false
 			p.gildRefreshDue = now.Add(30 * time.Second)

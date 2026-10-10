@@ -209,7 +209,7 @@ func (p *gamePipeline) planNavigation(now time.Time) (recovering bool) {
 	case c.outsiders && p.outsiderJobFrame != 0:
 		needed = false
 	default:
-		needed = (p.options.heroes || p.options.progression || p.startupCheck || p.startup != noStartup || p.ancient.blocked && c.ancients) && !p.ancient.active && !p.relic.active && !p.mercenary.active && !p.export.active && !(p.export.requested && !p.startupCheck && (p.startup == noStartup || p.startup == startupSave)) && !p.ascension.active && !(c.ancients && p.ancient.plan != nil && !p.ancient.finished && !p.ancient.blocked)
+		needed = (p.options.heroes || p.options.progression || p.startupCheck || p.startup != noStartup || p.ancient.blocked && c.ancients) && !p.ancient.active && !p.relic.active && !p.mercenary.active && !p.export.active && !(p.export.requested && !p.startupCheck && (p.startup == noStartup || p.startup == startupSave)) && !p.ascension.active && !(c.ancients && p.ancient.plan != nil && !p.ancient.finished && !p.ancient.blocked && !p.firstAscensionRequired())
 	}
 	if !needed {
 		n.message = ""

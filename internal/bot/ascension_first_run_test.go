@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"math"
 	"testing"
@@ -78,7 +79,9 @@ func TestAscensionFirstRunCandidate(t *testing.T) {
 		{"unreadable newest progression", func(p *gamePipeline) { p.ascension.invalidate() }, false},
 		{"retry backoff", func(p *gamePipeline) { p.ascension.nextCheck = now.Add(time.Minute) }, false},
 		{"active reset", func(p *gamePipeline) { p.ascension.active = true }, false},
-		{"startup", func(p *gamePipeline) { p.startupCheck = true }, false},
+		{"startup save not acquired", func(p *gamePipeline) { p.startupCheck = true }, false},
+		{"incomplete hero setup", func(p *gamePipeline) { p.startup = startupHeroes }, true},
+		{"incomplete upgrade footer", func(p *gamePipeline) { p.startup = startupUpgrades }, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := firstAscensionPipeline(now)
@@ -225,7 +228,11 @@ func TestAscensionFirstRunOwnedDialogRetriesThenConfirms(t *testing.T) {
 	p.ascension.relicsChecked = true
 	p.options.ascensionCapital = 99
 	p.ascension.latest = ascensionObservation{frame: p.frame, economy: true, bank: math.Inf(-1), souls: math.Log10(390700)}
-	p.planAscension(now)
+	p.startup = startupHeroes
+	p.plan(now)
+	if p.startup != noStartup {
+		t.Fatal("first reset waited for startup completion")
+	}
 	open, ok := p.nextAction(now)
 	if !ok || open.kind != handleAscension || open.ascension != openAscension {
 		t.Fatal("first Ascension did not open for positive reward", open, ok)
@@ -328,5 +335,116 @@ func TestAscensionUnreadableDialogRevokesQueuedConfirmationAndTimesOut(t *testin
 	p.planAscension(deadline.Add(time.Millisecond))
 	if a, ok := p.queue[navigateGame]; !ok || a.navigation != navigationAscension || p.ascension.active {
 		t.Fatal("persistent OCR failure did not cancel through bounded navigation", a, ok)
+	}
+}
+
+func TestFirstAscensionPreemptsIncompleteStartup(t *testing.T) {
+	for _, phase := range []startupPhase{startupHeroes, startupUpgrades, startupProgression} {
+		t.Run(fmt.Sprint(phase), func(t *testing.T) {
+			now := time.Now()
+			p := firstAscensionPipeline(now)
+			p.frame.image = loadTestImage(t, "../../testdata/hero-panel-max.png")
+			p.frame.context.bounds = p.frame.image.Bounds()
+			p.state[progressionAnalysis].frame = p.frame
+			p.startup = phase
+			p.ascension.relicsChecked = true
+			p.ascension.latest = ascensionObservation{frame: p.frame, economy: true, bank: math.Inf(-1), souls: 5}
+			p.progression.wantAction = true
+			p.ancient.plan = &ancientPlan{}
+			for _, kind := range []actionKind{buyHero, buyHeroUpgrades, scrollHeroes, castSkill, handleAncient} {
+				p.queue[kind] = gameAction{kind: kind, frame: p.frame}
+			}
+			p.plan(now)
+			if p.startup != noStartup || p.progression.wantAction {
+				t.Fatal("unrelated startup/progression work retained priority")
+			}
+			a, ok := p.nextAction(now)
+			if !ok || a.kind != handleAscension || a.ascension != openAscension || len(p.queue) != 0 {
+				t.Fatal("startup/Ancient queue prevented immediate Ascension", a, ok, p.queue)
+			}
+		})
+	}
+}
+
+func TestFirstAscensionObservesZoneDuringStartup(t *testing.T) {
+	now := time.Now()
+	p := firstAscensionPipeline(now)
+	p.controls.generation = p.generation
+	screen := loadTestImage(t, "../../testdata/hero-panel-max.png")
+	p.frame.image = screen
+	p.frame.context.bounds = screen.Bounds()
+	p.ascension.highestZone = 0
+	p.state[progressionAnalysis] = observation{}
+	p.startup = startupHeroes
+	p.options.progression = true
+	p.input.capture = func() (image.Image, error) { return screen, nil }
+	p.readers.context = func(image.Image) (gameContext, error) { return p.frame.context, nil }
+	p.readers.progression = func(_ context.Context, _ image.Image, _ [9]skillState, modeOnly bool) (progressionState, error) {
+		if !modeOnly {
+			t.Fatal("first run requested unrelated damage OCR")
+		}
+		return progressionState{Known: true, Enabled: true}, nil
+	}
+	jobs := mercenaryRecoveryJobs()
+	if err := p.capture(context.Background(), now, jobs); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case job := <-jobs[progressionAnalysis]:
+		if !job.zoneOnly || job.frame.id != p.frame.id {
+			t.Fatal("startup lost the shared-frame zone read")
+		}
+		out := p.analyze(context.Background(), progressionAnalysis, job)
+		if out.err != nil || out.progression.Zone <= 130 {
+			t.Fatal("native zone was not readable during startup", out.progression, out.err)
+		}
+		if err := p.accept(context.Background(), out, now); err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatal("startup skipped first Ascension zone observation")
+	}
+	if !p.firstAscensionRequired() || !p.ascensionCandidate(now) {
+		t.Fatal("incomplete hero sweep still excludes first Ascension")
+	}
+}
+
+func TestFirstAscensionWaitsForSubmittedInputAndKeepsEarning(t *testing.T) {
+	now := time.Now()
+	p := firstAscensionPipeline(now)
+	p.frame.image = loadTestImage(t, "../../testdata/hero-panel-max.png")
+	p.frame.context.bounds = p.frame.image.Bounds()
+	p.state[progressionAnalysis].frame = p.frame
+	p.options.progression = true
+	p.startup = startupHeroes
+	p.hero.pending = &heroAttempt{}
+	p.queue[buyHero] = gameAction{kind: buyHero, frame: p.frame}
+	p.plan(now)
+	if p.startup != startupHeroes || len(p.queue) != 0 {
+		t.Fatal("first Ascension replayed unrelated input while a submitted input is pending")
+	}
+	p.hero.pending = nil
+	p.ascension.latest = ascensionObservation{frame: p.frame, economy: true, bank: math.Inf(-1), souls: math.Inf(-1)}
+	p.plan(now)
+	if _, ok := p.queue[clickMonster]; !ok || !p.ascension.firstRun || p.ascension.active || p.startup != noStartup {
+		t.Fatal("unavailable reward froze gold earning or lost the first Ascension goal")
+	}
+}
+
+func TestFirstAscensionUnlockKeepsNeededFooter(t *testing.T) {
+	now := time.Now()
+	p := firstAscensionPipeline(now)
+	p.frame.image = loadTestImage(t, "../../testdata/hero-post-transcension-start.png")
+	p.frame.context.bounds = p.frame.image.Bounds()
+	p.state[progressionAnalysis].frame = p.frame
+	p.ascension.unlock.ready = true
+	p.queue[buyHeroUpgrades] = gameAction{kind: buyHeroUpgrades, frame: p.frame}
+	p.queue[castSkill] = gameAction{kind: castSkill, frame: p.frame}
+	p.plan(now)
+	if _, ok := p.queue[buyHeroUpgrades]; !ok {
+		t.Fatal("first Ascension discarded a needed prerequisite upgrade purchase")
+	}
+	if _, ok := p.queue[castSkill]; ok {
+		t.Fatal("unrelated skill input kept priority over the unlock")
 	}
 }

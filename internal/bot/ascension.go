@@ -183,6 +183,8 @@ func ascensionSoulCapital(plan *ancientPlan) (float64, error) {
 }
 
 type ascensionPlanner struct {
+	unlock                         ascensionUnlockObservation
+	nextUnlockRead                 time.Time
 	highestZone, wallZone          int
 	lastProgress, lastObservation  time.Time
 	nextCheck                      time.Time
@@ -270,13 +272,61 @@ func (p *ascensionPlanner) due(now time.Time, stall time.Duration) bool {
 		(p.fullCombatFailed || !now.Before(p.lastProgress.Add(stall))) && !now.Before(p.nextCheck)
 }
 
+func (p *gamePipeline) firstAscensionRequired() bool {
+	return p.options.ascension && p.ascension.firstRun && p.ascension.highestZone > 130
+}
+
+func (p *gamePipeline) planFirstAscension(now time.Time) bool {
+	if !p.firstAscensionRequired() || p.ancient.active || p.export.requested || p.mercenary.active || p.mercenary.pending != nil {
+		return false
+	}
+	_, spiral, err := ascensionControl(p.frame.image, ascensionSpiral)
+	for kind, action := range p.queue {
+		if kind != collectFish && !(kind == handleAscension && p.ascension.active) && !(action.unlock && !spiral) && !(kind == buyHeroUpgrades && p.ascension.unlock.ready && !spiral) {
+			delete(p.queue, kind)
+		}
+	}
+	if p.hero.pending != nil || p.skill.pending != nil || p.progression.pending != nil || p.clickers.pending != nil {
+		return true
+	}
+	if p.startup != noStartup || p.startupCheck {
+		p.startup, p.startupCheck = noStartup, false
+		p.hero.interrupt()
+		p.heroJobFrame = 0
+		p.state[heroAnalysis] = observation{}
+		p.barriers[heroAnalysis] = p.frame.id + 1
+		fmt.Println("first Ascension: boss 130 beaten; prioritizing Ascension over hero preparation")
+	}
+	p.progression.wantAction = false
+	if p.ascension.active || spiral && err == nil {
+		if p.planAscension(now) {
+			return true
+		}
+	}
+	if action, ok := p.ascension.unlock.action(); !spiral && ok && action.frame.id != 0 && action.frame.id >= p.barriers[heroAnalysis] && action.frame.context == p.frame.context && now.Sub(action.frame.at) <= 5*time.Second {
+		action.unlock = true
+		p.enqueue(action, now)
+	} else if !spiral && (p.ascension.unlock.unavailable || p.ascension.unlock.ready) {
+		p.planAutoClickers(now)
+		if action, ok := p.hero.action(now); ok {
+			p.enqueue(action, now)
+		}
+	}
+	progress := p.state[progressionAnalysis]
+	if p.options.progression && progress.progression.Known && !progress.progression.Enabled && p.progression.pending == nil && !now.Before(p.progression.nextAttempt) {
+		p.enqueue(gameAction{kind: enableProgression, frame: progress.frame, progression: progress.progression}, now)
+	}
+	p.planMonsterAssist(now)
+	return true
+}
+
 func (p *gamePipeline) ascensionCandidate(now time.Time) bool {
 	if p.ascension.due(now, p.options.ascensionStall) {
 		return true
 	}
 	progress := p.state[progressionAnalysis]
 	return p.ascension.firstRun && !p.ascension.active && !now.Before(p.ascension.nextCheck) &&
-		p.startup == noStartup && !p.startupCheck && p.frame.context.heroes &&
+		!p.startupCheck && p.frame.context.heroes &&
 		progress.progression.Known && progress.progression.Zone > 130 &&
 		progress.frame.id != 0 && progress.frame.id <= p.frame.id && progress.frame.id >= p.barriers[progressionAnalysis] &&
 		progress.frame.generation == p.generation && progress.frame.layout == p.layout && progress.frame.context == p.frame.context &&
