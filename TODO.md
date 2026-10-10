@@ -3,17 +3,9 @@
 - Verify the final upward drag reaches the top and a completed owned skill setup does not repeat because the next unowned hero is unaffordable.
 - Verify a notification for one auto-equipped Relic is cleared by hovering its occupied slot, then automation returns to Heroes without an extra export.
 
-## Bulk Ancient summon native acceptance
-
-- Verify automatic Summon All after the first post-Transcension Ascension: affordable input, fresh roster/debit export, immediate level allocation and return to progression. Check a partial roster and an interrupted paid input on the installed client; fixture/controller tests cover these transitions and prevent replay.
-
 ## Shared save snapshot native acceptance
 
 - Check an installed-game startup/export trace: unchanged hero scrolling and footer/relic preflight should reuse accepted facts; every new acquisition prints its reason. Changed inventory, reset assessment and transaction receipts can legitimately request another export. If an unexpected duplicate remains, retain the lines from `save export: requested for` through the next action.
-
-## First Ascension native acceptance
-
-- After Transcension, confirm that passing boss 130 interrupts incomplete hero setup and immediately opens/finishes the first Ascension without requiring numeric reward OCR. If its control is unavailable, confirm that the focused Amenhotep HIRE/MAX path reaches level 150 and exposes it; exact-name/level calibration currently uses native neighboring-name fixtures plus a synthetic target, not an installed-game Amenhotep frame.
 
 ## Priority milestone: autonomous Transcension and Outsiders
 
@@ -92,10 +84,6 @@ Owners: Timelapse integration and Quick Ascension (purchase controller and forec
 
 ## Startup and unattended Ascension validation
 
-- Verify the first post-Transcension Ascension after beating boss 130: a fresh save confirms zero Ascensions in the current Transcension, the available native Ascension control allows the mandatory reset without a numeric reward OCR gate or a combat-wall wait, and a validated empty relic inventory skips the missing Relics tab. Confirm later runs retain ordinary wall policy; include F8 and failed-dialog recovery. If the installed game still cancels the first reward dialog, retain its screenshot and the exact reward-read or navigation rejection log; the supplied HUD does not identify that rejection.
-
-- Verify an early growing list after Transcension: recognize its large thumb, reach the complete upgrade footer, visit heroes from bottom to top, give the latest affordable hire an x1 click followed by Q/MAX before earlier skill rows, and revisit unfinished skills while ordinary earning continues.
-
 - Verify bounded startup skill setup in the installed game, including unlocked rows with or without purchased checks, one-slot low-level rows, missing hires, limited gold, two bounded inputs, overlap scrolling and final Buy Available Upgrades. Capture before/after rows if a skill remains locked.
 - Verify two consecutive startup/progression cycles with zero gold, short/expanding lists, no-purchase plans, obscured upgrade strips/unreadable prices and fish over controls.
 - Extend shared scrolling acceptance beyond the user-observed working cases: current thumb centering, 200 ms source hover, RobotGo smooth drag, 350 ms post-scroll observation settling, partial movement and short no-motion retries. Include Heroes overlap/edges, Ancient wheel/fine arrows and Mercenary edges.
@@ -141,7 +129,7 @@ Architecture: [Automation pipeline](docs/automation-pipeline.md).
 
 ## Automatic progression
 
-- Verify A startup/reset enablement and boss fallback/recovery in the installed game, alongside fish, skills and hero purchases. Capture live boss/farm transitions and calibrate the double-damage/new-combat-buff retry policy and increasing cooldown.
+- Verify boss fallback/recovery in the installed game, alongside fish, skills and hero purchases. Capture live boss/farm transitions and calibrate the double-damage/new-combat-buff retry policy and increasing cooldown.
 
 ## Active skills
 
