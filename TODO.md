@@ -1,3 +1,8 @@
+## Hero sweep and Relics native acceptance
+
+- Verify the final upward drag reaches the top and a completed owned skill setup does not repeat because the next unowned hero is unaffordable.
+- Verify a notification for one auto-equipped Relic is cleared by hovering its occupied slot, then automation returns to Heroes without an extra export.
+
 ## Bulk Ancient summon native acceptance
 
 - Verify automatic Summon All after the first post-Transcension Ascension: affordable input, fresh roster/debit export, immediate level allocation and return to progression. Check a partial roster and an interrupted paid input on the installed client; fixture/controller tests cover these transitions and prevent replay.

@@ -185,7 +185,14 @@ func TestRelicEquipmentNoCandidateHoversAndPauseRevokes(t *testing.T) {
 			now := time.Now()
 			p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{})
 			s := relicEquipmentFixture()
-			s.Items = s.Items[:4]
+			if fixture == "empty" {
+				s.Items = s.Items[:4]
+			} else {
+				for i := 4; i < len(s.Items); i++ {
+					s.Items[i].Bonuses = nil
+				}
+			}
+			original := append([]ancientcalc.Relic(nil), s.Items...)
 			screen := loadTestImage(t, "../../testdata/relic-"+fixture+".png")
 			p.frame = gameFrame{id: 1, image: screen, context: gameContext{known: true, heroes: true, window: "game", bounds: screen.Bounds()}}
 			p.relic = relicPlanner{active: true, step: relicAcquire, deadline: now.Add(time.Minute), window: "game"}
@@ -261,7 +268,7 @@ func TestRelicEquipmentNoCandidateHoversAndPauseRevokes(t *testing.T) {
 			if p.relic.active || p.ascension.relicsChecked || len(p.queue) != 0 {
 				t.Fatal("pause retained equipment ownership")
 			}
-			if !reflect.DeepEqual(s.Items, relicEquipmentFixture().Items[:4]) {
+			if !reflect.DeepEqual(s.Items, original) {
 				t.Fatal("save snapshot mutated")
 			}
 
@@ -869,5 +876,95 @@ func TestRelicEquipmentOutcomePreservesFirstRunStrategy(t *testing.T) {
 		if !p.ascensionCandidate(now) || p.ascension.relicsChecked != verified {
 			t.Fatal("fresh progression could not resume first Ascension after relic equipment")
 		}
+	}
+}
+
+func TestRelicEquippedOnlyNotificationHoversWithoutAnalysis(t *testing.T) {
+	for _, slot := range []int{1, 4} {
+		t.Run(fmt.Sprint(slot), func(t *testing.T) {
+			now := time.Now()
+			screen := loadTestImage(t, "../../testdata/relic-empty.png")
+			var moved []image.Point
+			var clicked []image.Point
+			p := newGamePipeline(&pauseControl{}, heroInput{
+				capture: func() (image.Image, error) { return screen, nil },
+				move:    func(point image.Point) error { moved = append(moved, point); return nil },
+				click:   func(point image.Point) error { clicked = append(clicked, point); return nil },
+			}, pipelineReaders{context: recognizedGame, window: func() string { return "game" }}, pipelineOptions{progression: true, export: &saveExportOptions{}})
+			p.startupCheck = false
+			p.frame = gameFrame{id: 1, image: screen, context: gameContext{known: true, heroes: true, window: "game", bounds: screen.Bounds()}}
+			p.relic.notice, p.relic.previousAlert = true, true
+			p.startRelics(now)
+			if !p.relic.notice || !p.relic.previousAlert || p.save.relicAlertHandled {
+				t.Fatal("notification ownership was lost before acknowledgement")
+			}
+			s := relicEquipmentFixture()
+			s.Items = s.Items[slot-1 : slot]
+			s.Items[0].Bonuses = []ancientcalc.RelicBonus{{Type: 2, AncientID: 19, Level: "100"}}
+			s.AncientLevels, s.OutsiderLevels = map[int]string{}, map[int]string{}
+			p.export.requested = false
+			if err := p.acceptRelicSave(&ancientcalc.RelicPreview{Snapshot: s}, now); err != nil {
+				t.Fatal(err)
+			}
+			p.planRelics(now)
+			a := p.queue[handleRelic]
+			if a.relic.step != relicOpenTab {
+				t.Fatal("equipped-only notification did not open Relics")
+			}
+			p.relic.sent(a, now)
+			delete(p.queue, handleRelic)
+			jobs := make([]chan analysisJob, analysisCount)
+			for i := range jobs {
+				jobs[i] = make(chan analysisJob, 1)
+			}
+			now = now.Add(time.Second)
+			if err := p.capture(context.Background(), now, jobs); err != nil {
+				t.Fatal(err)
+			}
+			p.planRelics(now)
+			p.planRelics(now)
+			a, ok := p.nextAction(now)
+			point := relicEquipmentPoint(screen, slot)
+			if !ok || a.kind != handleRelic || a.relic.step != relicAcknowledge || a.point != point || len(p.relic.cards) != 1 {
+				t.Fatalf("lone equipped item was skipped: action=%+v ok=%v planner=%+v", a, ok, p.relic)
+			}
+			acted, err := p.execute(context.Background(), a)
+			if err != nil || !acted || !reflect.DeepEqual(moved, []image.Point{parkPoint(screen.Bounds()), point}) || len(clicked) != 0 {
+				t.Fatal("notification hover did not dismiss tooltip first", moved, clicked, acted, err)
+			}
+			p.relic.sent(a, now)
+			delete(p.queue, handleRelic)
+			p.frame.id++
+			p.planRelics(now.Add(100 * time.Millisecond))
+			if len(p.queue) != 0 || p.save.relicAlertHandled {
+				t.Fatal("notification was completed before hover settled")
+			}
+			screen = loadTestImage(t, "../../testdata/relic-equipped-tooltip.png")
+			now = now.Add(time.Second)
+			if err := p.capture(context.Background(), now, jobs); err != nil {
+				t.Fatal(err)
+			}
+			p.planRelics(now)
+			p.planRelics(now)
+			a, ok = p.nextAction(now)
+			if !ok || a.kind != handleRelic || a.relic.step != relicReturn || p.export.requested {
+				t.Fatal("hover did not return without export", a, ok)
+			}
+			acted, err = p.execute(context.Background(), a)
+			if err != nil || !acted || len(clicked) != 1 || moved[len(moved)-1] != parkPoint(screen.Bounds()) {
+				t.Fatal("return did not dismiss tooltip before Heroes click", moved, clicked, acted, err)
+			}
+			p.relic.sent(a, now)
+			delete(p.queue, handleRelic)
+			p.frame.id++
+			p.frame.context.relics, p.frame.context.heroes = false, true
+			p.planRelics(now)
+			if p.relic.active || !p.save.relicAlertHandled || p.export.requested {
+				t.Fatal("notification did not complete on Heroes")
+			}
+			if len(jobs[relicAnalysis]) != 0 || len(jobs[exportAnalysis]) != 0 {
+				t.Fatal("notification-only visit scheduled unnecessary relic analysis or export")
+			}
+		})
 	}
 }

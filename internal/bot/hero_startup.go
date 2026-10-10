@@ -137,7 +137,7 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroRead
 			if !owned {
 				out.sweep.maxPending = false
 			}
-			if !owned || locked {
+			if locked || !owned && r.available {
 				out.sweep.needsLevels = true
 				if out.sweep.retry == 0 {
 					out.sweep.retry = 1
@@ -164,7 +164,8 @@ func readStartupHeroObservation(ctx context.Context, frame gameFrame, _ heroRead
 		return out, nil
 	}
 	if out.thumbFound {
-		out.startupScroll = image.Pt(out.thumb.X, max(out.thumb.Y-max(3, height/2), b.Min.Y+b.Dy()*420/1000+height/2))
+		// Keep viewport overlap and let the last drag pass the top thumb center.
+		out.startupScroll = image.Pt(out.thumb.X, out.thumb.Y-max(3, height/2))
 	}
 	return out, nil
 }

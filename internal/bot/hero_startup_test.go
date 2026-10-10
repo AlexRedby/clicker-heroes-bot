@@ -309,9 +309,10 @@ func TestStartupClippedTopCaptionIsNavigationOnly(t *testing.T) {
 	draw.Draw(covered, b, s, b.Min, draw.Src)
 	viewport := heroListViewport(s)
 	draw.Draw(covered, image.Rect(b.Dx()*55/1000, viewport.Min.Y, b.Dx()*140/1000, viewport.Min.Y+3), image.NewUniform(color.RGBA{255, 224, 95, 255}), image.Point{}, draw.Src)
-	f := gameFrame{image: covered, context: gameContext{known: true, heroes: true, bounds: b}}
+	f := gameFrame{image: startupThumbAtTop(t, covered), context: gameContext{known: true, heroes: true, bounds: b}}
 	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true})
-	if err != nil || out.found || out.startupComplete || out.startupScroll.Y >= out.thumb.Y {
+	_, height, _ := heroScrollbarThumb(f.image)
+	if err != nil || out.found || out.startupComplete || out.startupScroll.Y != out.thumb.Y-max(3, height/2) || out.startupScroll.Y >= b.Min.Y+b.Dy()*420/1000+height/2 {
 		t.Fatalf("clipped top row must not be purchased or block navigation: %+v %v", out, err)
 	}
 }
@@ -396,9 +397,21 @@ func TestStartupCompleteUnavailableSuccessorNeedsNoNumericalOCR(t *testing.T) {
 		}
 	}
 	f.image = complete
-	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true, y: current.Y, attempts: 2})
-	if err != nil || out.found || !out.passiveReady || !out.startupComplete {
+	out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true, retry: 2})
+	if err != nil || out.found || !out.passiveReady || !out.startupComplete || out.sweep.needsLevels {
 		t.Fatalf("complete unavailable successor: %+v %v", out, err)
+	}
+	p := newGamePipeline(&pauseControl{}, heroInput{}, pipelineReaders{}, pipelineOptions{heroes: true})
+	p.frame, p.layout = f, f.layout
+	p.beginStartup()
+	p.nextSkillSetup = f.at.Add(time.Minute)
+	if err := p.accept(context.Background(), observation{kind: heroAnalysis, startup: startupHeroes, frame: f, hero: out}, f.at); err != nil {
+		t.Fatal(err)
+	}
+	p.finishStartupUpgradePass(f.at)
+	p.plan(f.at)
+	if p.startup != noStartup || !p.nextSkillSetup.IsZero() || p.retrySkillSetup(f.at.Add(time.Minute)) {
+		t.Fatal("completed owned skills scheduled another upward sweep", p.startup, p.nextSkillSetup)
 	}
 }
 
@@ -737,7 +750,7 @@ func TestStartupExhaustedHireRetiresPendingMAX(t *testing.T) {
 				f.image = dark
 			}
 			out, err := readStartupHeroObservation(context.Background(), f, noStartupOCR(t), nil, startupSweep{bottom: true, boosted: true, maxPending: true, y: 843, attempts: attempts})
-			if err != nil || out.found || out.sweep.maxPending || !out.sweep.needsLevels || out.startupScroll.Y >= out.thumb.Y {
+			if err != nil || out.found || out.sweep.maxPending || out.sweep.needsLevels != !disabled || out.startupScroll.Y >= out.thumb.Y {
 				t.Fatalf("skipped HIRE must retire pending MAX before scrolling to earlier completed rows: %+v %v", out, err)
 			}
 			p := heroRunner{enabled: true}

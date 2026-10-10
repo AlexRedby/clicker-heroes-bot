@@ -88,7 +88,7 @@ func relicSameItems(before, after ancientcalc.RelicSnapshot) bool {
 
 func (p *gamePipeline) startRelics(now time.Time) {
 	r := &p.relic
-	*r = relicPlanner{active: true, step: relicAcquire, deadline: now.Add(90 * time.Second), window: p.frame.context.window}
+	*r = relicPlanner{active: true, notice: r.notice, previousAlert: r.previousAlert, step: relicAcquire, deadline: now.Add(90 * time.Second), window: p.frame.context.window}
 	p.ascension.relicsChecked = false
 	p.queue = make(map[actionKind]gameAction)
 	fmt.Println("relics: checking equipment for Active play")
@@ -167,8 +167,9 @@ func relicEquipmentPoint(screen image.Image, slot int) image.Point {
 
 func (r *relicPlanner) acknowledge(frame gameFrame, ui relicUI) {
 	r.cards = append([]image.Point(nil), ui.junk...)
-	for i, present := range ui.equipment {
-		if present {
+	equipped := relicEquipped(r.snapshot)
+	for i := range relicEquipmentRegions {
+		if equipped[i+1] != 0 {
 			r.cards = append(r.cards, relicEquipmentPoint(frame.image, i+1))
 		}
 	}
@@ -313,7 +314,10 @@ func (p *gamePipeline) planRelics(now time.Time) bool {
 		return true
 	}
 	if r.step == relicOpenTab && p.frame.context.relics {
-		if r.move == nil && r.snapshot.AncientLevels == nil {
+		if r.move == nil && len(relicEquipped(r.snapshot)) == len(r.snapshot.Items) {
+			// Fresh equipment slots suffice for pointer-only notification acknowledgement.
+			r.acknowledge(p.frame, relicUI{})
+		} else if r.move == nil && r.snapshot.AncientLevels == nil {
 			ui := readRelicUI(p.frame.image)
 			if !ui.known {
 				return true
@@ -408,7 +412,7 @@ func (r *relicPlanner) sent(a gameAction, now time.Time) {
 	case relicConfirmSalvage:
 		r.step = relicWaitSalvage
 	case relicOpenTab:
-		if r.move != nil || r.snapshot.AncientLevels != nil {
+		if r.move != nil || r.snapshot.AncientLevels != nil && len(relicEquipped(r.snapshot)) != len(r.snapshot.Items) {
 			r.step = relicInspect
 		}
 	case relicPark:
