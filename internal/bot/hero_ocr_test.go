@@ -101,6 +101,7 @@ func TestHeroLevelOnRealScreensAndOverlay(t *testing.T) {
 		y, want int
 	}{
 		{"../../testdata/hero-panel-max.png", 896, 4367},
+		{"../../testdata/hero-alabaster-white-artwork.png", 894, 1},
 		{"../../testdata/hero-owned-disabled.png", 917, 4695},
 		{"../../testdata/hero-tsuchi-x1.png", 894, 11873},
 		{"../../testdata/hero-scrollbar-before.png", 894, 1998},
@@ -132,6 +133,29 @@ func TestHeroLevelOnRealScreensAndOverlay(t *testing.T) {
 	draw.Draw(after, image.Rect(266, 480, 390, 510), image.NewUniform(color.Black), image.Point{}, draw.Src)
 	if _, err := readHeroLevel(ctx, after, button); err == nil {
 		t.Fatal("covered level was accepted")
+	}
+}
+
+func TestAlabasterWhiteArtworkObservation(t *testing.T) {
+	requireAncientOCR(t)
+	screen := loadTestImage(t, "../../testdata/hero-alabaster-white-artwork.png")
+	frame := gameFrame{image: screen, context: gameContext{known: true, heroes: true, bounds: screen.Bounds()}}
+	readers := heroReaders{readHeroGold, readHeroPrice, readHeroLevel}
+	out, err := readHeroObservation(context.Background(), frame, readers, nil)
+	if err != nil || !out.found || !out.owned || out.button != image.Pt(204, 894) || out.level != 1 {
+		t.Fatalf("Alabaster observation=%+v error=%v", out, err)
+	}
+	confirmed, err := readHeroObservation(context.Background(), frame, readers, &out)
+	if err != nil || !confirmed.stable || confirmed.level != 1 {
+		t.Fatalf("Alabaster confirmation=%+v error=%v", confirmed, err)
+	}
+	// Keep the name and white artwork while covering the actual level line.
+	covered := image.NewRGBA(screen.Bounds())
+	draw.Draw(covered, covered.Bounds(), screen, screen.Bounds().Min, draw.Src)
+	b := screen.Bounds()
+	draw.Draw(covered, image.Rect(b.Dx()*26/100, out.button.Y-b.Dy()*2/100, b.Dx()*36/100, out.button.Y+b.Dy()/100), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	if _, err := readHeroLevel(context.Background(), covered, out.button); err == nil {
+		t.Fatal("Alabaster name or artwork accepted as a covered level")
 	}
 }
 

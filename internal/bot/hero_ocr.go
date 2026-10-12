@@ -327,7 +327,12 @@ func readHeroLevel(ctx context.Context, screen image.Image, button image.Point) 
 	}
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()
-	region := image.Rect(b.Min.X+w*26/100, button.Y-h*6/100, b.Min.X+w*38/100, button.Y+h*3/100).Intersect(b)
+	right := 38
+	if w >= 1280 {
+		// This layout ends the level label before the animated hero artwork.
+		right = 36
+	}
+	region := image.Rect(b.Min.X+w*26/100, button.Y-h*6/100, b.Min.X+w*right/100, button.Y+h*3/100).Intersect(b)
 	// The level line is nearest the button center; the hero name can be taller.
 	start, last, bestStart, bestEnd := -1, -1, -1, -1
 	for y := region.Min.Y; y <= region.Max.Y+2; y++ {
