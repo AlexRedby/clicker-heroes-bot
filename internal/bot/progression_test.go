@@ -14,6 +14,37 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
+func TestProgressionZoneOCRLabels(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		want int
+	}{
+		{"Desert LVIL 2109", 2109},
+		{"Desert LVL 2109", 2109},
+		{"Drylands LviI 1984\n", 1984},
+		{"Forest ivI 42", 42},
+		{"Desert 2109", 0},
+		{"Desert LVIL 0", 0},
+		{"Desert LVIL -2109", 0},
+		{"Desert LVIL 2109 extra", 0},
+		{"DesertLVIL 2109", 2109},
+		{"Desert LVIII 2109", 0},
+		{"", 0},
+	} {
+		t.Run(tc.raw, func(t *testing.T) {
+			fakeMercenaryTesseract(t, tc.raw)
+			zone, err := readProgressionZone(context.Background(), image.NewRGBA(image.Rect(0, 0, 640, 360)))
+			if tc.want == 0 {
+				if err == nil {
+					t.Fatalf("invalid zone label accepted: %q -> %d", tc.raw, zone)
+				}
+			} else if err != nil || zone != tc.want {
+				t.Fatalf("%q: zone=%d error=%v, want %d", tc.raw, zone, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestProgressionScreen(t *testing.T) {
 	for _, tc := range []struct {
 		path    string

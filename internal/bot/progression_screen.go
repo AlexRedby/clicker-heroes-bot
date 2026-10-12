@@ -16,7 +16,7 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-var zoneLabel = regexp.MustCompile(`(?i)[li]v[li]\s*([0-9]+)\s*$`)
+var zoneLabel = regexp.MustCompile(`(?i)[li]v[li]{1,2}\s*([0-9]+)\s*$`)
 
 func progressionMode(screen image.Image) (known, enabled bool, err error) {
 	if screen == nil || screen.Bounds().Dx() < 640 || screen.Bounds().Dy() < 360 {
